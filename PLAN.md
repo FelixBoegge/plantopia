@@ -28,10 +28,11 @@ treatment roadmap, and follows up over time to judge whether its own treatment w
 - [16. Evaluation](#16-evaluation)
 - [17. Project structure](#17-project-structure)
 - [18. Stack and tooling](#18-stack-and-tooling)
-- [19. Brief requirement traceability](#19-brief-requirement-traceability)
-- [20. Effort estimate and descope order](#20-effort-estimate-and-descope-order)
-- [21. Risks](#21-risks)
-- [22. Decisions log](#22-decisions-log)
+- [19. Testing strategy](#19-testing-strategy)
+- [20. Brief requirement traceability](#20-brief-requirement-traceability)
+- [21. Effort estimate and descope order](#21-effort-estimate-and-descope-order)
+- [22. Risks](#22-risks)
+- [23. Decisions log](#23-decisions-log)
 
 ---
 
@@ -104,7 +105,7 @@ Three properties make the agent framing non-decorative:
 
 ### 4.1 Core
 
-Everything here is planned for the initial release. If time runs short, §20 defines the exact
+Everything here is planned for the initial release. If time runs short, §21 defines the exact
 order in which these are cut and which five are protected unconditionally.
 
 | # | Feature | Notes |
@@ -647,6 +648,18 @@ plantopia/
 │   ├── run_eval.py
 │   └── REPORT.md
 ├── tests/
+│   ├── conftest.py                 # shared fixtures (§19.5)
+│   ├── fakes/                      # fake chat models, scripted responses
+│   ├── unit/
+│   │   ├── nodes/                  # one test module per graph node
+│   │   ├── tools/
+│   │   ├── data/
+│   │   ├── core/
+│   │   └── test_schemas.py
+│   ├── graph/                      # control-flow tests over assembled graphs
+│   ├── integration/                # real SQLite + Chroma, still fake LLM
+│   ├── ui/                         # Streamlit AppTest per page
+│   └── live/                       # opt-in real-LLM smoke tests
 ├── docs/
 ├── pyproject.toml
 ├── .env.example
@@ -676,12 +689,189 @@ One responsibility per module; nodes and tools are individually testable without
 | Images | Pillow |
 | HTTP | httpx |
 | Config | pydantic-settings, `.env` |
-| Tests | pytest |
+| Tests | pytest + plugins (see §19.7) |
 | Lint / format | ruff |
 
 ---
 
-## 19. Brief requirement traceability
+## 19. Testing strategy
+
+The application is fully unit-tested. The design in §5 exists partly to make that possible: because
+Streamlit never calls a model or the database directly, every layer below the UI is testable
+without a browser, and every model call goes through one swappable factory.
+
+### 19.1 The governing constraint
+
+**LLM output is not deterministic enough to assert on, even at temperature 0.** Any test that
+asserts on generated prose is a test that will fail for reasons unrelated to the code. The suite
+therefore asserts on **structure and control flow**, never on wording:
+
+| Assert on this | Never assert on this |
+|---|---|
+| The graph reached `diagnose` only after `gather_context` resumed | The exact text of a clarifying question |
+| `web_search_plant_info` was called, given a retrieval score below threshold | The phrasing of the diagnosis |
+| The differential contains 2–3 candidates, each with a non-empty distinguishing test | Which candidate the model ranked first, in a live call |
+| Probabilities are in `[0, 1]` and the candidate list is sorted descending | The rationale paragraph |
+| `get_local_weather` was *not* called for an indoor plant | Weather prose |
+
+This is only achievable if the model is an injected dependency. `core/llm.py` is that seam: it
+returns a chat model, and in tests it returns a scripted fake. **Unit tests make zero network calls
+and zero LLM calls.**
+
+### 19.2 Test tiers
+
+| Tier | Marker | Speed | LLM | Network | What it covers |
+|---|---|---|---|---|---|
+| **Unit** | *(default)* | < 5 s total | fake | none | Nodes, tools, repositories, guards, schemas, cost maths, retrieval ranking |
+| **Graph** | *(default)* | < 5 s total | fake | none | Control flow through the assembled graph: interrupts, conditional branches, escalation gates |
+| **Integration** | `integration` | seconds | fake | none | Real temp SQLite file, real Chroma over a fixture corpus, real checkpointer round-trip |
+| **UI** | `ui` | seconds | fake | none | Streamlit `AppTest` over each page: renders, handles input, surfaces errors |
+| **Live LLM** | `llm` | slow, costs money | **real** | yes | A handful of smoke tests proving the real model satisfies the output schemas. Skipped unless opted in. |
+
+Default `pytest` invocation runs **unit + graph** only. `-m integration`, `-m ui` and `-m llm` are
+opt-in, with `llm` additionally requiring an explicit environment variable so it can never be
+triggered accidentally in CI.
+
+### 19.3 What gets tested, by layer
+
+**`agent/nodes/` — the highest-value unit tests.** Each node is a pure-ish function of state. Tests
+feed a hand-built `DiagnosisState` and a scripted fake model, then assert on the state delta.
+
+- `guard_input` rejects non-plant input and passes plant input
+- `quality_check` routes to retake on a blurry fixture, onward on a clean one
+- `assess_symptoms` populates symptom **position** (tip / margin / interveinal / lower leaves), since
+  position is the most diagnostic feature and the easiest to silently drop
+- `gather_context` emits between 1 and 4 questions and never more, whatever the model returns
+- `enrich` calls weather **only** for outdoor plants, and web search **only** when the escalation
+  gate opens
+- `diagnose` produces a schema-valid, descending-sorted differential; each candidate has a
+  distinguishing test
+- `check_contagion` flags quarantine when a transmissible disorder coexists with other journal
+  plants, and stays silent otherwise
+- `build_roadmap` emits IPM-ordered steps (§13.5) — a chemical step never precedes an available
+  cultural step
+- `persist` writes atomically; a mid-write failure leaves no partial diagnosis
+
+**`agent/` graph tests.** The assembled graph with fakes throughout, asserting on the agentic logic
+itself — which is where the interesting bugs live:
+
+- The graph **halts** at `gather_context` and cannot reach `diagnose` without a resume
+- Resuming from the checkpointer restores full state and continues correctly
+- The re-check graph skips `identify_plant` (species already known)
+- Each re-check verdict routes to the correct revision behaviour: `worsening` promotes the
+  runner-up candidate; `static` escalates one IPM tier; `improving` tapers
+- A re-check with no completed roadmap steps reports non-compliance instead of treatment failure
+- Rejection paths terminate without writing to the database
+
+**`tools/`.** Signatures, docstrings and failure behaviour. HTTP mocked at the transport layer with
+`respx`, so the real request-building code is exercised.
+
+- `get_local_weather` handles an unresolvable location, a 5xx, and a timeout — each degrading rather
+  than raising
+- `web_search_plant_info` returns empty on API failure and never propagates the exception
+- `search_plant_knowledge` ranks a known-relevant fixture document above an irrelevant one
+- `lookup_plant_care_profile` returns `None` for an unknown species
+- `create_care_schedule` computes due dates correctly across a month boundary and a DST shift
+  (frozen clock via `time-machine`)
+
+**`data/`.** Repositories against an in-memory SQLite database built from `schema.sql`.
+
+- Round-trip every entity; JSON columns survive serialisation
+- Cascade behaviour: deleting a plant removes its observations, diagnoses and roadmap steps
+- Transactional rollback on failure
+- Duplicate plant names are permitted and remain distinguishable by id
+- `user_profile` upsert refreshes `last_confirmed` rather than duplicating a fact
+
+**`core/`.** Guards and cost maths, which are pure functions and cheap to test exhaustively.
+
+- Prompt-injection strings embedded in retrieved passages are neutralised, not obeyed
+- Upload validation rejects a mislabelled file whose magic bytes disagree with its MIME type
+- Oversized uploads rejected at the boundary
+- Cost calculation matches hand-computed values for known token counts; unknown models raise rather
+  than silently costing zero
+- The confidence threshold produces a refusal below it and a diagnosis above it
+
+**`agent/schemas.py`.** Pydantic validation is a contract worth testing directly: probabilities
+outside `[0, 1]` rejected, empty candidate lists rejected, a candidate missing its distinguishing
+test rejected. These constraints are what make the fake-model tests meaningful.
+
+**`ui/`.** Streamlit `AppTest` smoke tests per page — renders without exception, primary widgets
+present, a service-layer error surfaces as a visible message rather than a traceback. Deliberately
+shallow; the logic lives below the UI and is tested there.
+
+### 19.4 Edge-case coverage
+
+**Every row of the §14 table gets a corresponding test.** That table is not prose — it is the test
+checklist for error handling, and the two are kept in sync deliberately. This also directly serves
+the brief's "can identify potential error scenarios and edge cases" criterion: the answer is a
+directory of tests rather than a claim.
+
+### 19.5 Shared fixtures
+
+| Fixture | Provides |
+|---|---|
+| `fake_llm` | Scripted chat model returning queued responses in order |
+| `fake_structured_llm` | Returns pre-built Pydantic objects for `with_structured_output` calls |
+| `failing_llm` | Raises on call, for degradation-path tests |
+| `db` | In-memory SQLite built from `schema.sql`, torn down per test |
+| `tmp_db` | Real temp file database, for integration tests |
+| `fixture_corpus` | 5–6 tiny knowledge-base documents with known content |
+| `chroma` | Chroma collection built from `fixture_corpus` |
+| `sample_images` | Small programmatically generated PNGs — clean, blurry, dark, non-plant. Generated, not committed, to keep the repo light |
+| `frozen_clock` | `time-machine` at a fixed instant, for due dates and re-check intervals |
+| `mock_weather` / `mock_search` | `respx` routes with canned payloads plus error variants |
+| `sample_plant` | A persisted plant with one prior diagnosis and a partially completed roadmap — the standard re-check starting point |
+
+### 19.6 Coverage targets
+
+Coverage is a diagnostic, not a goal; the targets are set per layer so that a high number cannot be
+bought with shallow UI tests.
+
+| Layer | Target | Reasoning |
+|---|---|---|
+| `agent/nodes/`, `agent/schemas.py` | ≥ 90 % | The core logic |
+| `tools/` | ≥ 90 % | Small surface, all failure modes reachable |
+| `data/`, `core/` | ≥ 90 % | Pure and cheap to cover |
+| `services/` | ≥ 80 % | Thin orchestration |
+| `ui/` | ≥ 50 % | `AppTest` smoke coverage only, by design |
+| Overall gate | **≥ 85 %** | Enforced via `--cov-fail-under` |
+
+### 19.7 Test tooling
+
+| Package | Purpose |
+|---|---|
+| `pytest` | Runner |
+| `pytest-cov` | Coverage measurement and the failure gate |
+| `pytest-mock` | `mocker` fixture |
+| `pytest-asyncio` | Async graph nodes, if any are async |
+| `respx` | httpx transport-level mocking — exercises real request construction |
+| `time-machine` | Frozen and travelled clocks for dated roadmap logic |
+| `syrupy` | Snapshotting serialised structured outputs and rendered prompts |
+| `streamlit` (`st.testing.v1.AppTest`) | Headless page tests |
+
+### 19.8 Development approach
+
+Implementation follows test-driven development: for each node, tool and repository, the test is
+written first from the specification above, watched fail, then implemented. This matters more than
+usual here — a graph node that quietly does nothing still returns valid-looking state, so a test
+that was never seen to fail proves nothing.
+
+Ordering: schemas and repositories first (they are the contracts everything else depends on), then
+tools, then nodes, then graph wiring, then UI.
+
+### 19.9 What testing does not cover
+
+Unit tests verify that the code does what it was designed to do. They cannot verify that a
+diagnosis is *correct* — that is what the Ragas evaluation in §16 measures, against labelled ground
+truth. The two are complementary and neither substitutes for the other:
+
+- A green test suite with poor evaluation scores means the code works and the prompts or knowledge
+  base are weak.
+- Good evaluation scores with a red suite means the happy path works and the error handling does not.
+
+---
+
+## 20. Brief requirement traceability
 
 ### Required tasks
 
@@ -696,7 +886,9 @@ One responsibility per module; nodes and tools are individually testable without
 | Appropriate tools and libraries | §18 |
 | Proper error handling | §14 |
 | Handles real-world usage | §13, §14 |
-| Documentation with examples and decisions | `README.md`, this document, §22 |
+| Documentation with examples and decisions | `README.md`, this document, §23 |
+| Good code organisation practices | §5 layering, §17 structure, §19 testability as a design driver |
+| Error scenarios and edge cases identified | §14, with a test per row (§19.4) |
 
 ### Optional tasks claimed
 
@@ -729,7 +921,7 @@ Bonus threshold is 2 medium + 1 hard. The plan claims **five medium and five har
 
 ---
 
-## 20. Effort estimate and descope order
+## 21. Effort estimate and descope order
 
 The brief estimates 18 hours. This design is larger, by choice — it is intended as a portfolio
 piece.
@@ -747,9 +939,13 @@ piece.
 | Guards and error handling | 3 h |
 | LangSmith and cost tracking | 2 h |
 | Evaluation: golden set, harness, report | 5 h |
-| Tests | 3 h |
+| **Unit, graph, integration and UI test suite** (§19) | **10 h** |
 | Documentation and README | 2 h |
-| **Total** | **~50 h** |
+| **Total** | **~57 h** |
+
+The test figure assumes TDD, so it is not a separate phase bolted on at the end — it is distributed
+across the workstreams above and counted once here. Written after the fact it would cost more and be
+worth less.
 
 **Descope order**, first to go:
 
@@ -763,16 +959,21 @@ piece.
 long-term memory, the re-check flow, the differential with distinguishing tests, and the chat
 agent. Those five *are* the project.
 
+**Not descopable:** the unit and graph test suite (§19.2). If a feature is cut, its tests are cut
+with it — but no shipped feature ships untested. The `integration`, `ui` and `llm` tiers may be
+thinned under pressure; the unit and graph tiers may not, because they are what makes the remaining
+work safe to change.
+
 ---
 
-## 21. Risks
+## 22. Risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
 | **Overconfident wrong diagnoses** | Users kill plants acting on bad advice | Differential rather than single answer; mandatory confidence display; distinguishing tests; refusal below a confidence threshold; escalation advice |
 | Vision model conflates visually similar disorders | Poor top-1 accuracy | Symptom *position* extracted explicitly; look-alike sections in the corpus; the clarifying questions exist precisely to separate look-alikes |
 | Knowledge base too thin for unusual species | Irrelevant retrieval | Web-search escalation; generic-physiology fallback; honest uncertainty |
-| Scope overrun against the 18 h estimate | Unfinished project | Explicit descope order (§20); core five features protected |
+| Scope overrun against the 18 h estimate | Unfinished project | Explicit descope order (§21); core five features protected |
 | Cost per diagnosis higher than expected (multi-image vision) | Unpleasant bill | Per-session cap; cost surfaced in the UI; image downscaling before upload |
 | Streamlit rerun model fighting a long-running graph with an interrupt | Confusing UX, lost state | Checkpointer-backed state; graph progress rendered from persisted state rather than in-memory session state |
 | Golden-set labels not transferable | Misleading evaluation numbers | Licence and label provenance checked; per-category reporting so weak categories are visible rather than averaged away |
@@ -780,7 +981,7 @@ agent. Those five *are* the project.
 
 ---
 
-## 22. Decisions log
+## 23. Decisions log
 
 | # | Decision | Alternatives considered | Rationale |
 |---|---|---|---|
@@ -796,3 +997,6 @@ agent. Those five *are* the project.
 | D10 | Developer settings sidebar kept as a stretch item | Building it as core; cutting it entirely | The brief calls out separating developer settings from the user experience, so it is worth doing — but it is not on the critical path |
 | D11 | SQLite for both domain data and checkpointing | Postgres; JSON files | Zero-configuration, single-user, monolithic; keeps the whole app runnable with `uv run` |
 | D12 | Treatment recommendations ordered by IPM escalation | Recommending the most effective treatment first | Least-invasive-first is real horticultural practice and materially safer |
+| D13 | **pytest** as the test framework | `unittest` (stdlib); `nose2` | `parametrize` fits the many-cases-one-assertion shape of diagnostic tests; composable fixtures suit the layered design; the plugin ecosystem covers httpx mocking, clock freezing and Streamlit page tests. `unittest`'s class-based fixtures fight the design and it has no comparable parametrisation. `nose2` is effectively unmaintained |
+| D14 | Tests assert on structure and control flow, never on generated prose | Snapshotting model output; asserting on diagnosis text | LLM output is not deterministic enough to assert on even at temperature 0; prose assertions produce failures unrelated to the code. Requires the model to be an injected dependency (§19.1) |
+| D15 | Live-LLM tests exist but are opt-in and gated on an environment variable | No live tests at all; live tests in the default run | A few smoke tests are needed to prove the real model satisfies the output schemas, but they cost money and are slow, so they must never run accidentally |
