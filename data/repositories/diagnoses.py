@@ -84,7 +84,6 @@ class DiagnosisRepository:
                 now.isoformat(),
             ),
         )
-        self._conn.commit()
         return int(cursor.lastrowid)
 
     def get(self, diagnosis_id: int) -> DiagnosisRecord | None:

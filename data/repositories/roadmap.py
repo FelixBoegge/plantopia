@@ -83,7 +83,6 @@ class RoadmapRepository:
                 ),
             )
             created.append(int(cursor.lastrowid))
-        self._conn.commit()
         return created
 
     def list_for_plant(self, plant_id: int) -> list[RoadmapStepRecord]:
@@ -110,7 +109,6 @@ class RoadmapRepository:
             "UPDATE roadmap_steps SET status = ?, completed_at = ? WHERE id = ?",
             (status, completed_at, step_id),
         )
-        self._conn.commit()
 
     def due_before(self, when: datetime) -> list[RoadmapStepRecord]:
         """Return pending steps due at or before ``when``, most overdue first."""

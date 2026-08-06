@@ -52,7 +52,6 @@ class ObservationRepository:
             """,
             (plant_id, kind, json.dumps(photo_refs), user_notes, now.isoformat()),
         )
-        self._conn.commit()
         return int(cursor.lastrowid)
 
     def get(self, observation_id: int) -> ObservationRecord | None:

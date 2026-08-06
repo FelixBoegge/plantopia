@@ -67,8 +67,12 @@ class PlantRepository:
                 now.isoformat(),
             ),
         )
-        self._conn.commit()
         return int(cursor.lastrowid)
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """The underlying connection, for callers that need to group writes."""
+        return self._conn
 
     def get(self, plant_id: int) -> PlantRecord | None:
         row = self._conn.execute("SELECT * FROM plants WHERE id = ?", (plant_id,)).fetchone()
@@ -81,4 +85,3 @@ class PlantRepository:
 
     def delete(self, plant_id: int) -> None:
         self._conn.execute("DELETE FROM plants WHERE id = ?", (plant_id,))
-        self._conn.commit()
