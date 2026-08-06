@@ -1,7 +1,7 @@
 [project]
 name = "plantopia"
 version = "0.1.0"
-description = "Add your description here"
+description = "An AI plant-health agent that diagnoses ailing plants from photos and a short symptom history."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -35,7 +35,7 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "-m 'not integration and not ui and not llm' --strict-markers"
+addopts = "-m 'not integration and not ui and not llm' --strict-markers --cov --cov-fail-under=85"
 markers = [
     "integration: real SQLite and Chroma, still no LLM or network",
     "ui: Streamlit AppTest page tests",
