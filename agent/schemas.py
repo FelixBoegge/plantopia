@@ -72,6 +72,13 @@ class ImageQuality(BaseModel):
     guidance: str | None = None
 
 
+class PlantCheck(BaseModel):
+    """Whether the uploaded images show plant material."""
+
+    is_plant: bool
+    what_it_is: str = Field(min_length=1, description="Short description of what the image shows")
+
+
 class Question(BaseModel):
     key: str = Field(min_length=1)
     text: str = Field(min_length=5)
