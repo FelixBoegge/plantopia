@@ -14,25 +14,53 @@ CORPUS = Path("knowledge/corpus")
 
 REQUIRED_IDS = {
     "water-and-root": {
-        "root-rot", "overwatering", "underwatering", "poor-drainage",
-        "transplant-shock", "pot-bound",
+        "root-rot",
+        "overwatering",
+        "underwatering",
+        "poor-drainage",
+        "transplant-shock",
+        "pot-bound",
     },
     "nutrient": {
-        "nitrogen-deficiency", "phosphorus-deficiency", "potassium-deficiency",
-        "iron-deficiency", "magnesium-deficiency", "calcium-deficiency",
-        "fertiliser-burn", "salt-buildup",
+        "nitrogen-deficiency",
+        "phosphorus-deficiency",
+        "potassium-deficiency",
+        "iron-deficiency",
+        "magnesium-deficiency",
+        "calcium-deficiency",
+        "fertiliser-burn",
+        "salt-buildup",
     },
     "light-and-environment": {
-        "insufficient-light", "sunscald", "low-humidity", "cold-draught",
-        "frost-damage", "heat-stress", "chemical-damage",
+        "insufficient-light",
+        "sunscald",
+        "low-humidity",
+        "cold-draught",
+        "frost-damage",
+        "heat-stress",
+        "chemical-damage",
     },
     "pests": {
-        "spider-mites", "thrips", "aphids", "mealybugs", "scale-insects",
-        "fungus-gnats", "whitefly", "caterpillars", "slugs-and-snails", "vine-weevil",
+        "spider-mites",
+        "thrips",
+        "aphids",
+        "mealybugs",
+        "scale-insects",
+        "fungus-gnats",
+        "whitefly",
+        "caterpillars",
+        "slugs-and-snails",
+        "vine-weevil",
     },
     "disease": {
-        "powdery-mildew", "botrytis", "bacterial-leaf-spot", "fungal-leaf-spot",
-        "rust", "anthracnose", "sooty-mould", "damping-off",
+        "powdery-mildew",
+        "botrytis",
+        "bacterial-leaf-spot",
+        "fungal-leaf-spot",
+        "rust",
+        "anthracnose",
+        "sooty-mould",
+        "damping-off",
     },
     "other": {"natural-senescence", "physical-damage", "dormancy", "etiolation"},
 }
@@ -47,7 +75,7 @@ def chunks():
 
 def test_every_required_disorder_is_documented(chunks):
     present = {c.doc_id for c in chunks}
-    assert ALL_REQUIRED_IDS <= present, f"missing: {sorted(ALL_REQUIRED_IDS - present)}"
+    assert present >= ALL_REQUIRED_IDS, f"missing: {sorted(ALL_REQUIRED_IDS - present)}"
 
 
 def test_every_document_parses(chunks):
@@ -57,7 +85,7 @@ def test_every_document_parses(chunks):
 @pytest.mark.parametrize("path", sorted(CORPUS.glob("*.md")), ids=lambda p: p.stem)
 def test_document_has_every_required_section(path):
     sections = {c.section for c in parse_document(path)}
-    assert REQUIRED_SECTIONS <= sections
+    assert sections >= REQUIRED_SECTIONS
 
 
 @pytest.mark.parametrize("path", sorted(CORPUS.glob("*.md")), ids=lambda p: p.stem)
@@ -79,8 +107,7 @@ def test_document_severity_is_valid(path):
 def test_lookalike_section_is_substantive(path):
     """The look-alike section is what makes differential diagnosis possible."""
     chunk = next(
-        c for c in parse_document(path)
-        if c.section == "Look-alikes and how to tell them apart"
+        c for c in parse_document(path) if c.section == "Look-alikes and how to tell them apart"
     )
     assert len(chunk.text) >= 150, "too thin to discriminate between candidates"
 
@@ -88,8 +115,7 @@ def test_lookalike_section_is_substantive(path):
 @pytest.mark.parametrize("path", sorted(CORPUS.glob("*.md")), ids=lambda p: p.stem)
 def test_confirming_test_is_actionable(path):
     chunk = next(
-        c for c in parse_document(path)
-        if c.section == "Confirming test the user can perform"
+        c for c in parse_document(path) if c.section == "Confirming test the user can perform"
     )
     assert len(chunk.text) >= 80
 
@@ -106,7 +132,6 @@ def test_environmental_disorders_are_not_transmissible(chunks):
     wrongly_flagged = {
         c.doc_id
         for c in chunks
-        if c.category in {"nutrient", "light-and-environment", "water-and-root"}
-        and c.transmissible
+        if c.category in {"nutrient", "light-and-environment", "water-and-root"} and c.transmissible
     }
     assert wrongly_flagged == set()
