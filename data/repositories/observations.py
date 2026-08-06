@@ -31,7 +31,10 @@ def _to_record(row: sqlite3.Row) -> ObservationRecord:
 
 
 class ObservationRepository:
-    """Reads and writes the ``observations`` table."""
+    """Reads and writes the ``observations`` table.
+
+    Write methods do not commit; the caller groups writes with ``data.db.transaction``.
+    """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn

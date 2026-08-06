@@ -32,6 +32,8 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
 
     Commits on success, rolls back on any exception. Repositories deliberately do not
     commit — whether a set of writes is one unit is the caller's decision.
+
+    All repositories participating in one transaction must share this same connection.
     """
     try:
         yield conn

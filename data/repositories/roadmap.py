@@ -48,7 +48,10 @@ def _to_record(row: sqlite3.Row) -> RoadmapStepRecord:
 
 
 class RoadmapRepository:
-    """Reads and writes the ``roadmap_steps`` table."""
+    """Reads and writes the ``roadmap_steps`` table.
+
+    Write methods do not commit; the caller groups writes with ``data.db.transaction``.
+    """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
@@ -98,7 +101,11 @@ class RoadmapRepository:
         return [_to_record(r) for r in rows]
 
     def mark(self, step_id: int, *, status: StepStatus, now: datetime) -> None:
-        """Set a step's status, recording completion time for terminal statuses."""
+        """Set a step's status, recording completion time for terminal statuses.
+
+        Does not commit. Callers own the transaction — wrap in
+        ``data.db.transaction(...)`` (see ``agent/nodes/persist.py`` for the pattern).
+        """
         if status not in _VALID_STATUSES:
             raise ValueError(
                 f"unknown status {status!r}; expected one of {sorted(_VALID_STATUSES)}"
