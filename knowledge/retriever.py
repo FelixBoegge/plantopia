@@ -62,6 +62,7 @@ def build_vectorstore(
         embedding=embeddings,
         collection_name=collection_name,
         persist_directory=str(persist_directory) if persist_directory else None,
+        collection_metadata={"hnsw:space": "cosine"},
     )
 
 
