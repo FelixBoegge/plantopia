@@ -92,6 +92,12 @@ class Question(BaseModel):
         return self
 
 
+class QuestionSet(BaseModel):
+    """Clarifying questions selected for one case."""
+
+    questions: list[Question] = Field(default_factory=list)
+
+
 class Passage(BaseModel):
     doc_id: str
     section: str
