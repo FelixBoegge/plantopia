@@ -338,6 +338,7 @@ sees; none of them wrap another LLM call except where noted.
 | Tool | Signature (shape) | Purpose | Failure mode |
 |---|---|---|---|
 | `search_plant_knowledge` | `(query: str, k: int) -> Passage[]` | Chroma similarity search over the curated corpus. Primary grounding. | Empty result → caller escalates. |
+| `search_by_photograph` | `(images, k: int) -> Passage[]` | Cross-modal retrieval: embeds the photograph itself and searches the same corpus, bypassing the symptom description (§10.4). | Empty result → the text path carries the diagnosis alone. |
 | `web_search_plant_info` | `(query: str) -> Passage[]` | Tavily. **Escalation only**, gated on weak retrieval or unknown species. | API error → degrade, do not fail the diagnosis. |
 | `get_local_weather` | `(location: str, days_back: int) -> WeatherSummary` | Open-Meteo historical archive. Free, no API key. A recent frost, heatwave or three weeks of rain frequently *is* the diagnosis. | Unresolvable location → omit weather, note the gap. |
 | `lookup_plant_care_profile` | `(species: str) -> CareProfile` | Baseline light/water/temperature/humidity requirements. Grounds "is this normal *for a fern*". | Unknown species → return `None`, widen the differential. |
@@ -401,6 +402,50 @@ Chunked per section (headings preserved as metadata), embedded, stored in a loca
 collection. Metadata filters on category and `transmissible` support the contagion check.
 Retrieval is multi-query: one query per extracted symptom plus one combined query, then
 deduplicated and reranked.
+
+### 10.4 Multimodal retrieval
+
+Embeddings come from `google/gemini-embedding-2` via OpenRouter, which places text and images
+in a shared vector space. That makes a second retrieval path possible: **embed the user's
+photograph directly and retrieve against the same text corpus**, without any intermediate
+description.
+
+Why this is worth having. The text path retrieves against `assess_symptoms`' output, so
+everything it finds has already passed through one lossy step — if the vision model writes
+"yellowing leaves" where the truth was "fine pale stippling", the retrieval is anchored to a
+mistake and every downstream step inherits it. The image path bypasses that description
+entirely. The two paths fail independently, which is the whole point of running both.
+
+**The trap, and how the design avoids it.** Cross-modal similarity scores are not on the same
+scale as text-to-text scores; an image-to-text match is typically numerically lower even when
+it is a better match. Three consequences are designed around:
+
+1. **Never merge the two result sets by raw score.** Image-path results are kept in a separate
+   bucket and presented to `diagnose` under their own heading, labelled as visual matches.
+2. **The web-search escalation gate reads text-path scores only.** Feeding it a cross-modal
+   score would make it fire constantly, and every diagnosis would pay for a web search it
+   does not need.
+3. **The confidence threshold is per-path.** A weak visual match is not evidence of anything
+   and is dropped rather than shown.
+
+The image path is additive: if it returns nothing, the diagnosis proceeds exactly as it would
+have on the text path alone.
+
+### 10.5 Reference imagery — a deliberate non-goal for now
+
+The stronger version of this idea is image-to-image: attach licensed reference photographs to
+each disorder document, embed those, and match the user's photo against them directly. That
+would likely beat cross-modal text matching outright for the visually distinctive disorders —
+webbing, stippling, powdery mildew, rust.
+
+It is not in scope, for two reasons. Sourcing correctly licensed images for 43 disorders is a
+larger content undertaking than the text corpus itself, and public plant-image datasets skew
+heavily toward crop leaf pathology while barely covering the watering, light and nutrient
+problems that account for most houseplant failures — so coverage would be lopsided in exactly
+the wrong direction.
+
+It becomes a good experiment once §16's evaluation harness exists, because then the question
+"does this actually improve top-1 accuracy?" has a measurable answer instead of an intuition.
 
 ---
 
@@ -973,6 +1018,7 @@ work safe to change.
 | **Overconfident wrong diagnoses** | Users kill plants acting on bad advice | Differential rather than single answer; mandatory confidence display; distinguishing tests; refusal below a confidence threshold; escalation advice |
 | Vision model conflates visually similar disorders | Poor top-1 accuracy | Symptom *position* extracted explicitly; look-alike sections in the corpus; the clarifying questions exist precisely to separate look-alikes |
 | Knowledge base too thin for unusual species | Irrelevant retrieval | Web-search escalation; generic-physiology fallback; honest uncertainty |
+| Cross-modal retrieval returns plausible-looking but irrelevant matches | Misleading evidence in the diagnosis prompt | Kept in a separate, labelled bucket; own confidence threshold; dropped entirely when weak. The text path never depends on it (§10.4) |
 | Scope overrun against the 18 h estimate | Unfinished project | Explicit descope order (§21); core five features protected |
 | Cost per diagnosis higher than expected (multi-image vision) | Unpleasant bill | Per-session cap; cost surfaced in the UI; image downscaling before upload |
 | Streamlit rerun model fighting a long-running graph with an interrupt | Confusing UX, lost state | Checkpointer-backed state; graph progress rendered from persisted state rather than in-memory session state |
@@ -997,6 +1043,10 @@ work safe to change.
 | D10 | Developer settings sidebar kept as a stretch item | Building it as core; cutting it entirely | The brief calls out separating developer settings from the user experience, so it is worth doing — but it is not on the critical path |
 | D11 | SQLite for both domain data and checkpointing | Postgres; JSON files | Zero-configuration, single-user, monolithic; keeps the whole app runnable with `uv run` |
 | D12 | Treatment recommendations ordered by IPM escalation | Recommending the most effective treatment first | Least-invasive-first is real horticultural practice and materially safer |
+| D16 | All model calls — chat **and** embeddings — routed through OpenRouter | Calling OpenAI directly; a local embedding model | One key, one bill, and swapping any model becomes a configuration change. OpenRouter's `/embeddings` endpoint is OpenAI-compatible, so no separate provider is needed |
+| D17 | Multimodal embeddings (`google/gemini-embedding-2`) with a second, image-based retrieval path | Text-only retrieval | The text path retrieves against the symptom *description*, so it inherits any error the vision model made. Embedding the photograph directly gives a second path that fails independently (§10.4) |
+| D18 | Image-path results kept separate from text-path results, never merged by score | One ranked list across both modalities | Cross-modal similarity is not on the same numeric scale as text-to-text similarity. Merging would corrupt ranking and would make the web-escalation gate fire on nearly every diagnosis |
+| D19 | No reference-image corpus in the current scope | Image-to-image matching against licensed disorder photographs | Larger content undertaking than the text corpus, and public datasets skew to crop pathology while barely covering watering, light and nutrient problems. Revisit once the evaluation harness can measure whether it helps (§10.5) |
 | D13 | **pytest** as the test framework | `unittest` (stdlib); `nose2` | `parametrize` fits the many-cases-one-assertion shape of diagnostic tests; composable fixtures suit the layered design; the plugin ecosystem covers httpx mocking, clock freezing and Streamlit page tests. `unittest`'s class-based fixtures fight the design and it has no comparable parametrisation. `nose2` is effectively unmaintained |
 | D14 | Tests assert on structure and control flow, never on generated prose | Snapshotting model output; asserting on diagnosis text | LLM output is not deterministic enough to assert on even at temperature 0; prose assertions produce failures unrelated to the code. Requires the model to be an injected dependency (§19.1) |
 | D15 | Live-LLM tests exist but are opt-in and gated on an environment variable | No live tests at all; live tests in the default run | A few smoke tests are needed to prove the real model satisfies the output schemas, but they cost money and are slow, so they must never run accidentally |
