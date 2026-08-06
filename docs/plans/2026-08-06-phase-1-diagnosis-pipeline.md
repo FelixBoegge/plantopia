@@ -6,7 +6,7 @@
 
 **Architecture:** A layered monolith. Streamlit calls a service layer; the service layer drives a LangGraph state machine whose nodes are closures over an injected `Deps` object holding models, retriever and repositories. That injection seam is what makes every node unit-testable with a scripted fake model and zero network calls.
 
-**Tech Stack:** Python 3.12, uv, Streamlit, LangGraph, LangChain, **OpenRouter** (all model calls, via the OpenAI-compatible API), FastEmbed (local embeddings), Pydantic v2, Chroma, SQLite, httpx, pytest.
+**Tech Stack:** Python 3.12, uv, Streamlit, LangGraph, LangChain, **OpenRouter** (all chat *and* embedding calls, via its OpenAI-compatible API), Pydantic v2, Chroma, SQLite, httpx, pytest.
 
 **Spec:** [`PLAN.md`](../../PLAN.md) — read §5, §6, §9, §10, §11 and §19 before starting.
 
@@ -26,8 +26,8 @@ Every task's requirements implicitly include this section.
 - **Never assert on wall-clock time.** Time arrives through `Deps.now`, a `Callable[[], datetime]`.
 - **All datetimes are timezone-aware UTC.** `datetime.now(tz=UTC)`, never naive `datetime.now()`.
 - **Every model call goes through OpenRouter.** `core/llm.py` is the only module that constructs a model. OpenRouter is OpenAI-API-compatible, so `ChatOpenAI` is used with `base_url` pointed at it. Never import a provider SDK anywhere else.
-- **OpenRouter has no embeddings endpoint.** Retrieval embeddings run locally via FastEmbed. Do not reach for `OpenAIEmbeddings`.
-- **Model slugs are configuration, never literals in code.** Three tiers: `gate_model`, `vision_model`, `reasoning_model`.
+- **Embeddings go through OpenRouter too**, via its OpenAI-compatible `/embeddings` endpoint. One key and one bill for the whole application. `core/llm.py` builds the embeddings client alongside the chat models.
+- **Model slugs are configuration, never literals in code.** Four of them: `gate_model`, `vision_model`, `reasoning_model`, `embedding_model`.
 - **Secrets come from the environment only.** Never hardcode a key, never commit `.env`, never log a key.
 - **All SQL uses parameterised queries.** No f-string interpolation into SQL, ever.
 - **Every task ends with a commit.** Conventional commit prefixes: `feat:`, `test:`, `fix:`, `chore:`, `docs:`.
@@ -104,7 +104,7 @@ Files created by this plan, and what each is responsible for.
 uv init --name plantopia --python 3.12 --no-workspace
 rm -f main.py hello.py
 uv add streamlit langgraph langchain langchain-openai langchain-community \
-       chromadb fastembed pydantic pydantic-settings httpx pillow python-frontmatter
+       chromadb pydantic pydantic-settings httpx pillow python-frontmatter
 uv add --dev pytest pytest-cov pytest-mock pytest-asyncio respx time-machine syrupy ruff
 ```
 
@@ -251,8 +251,8 @@ class Settings(BaseSettings):
     vision_model: str = "google/gemini-2.5-flash"
     reasoning_model: str = "anthropic/claude-sonnet-4.5"
 
-    # Embeddings run locally. OpenRouter serves chat completions, not embeddings.
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    # Retrieval embeddings, also via OpenRouter's /embeddings endpoint.
+    embedding_model: str = "openai/text-embedding-3-small"
 
     tavily_api_key: str | None = None
 
@@ -300,8 +300,9 @@ PLANTOPIA_TAVILY_API_KEY=
 # PLANTOPIA_VISION_MODEL=google/gemini-2.5-flash
 # PLANTOPIA_REASONING_MODEL=anthropic/claude-sonnet-4.5
 
-# Embeddings run locally — OpenRouter serves chat completions, not embeddings
-# PLANTOPIA_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+# Retrieval embeddings, via OpenRouter's /embeddings endpoint
+# Alternatives worth trying: qwen/qwen3-embedding-8b, baai/bge-m3
+# PLANTOPIA_EMBEDDING_MODEL=openai/text-embedding-3-small
 
 # Sent to OpenRouter for attribution; shows up on your dashboard
 # PLANTOPIA_APP_URL=http://localhost:8501
@@ -361,7 +362,8 @@ git commit -m "chore: scaffold project with uv, pytest and configuration"
 - Consumes: `core.config.get_settings`
 - Produces:
   - `core.llm.build_chat_model(*, model: str | None = None, temperature: float | None = None) -> BaseChatModel`
-  - `core.llm.build_gate_model(*, temperature=None)`, `build_vision_model(...)`, `build_reasoning_model(...)` — the three tiers
+  - `core.llm.build_gate_model(*, temperature=None)`, `build_vision_model(...)`, `build_reasoning_model(...)` — the three chat tiers
+  - `core.llm.build_embeddings() -> Embeddings` — retrieval embeddings, also via OpenRouter
   - `tests.fakes.chat_models.ScriptedChatModel(responses: list[str])` — returns queued strings in order
   - `tests.fakes.chat_models.ScriptedStructuredModel(objects: list[BaseModel])` — its `with_structured_output` returns queued Pydantic objects in order
   - `tests.fakes.chat_models.FailingChatModel(exc: Exception)` — raises on every call
@@ -382,6 +384,7 @@ from pydantic import BaseModel
 from core.config import get_settings
 from core.llm import (
     build_chat_model,
+    build_embeddings,
     build_gate_model,
     build_reasoning_model,
     build_vision_model,
@@ -418,6 +421,17 @@ def test_the_tiers_resolve_to_their_configured_slugs():
     assert build_gate_model().model_name == settings.gate_model
     assert build_vision_model().model_name == settings.vision_model
     assert build_reasoning_model().model_name == settings.reasoning_model
+
+
+def test_embeddings_also_route_through_openrouter():
+    embeddings = build_embeddings()
+    assert "openrouter.ai" in str(embeddings.openai_api_base)
+    assert embeddings.model == get_settings().embedding_model
+
+
+def test_embeddings_skip_tiktoken_context_checking():
+    """An OpenRouter slug is not a name tiktoken recognises."""
+    assert build_embeddings().check_embedding_ctx_length is False
 
 
 def test_scripted_chat_model_returns_responses_in_order():
@@ -471,8 +485,9 @@ Three tiers exist because the pipeline's jobs differ enormously in difficulty, a
 OpenRouter the price difference between tiers is often more than tenfold.
 """
 
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from core.config import get_settings
 
@@ -526,6 +541,27 @@ def build_gate_model(*, temperature: float | None = None) -> BaseChatModel:
     where most of the per-diagnosis cost would otherwise go.
     """
     return build_chat_model(model=get_settings().gate_model, temperature=temperature)
+
+
+def build_embeddings() -> Embeddings:
+    """Return the embeddings client for corpus retrieval.
+
+    OpenRouter exposes an OpenAI-compatible ``/embeddings`` endpoint, so the same key
+    and base URL serve embeddings as well as chat.
+
+    ``check_embedding_ctx_length=False`` matters: LangChain otherwise tries to
+    tokenise inputs with tiktoken keyed on the model name in order to chunk them, and
+    an OpenRouter slug like ``openai/text-embedding-3-small`` is not a name tiktoken
+    recognises. Disabling it sends the text through unmodified, which is what we want
+    — corpus sections are well under any context limit.
+    """
+    settings = get_settings()
+    return OpenAIEmbeddings(
+        model=settings.embedding_model,
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+        check_embedding_ctx_length=False,
+    )
 ```
 
 - [ ] **Step 4: Write `tests/fakes/chat_models.py`**
@@ -620,7 +656,7 @@ Create an empty `tests/fakes/__init__.py`.
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `uv run pytest tests/unit/core/test_llm.py -v`
-Expected: 9 passed
+Expected: 11 passed
 
 If `ScriptedChatModel` construction fails on Pydantic field declaration, add `model_config = ConfigDict(arbitrary_types_allowed=True)` to the class — `BaseChatModel` is itself a Pydantic model, so fields must be declared as class attributes with annotations, exactly as written above.
 
@@ -7842,7 +7878,12 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from agent.deps import Deps
 from agent.diagnosis_graph import build_diagnosis_graph
 from core.config import get_settings
-from core.llm import build_gate_model, build_reasoning_model, build_vision_model
+from core.llm import (
+    build_embeddings,
+    build_gate_model,
+    build_reasoning_model,
+    build_vision_model,
+)
 from data.db import apply_schema, connect
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
@@ -7861,21 +7902,18 @@ def get_service() -> DiagnosisService:
     """Build the service and everything under it. Cached for the process."""
     from datetime import UTC, datetime
 
-    from langchain_community.embeddings import FastEmbedEmbeddings
-
     settings = get_settings()
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = connect(settings.db_path)
     apply_schema(conn)
 
-    # Embeddings run locally. OpenRouter serves chat completions and has no
-    # embeddings endpoint, so retrieval uses a small local model rather than
-    # introducing a second provider and a second API key. FastEmbed downloads an
-    # ONNX model (~130 MB) on first run, then works offline and costs nothing.
+    # Embeddings go through OpenRouter's /embeddings endpoint, same key as the chat
+    # models. The corpus is small — roughly 300 chunks — so the whole collection
+    # embeds for a fraction of a cent, and only query embeddings recur.
     vectorstore = build_vectorstore(
         chunks=load_corpus(settings.corpus_path),
-        embeddings=FastEmbedEmbeddings(model_name=settings.embedding_model),
+        embeddings=build_embeddings(),
         persist_directory=settings.chroma_path,
     )
 
@@ -8505,24 +8543,29 @@ cp .env.example .env
 uv run streamlit run app.py
 ```
 
-**One key, three models.** Every model call is routed through
-[OpenRouter](https://openrouter.ai), which exposes an OpenAI-compatible API, so
-switching providers is a configuration change rather than a code change. The pipeline
-uses three tiers because its jobs differ enormously in difficulty:
+**One key, four models.** Everything — chat *and* embeddings — is routed through
+[OpenRouter](https://openrouter.ai), which mirrors the OpenAI API shape on both its
+`/chat/completions` and `/embeddings` endpoints. Switching providers is a
+configuration change rather than a code change, and there is one key and one bill.
+
+The pipeline uses separate tiers because its jobs differ enormously in difficulty, and
+the price gap between tiers is often more than tenfold:
 
 | Tier | Used by | Default |
 |---|---|---|
 | `gate` | the two binary image checks, which run on every diagnosis | `google/gemini-2.5-flash-lite` |
 | `vision` | species identification, symptom extraction | `google/gemini-2.5-flash` |
 | `reasoning` | question selection, diagnosis, treatment planning | `anthropic/claude-sonnet-4.5` |
+| `embedding` | corpus indexing and query retrieval | `openai/text-embedding-3-small` |
 
 Override any of them in `.env`. Check [openrouter.ai/models](https://openrouter.ai/models)
 for current slugs — availability and naming change.
 
-**Embeddings run locally.** OpenRouter serves chat completions and has no embeddings
-endpoint, so retrieval uses FastEmbed with a small local model rather than requiring a
-second provider and a second key. The model (~130 MB) downloads on first run; after
-that retrieval is free and works offline.
+Embedding cost is negligible here: the corpus is around 300 chunks, so the whole
+collection indexes for a fraction of a cent and only query embeddings recur. That
+means the embedding model can be chosen on retrieval quality alone —
+`qwen/qwen3-embedding-8b` and `baai/bge-m3` are both worth trying if the default
+struggles to separate similar disorders.
 
 A Tavily key is optional. Without it, web-search escalation is skipped and diagnosis
 relies on the curated corpus alone.
