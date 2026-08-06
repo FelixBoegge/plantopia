@@ -11,10 +11,16 @@ SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 def connect(path: Path | str) -> sqlite3.Connection:
     """Open a connection with foreign keys enforced and dict-like rows.
 
+    ``check_same_thread=False`` because the caller reuses a single connection across
+    Streamlit reruns, and Streamlit is free to run a script on a different worker
+    thread from one rerun to the next. Access stays serialised regardless — a rerun
+    runs to completion before the next begins — so this widens which thread may call
+    in, not how many may call concurrently.
+
     Args:
         path: Database file path, or ``":memory:"`` for an ephemeral database.
     """
-    conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

@@ -55,3 +55,49 @@ def test_submitting_with_no_photos_shows_an_error_not_a_traceback(app):
     app.button[0].click().run()
     assert not app.exception
     assert app.error
+
+
+# A real PNG magic-byte header. ``store_upload`` validates by magic bytes, not
+# filename, so this is enough to pass the guard without needing a decodable image —
+# the pipeline's models are scripted fakes and never actually look at the pixels.
+_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+def _submit_intake(app) -> None:
+    """Upload one photo and click through the intake form."""
+    app.file_uploader[0].upload("leaf.png", _PNG_BYTES, "image/png")
+    diagnose_button = next(b for b in app.button if b.label == "Diagnose")
+    diagnose_button.click().run()
+
+
+def test_questions_stage_renders_after_a_successful_start(app):
+    """A valid upload advances past intake to the clarifying questions."""
+    app.run()
+    _submit_intake(app)
+
+    assert not app.exception
+    assert app.session_state["stage"] == "questions"
+    # The question text from ``pipeline_models``'s scripted QuestionSet.
+    assert any(t.label == "How much light?" for t in app.text_input)
+
+
+def test_result_stage_renders_a_differential(app):
+    """Completing the wizard renders the ranked candidates, not just a status."""
+    app.run()
+    _submit_intake(app)
+    assert not app.exception
+
+    answer = next(t for t in app.text_input if t.label == "How much light?")
+    answer.set_value("A few hours of morning sun")
+    submit_button = next(b for b in app.button if b.label == "Get my diagnosis")
+    submit_button.click().run()
+
+    assert not app.exception
+    assert app.session_state["stage"] == "result"
+    # The scripted Differential names "Overwatering" as the top candidate at 70%.
+    headings = [s.value for s in app.subheader]
+    assert any("Overwatering" in h and "70%" in h for h in headings)
+    # Its distinguishing test is rendered too, not just the candidate name.
+    assert any("Feel the soil" in i.value for i in app.info)
+    # No candidate here is transmissible, so no contagion warning should appear.
+    assert not app.warning

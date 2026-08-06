@@ -61,16 +61,19 @@ the price gap between tiers is often more than tenfold:
 | `gate` | the two binary image checks, which run on every diagnosis | `google/gemini-2.5-flash-lite` |
 | `vision` | species identification, symptom extraction | `google/gemini-2.5-flash` |
 | `reasoning` | question selection, diagnosis, treatment planning | `anthropic/claude-sonnet-4.5` |
-| `embedding` | corpus indexing and query retrieval | `openai/text-embedding-3-small` |
+| `embedding` | corpus indexing, query retrieval, and direct photograph matching | `google/gemini-embedding-2` |
 
 Override any of them in `.env`. Check [openrouter.ai/models](https://openrouter.ai/models)
 for current slugs — availability and naming change.
 
-Embedding cost is negligible here: the corpus is around 300 chunks, so the whole
-collection indexes for a fraction of a cent and only query embeddings recur. That
-means the embedding model can be chosen on retrieval quality alone —
-`qwen/qwen3-embedding-8b` and `baai/bge-m3` are both worth trying if the default
-struggles to separate similar disorders.
+The embedding model is multimodal: text and images share one vector space, so a
+photograph of the plant can be matched against the corpus directly, not only through
+the vision model's written description of it — a second retrieval path that fails
+independently of the first (spec §10.4). That is a real constraint on substitution:
+swapping in a text-only embedding model gains nothing on cost (the corpus is only
+around 300 chunks, so the whole collection indexes for a fraction of a cent) and loses
+the photograph-matching path entirely. `qwen/qwen3-embedding-8b` and `baai/bge-m3` are
+worth trying only if that trade-off is acceptable for a given deployment.
 
 A Tavily key is optional. Without it, web-search escalation is skipped and diagnosis
 relies on the curated corpus alone.
