@@ -1,0 +1,56 @@
+[project]
+name = "plantopia"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chromadb>=1.5.9",
+    "httpx>=0.28.1",
+    "langchain>=1.3.14",
+    "langchain-community>=0.4.2",
+    "langchain-openai>=1.4.1",
+    "langgraph>=1.2.10",
+    "pillow>=12.3.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "python-frontmatter>=1.3.0",
+    "streamlit>=1.61.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "respx>=0.23.1",
+    "ruff>=0.16.1",
+    "syrupy>=5.5.3",
+    "time-machine>=3.3.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-m 'not integration and not ui and not llm' --strict-markers"
+markers = [
+    "integration: real SQLite and Chroma, still no LLM or network",
+    "ui: Streamlit AppTest page tests",
+    "llm: hits the real model, costs money, opt-in only",
+]
+filterwarnings = ["error::DeprecationWarning:plantopia.*"]
+
+[tool.coverage.run]
+source = ["core", "agent", "tools", "data", "knowledge", "services", "ui"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "PTH"]
