@@ -101,3 +101,106 @@ def sample_images():
     from agent.state import ImageRef
 
     return [ImageRef(ref="img-1", media_type="image/png", data_b64="aGVsbG8=")]
+
+
+@pytest.fixture
+def pipeline_models():
+    """Scripted models covering a full happy-path run, one per tier.
+
+    Returns ``(gate, vision, chat)``:
+
+    - gate answers two calls in order: PlantCheck, ImageQuality
+    - vision answers two: SpeciesGuess, SymptomSet
+    - chat answers three: QuestionSet, Differential, Roadmap
+
+    Because each model's script is ordered, these fixtures also assert the pipeline's
+    call order implicitly: reorder the nodes and the wrong object comes back.
+    """
+    from agent.schemas import (
+        Candidate,
+        Differential,
+        ImageQuality,
+        IPMTier,
+        PlantCheck,
+        Question,
+        QuestionSet,
+        Roadmap,
+        RoadmapStep,
+        Severity,
+        SpeciesGuess,
+        Symptom,
+        SymptomPosition,
+        SymptomSet,
+    )
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    gate = ScriptedStructuredModel(
+        [
+            PlantCheck(is_plant=True, what_it_is="a potted basil plant"),
+            ImageQuality(usable=True, problem=None, guidance=None),
+        ]
+    )
+
+    vision = ScriptedStructuredModel(
+        [
+            SpeciesGuess(common_name="Basil", scientific_name="Ocimum basilicum", confidence=0.9),
+            SymptomSet(
+                symptoms=[
+                    Symptom(
+                        description="Yellowing",
+                        position=SymptomPosition.LOWER_LEAVES,
+                        severity=Severity.ACT_THIS_WEEK,
+                    )
+                ],
+                soil_condition="wet",
+                overall_vigor="declining",
+            ),
+        ]
+    )
+
+    chat = ScriptedStructuredModel(
+        [
+            QuestionSet(
+                questions=[Question(key="light_hours", text="How much light?", kind="text")]
+            ),
+            Differential(
+                is_healthy=False,
+                reasoning="Wet soil and lower-leaf yellowing.",
+                candidates=[
+                    Candidate(
+                        disorder_id="overwatering",
+                        name="Overwatering",
+                        probability=0.7,
+                        supporting_evidence=["wet soil"],
+                        contradicting_evidence=[],
+                        distinguishing_test="Feel the soil three days after watering.",
+                        severity=Severity.ACT_THIS_WEEK,
+                        transmissible=False,
+                    ),
+                    Candidate(
+                        disorder_id="root-rot",
+                        name="Root rot",
+                        probability=0.2,
+                        supporting_evidence=["wet soil"],
+                        contradicting_evidence=["firm stem"],
+                        distinguishing_test="Unpot the plant and inspect the roots.",
+                        severity=Severity.ACT_TODAY,
+                        transmissible=False,
+                    ),
+                ],
+            ),
+            Roadmap(
+                steps=[
+                    RoadmapStep(
+                        ordinal=1,
+                        action="Stop watering until the top 3 cm is dry.",
+                        rationale="Lets the roots breathe.",
+                        success_signal="No new yellow leaves.",
+                        tier=IPMTier.CULTURAL,
+                        day_offset=0,
+                    )
+                ]
+            ),
+        ]
+    )
+    return gate, vision, chat

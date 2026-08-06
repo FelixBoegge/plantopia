@@ -107,20 +107,39 @@ def _model_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
     return result.questions
 
 
+def make_select_questions(deps: Deps) -> NodeFn:
+    """Choose the questions and write them to state, one graph step before the halt.
+
+    Kept as a separate node — and therefore a separate checkpointed step — from
+    ``gather_context``. LangGraph replays a node's body from the top whenever it
+    resumes past an ``interrupt`` inside that same node, so any model call placed
+    before the ``interrupt`` in ``gather_context`` would fire a second time on every
+    resume. Selecting the questions here means that work is already committed to the
+    checkpoint by the time ``gather_context`` runs, so resuming never repeats it.
+    """
+
+    def select_questions_node(state: DiagnosisState) -> dict:
+        if state.answers or state.questions:
+            return {}
+        return {"questions": select_questions(deps, state)}
+
+    return select_questions_node
+
+
 def make_gather_context(deps: Deps) -> NodeFn:
-    """Ask the user the selected questions and halt until they answer.
+    """Halt until the user answers the questions ``select_questions`` chose.
 
     ``interrupt`` suspends the graph. The service layer resumes it with a
-    ``Command(resume=answers)`` once the user has responded.
+    ``Command(resume=answers)`` once the user has responded. This node does nothing
+    but read already-checkpointed state and call ``interrupt``, so replaying it on
+    resume has no side effect worth avoiding.
     """
 
     def gather_context(state: DiagnosisState) -> dict:
         if state.answers:
             return {}
 
-        questions = select_questions(deps, state)
-        answers = interrupt({"questions": [q.model_dump() for q in questions]})
-
-        return {"questions": questions, "answers": dict(answers or {})}
+        answers = interrupt({"questions": [q.model_dump() for q in state.questions]})
+        return {"answers": dict(answers or {})}
 
     return gather_context

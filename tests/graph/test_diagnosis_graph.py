@@ -1,0 +1,188 @@
+"""Control-flow tests over the assembled diagnosis graph.
+
+These cover the agentic behaviour: the mandatory interrupt, the rejection paths, and
+resumption from a checkpoint. A node can be individually correct while the graph
+routes wrongly, and only these tests would catch that.
+"""
+
+import pytest
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
+
+from agent.diagnosis_graph import build_diagnosis_graph
+from agent.schemas import ImageQuality, PlantCheck
+from agent.state import DiagnosisState
+from tests.fakes.chat_models import ScriptedStructuredModel
+
+
+@pytest.fixture
+def config():
+    return {"configurable": {"thread_id": "test-thread"}}
+
+
+def _initial(images, **overrides) -> DiagnosisState:
+    base = {"images": images, "plant_name": "Kitchen basil", "location_kind": "indoor"}
+    return DiagnosisState(**{**base, **overrides})
+
+
+class TestInterrupt:
+    def test_the_graph_halts_at_gather_context(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        gate, vision, chat = pipeline_models
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        result = graph.invoke(_initial(sample_images), config)
+        assert "__interrupt__" in result
+
+    def test_the_interrupt_carries_the_questions(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        gate, vision, chat = pipeline_models
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        result = graph.invoke(_initial(sample_images), config)
+        payload = result["__interrupt__"][0].value
+        keys = {q["key"] for q in payload["questions"]}
+        assert "watering" in keys
+        assert "drainage" in keys
+
+    def test_diagnosis_is_not_reached_before_the_resume(
+        self, make_deps, sample_images, pipeline_models, config, db
+    ):
+        gate, vision, chat = pipeline_models
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        graph.invoke(_initial(sample_images), config)
+
+        state = graph.get_state(config)
+        assert state.values.get("differential") is None
+        assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 0
+
+    def test_resuming_completes_the_run(self, make_deps, sample_images, pipeline_models, config):
+        gate, vision, chat = pipeline_models
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        graph.invoke(_initial(sample_images), config)
+
+        final = graph.invoke(
+            Command(resume={"watering": "every other day", "drainage": "No drainage holes"}),
+            config,
+        )
+        assert final["differential"] is not None
+        assert final["differential"].primary.disorder_id == "overwatering"
+
+    def test_the_answers_survive_the_resume(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        gate, vision, chat = pipeline_models
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        graph.invoke(_initial(sample_images), config)
+        final = graph.invoke(Command(resume={"watering": "every other day"}), config)
+        assert final["answers"]["watering"] == "every other day"
+
+    def test_a_completed_run_persists_everything(
+        self, make_deps, sample_images, pipeline_models, config, db
+    ):
+        gate, vision, chat = pipeline_models
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        graph.invoke(_initial(sample_images), config)
+        graph.invoke(Command(resume={"watering": "every other day"}), config)
+
+        assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 1
+        assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 1
+        assert db.execute("SELECT COUNT(*) AS n FROM roadmap_steps").fetchone()["n"] == 1
+
+
+class TestRejectionPaths:
+    def test_a_non_plant_image_ends_the_run_immediately(self, make_deps, sample_images, config, db):
+        gate = ScriptedStructuredModel(
+            [PlantCheck(is_plant=False, what_it_is="a photograph of a person")]
+        )
+        graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
+        result = graph.invoke(_initial(sample_images), config)
+
+        assert result["rejected"] is True
+        assert result.get("species") is None
+        assert "__interrupt__" not in result
+
+    def test_a_rejected_image_writes_nothing(self, make_deps, sample_images, config, db):
+        gate = ScriptedStructuredModel([PlantCheck(is_plant=False, what_it_is="a kitchen worktop")])
+        graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
+        graph.invoke(_initial(sample_images), config)
+        assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 0
+
+    def test_an_unusable_photo_ends_the_run_with_guidance(self, make_deps, sample_images, config):
+        gate = ScriptedStructuredModel(
+            [
+                PlantCheck(is_plant=True, what_it_is="a plant, very blurry"),
+                ImageQuality(
+                    usable=False,
+                    problem="too blurry",
+                    guidance="Retake in daylight, holding the camera still.",
+                ),
+            ]
+        )
+        graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
+        result = graph.invoke(_initial(sample_images), config)
+
+        assert result["quality"].usable is False
+        assert result.get("species") is None
+        assert "__interrupt__" not in result
+
+
+class TestOrdering:
+    def test_species_is_identified_before_symptoms_are_assessed(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        """The scripted vision model would return the wrong object if order changed."""
+        gate, vision, chat = pipeline_models
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        graph.invoke(_initial(sample_images), config)
+        state = graph.get_state(config)
+        assert state.values["species"].common_name == "Basil"
+        assert state.values["symptoms"] is not None
+
+    def test_an_outdoor_plant_reaches_the_weather_tool(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        calls: list[tuple] = []
+
+        def _weather(location, days):
+            calls.append((location, days))
+            return None
+
+        gate, vision, chat = pipeline_models
+        deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat, weather=_weather)
+        graph = build_diagnosis_graph(deps, MemorySaver())
+        graph.invoke(
+            _initial(sample_images, location_kind="outdoor", location_text="Berlin"), config
+        )
+        graph.invoke(Command(resume={"watering": "weekly"}), config)
+        assert calls and calls[0][0] == "Berlin"
+
+    def test_an_indoor_plant_never_reaches_the_weather_tool(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        calls: list[tuple] = []
+
+        def _weather(location, days):
+            calls.append((location, days))
+            return None
+
+        gate, vision, chat = pipeline_models
+        deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat, weather=_weather)
+        graph = build_diagnosis_graph(deps, MemorySaver())
+        graph.invoke(_initial(sample_images, location_kind="indoor"), config)
+        graph.invoke(Command(resume={"watering": "weekly"}), config)
+        assert calls == []
