@@ -187,8 +187,15 @@ temperature 0.
 - Single user, no authentication — this runs locally
 - Photographs cannot show root condition, so root disorders always depend on the
   confirming test rather than the image
+- The application has not yet been run against a live OpenRouter key — every test uses
+  scripted fake models by design, so the model slugs and the multimodal embeddings
+  request shape are unverified against the real API
+
+A fuller accounting — every gap raised in review, why it was carried, and what fixing it
+would take — is in [`docs/known-limitations.md`](docs/known-limitations.md).
 
 ## Design documents
 
 - [`PLAN.md`](PLAN.md) — full design and decisions log
 - [`docs/plans/`](docs/plans/) — implementation plans
+- [`docs/known-limitations.md`](docs/known-limitations.md) — carried work and non-goals
