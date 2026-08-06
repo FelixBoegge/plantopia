@@ -45,6 +45,7 @@ def build_vectorstore(
     """Build a Chroma collection from corpus chunks."""
     documents = [
         Document(
+            id=f"{chunk.doc_id}::{chunk.section}",
             page_content=f"{chunk.name} — {chunk.section}\n\n{chunk.text}",
             metadata={
                 "doc_id": chunk.doc_id,

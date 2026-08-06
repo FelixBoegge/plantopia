@@ -41,7 +41,9 @@ def get_service() -> DiagnosisService:
 
     # Embeddings go through OpenRouter's /embeddings endpoint, same key as the chat
     # models. The corpus is small — roughly 300 chunks — so the whole collection
-    # embeds for a fraction of a cent, and only query embeddings recur.
+    # embeds for a fraction of a cent. Every Document gets a deterministic id
+    # (doc_id::section), so re-running this on an existing persist_directory is a
+    # no-op upsert rather than a re-embed — the corpus does not grow with launches.
     vectorstore = build_vectorstore(
         chunks=load_corpus(settings.corpus_path),
         embeddings=build_embeddings(),

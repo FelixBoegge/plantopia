@@ -91,7 +91,7 @@ def _build_brief(state: DiagnosisState) -> str:
     assert differential is not None  # guarded by the caller
 
     candidate_lines = "\n".join(
-        f"- {c.name} ({c.probability:.0%}, severity {c.severity.value}): {c.name} is supported by "
+        f"- {c.name} ({c.probability:.0%}, severity {c.severity.value}): supported by "
         f"{'; '.join(c.supporting_evidence)}"
         for c in differential.candidates
     )

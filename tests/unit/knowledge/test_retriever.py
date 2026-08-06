@@ -121,3 +121,31 @@ class TestImagePath:
         )
         retriever = ChromaRetriever(store, _FailingEmbedder())
         assert retriever.search(["mushy brown roots"], k=3)
+
+
+def test_rebuilding_a_persisted_vectorstore_does_not_duplicate_it(fixture_corpus, tmp_path):
+    """Re-running build_vectorstore against the same persist_directory must be a no-op
+    upsert, not a fresh insert of every chunk under a new uuid.
+
+    Without a deterministic ``Document.id``, every ``streamlit run`` re-indexed (and
+    therefore duplicated) the whole corpus, which silently degraded retrieval over
+    time as the top-k filled up with copies of the same chunk.
+    """
+    first = build_vectorstore(
+        chunks=fixture_corpus,
+        embeddings=HashingEmbeddings(),
+        collection_name="test-idempotent-build",
+        persist_directory=tmp_path,
+    )
+    count_after_first_build = first._collection.count()
+
+    second = build_vectorstore(
+        chunks=fixture_corpus,
+        embeddings=HashingEmbeddings(),
+        collection_name="test-idempotent-build",
+        persist_directory=tmp_path,
+    )
+    count_after_second_build = second._collection.count()
+
+    assert count_after_first_build == len(fixture_corpus)
+    assert count_after_second_build == count_after_first_build

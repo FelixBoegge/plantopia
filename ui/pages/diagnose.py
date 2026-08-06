@@ -1,11 +1,15 @@
 """The diagnosis wizard."""
 
+import logging
+
 import streamlit as st
 
 from core.guards import UploadRejected
 from ui import bootstrap
 from ui.components.differential import render_differential
 from ui.components.roadmap import render_roadmap
+
+logger = logging.getLogger(__name__)
 
 st.title("🌿 Diagnose a plant")
 
@@ -93,23 +97,36 @@ elif st.session_state.stage == "questions":
     with st.form("answers"):
         answers: dict[str, str] = {}
         for question in st.session_state.questions:
+            widget_key = f"q_{question.key}"
             if question.kind == "choice":
-                answers[question.key] = st.radio(question.text, question.options)
+                answers[question.key] = st.radio(question.text, question.options, key=widget_key)
             elif question.kind == "boolean":
-                answers[question.key] = "yes" if st.checkbox(question.text) else "no"
+                answers[question.key] = (
+                    "yes" if st.checkbox(question.text, key=widget_key) else "no"
+                )
             else:
-                answers[question.key] = st.text_input(question.text)
+                answers[question.key] = st.text_input(question.text, key=widget_key)
         submitted = st.form_submit_button("Get my diagnosis", type="primary")
 
     if submitted:
-        with st.spinner("Working through the possibilities…"):
-            st.session_state.result = service.answer(
-                answers,
-                thread_id=st.session_state.thread_id,
-                species_override=correction or None,
+        try:
+            with st.spinner("Working through the possibilities…"):
+                result = service.answer(
+                    answers,
+                    thread_id=st.session_state.thread_id,
+                    species_override=correction or None,
+                )
+        except Exception:
+            logger.exception("service.answer failed for thread %s", st.session_state.thread_id)
+            st.error(
+                "Something went wrong while finishing this diagnosis, after your photos "
+                "were already analysed. Please try again — if it keeps happening, start "
+                "a fresh diagnosis."
             )
-        st.session_state.stage = "result"
-        st.rerun()
+        else:
+            st.session_state.result = result
+            st.session_state.stage = "result"
+            st.rerun()
 
 elif st.session_state.stage == "result":
     result = st.session_state.result
@@ -122,7 +139,8 @@ elif st.session_state.stage == "result":
         if result.contagion and result.contagion.at_risk:
             st.warning(result.contagion.advice)
 
-        render_roadmap(result.roadmap)
+        if not result.differential.is_healthy:
+            render_roadmap(result.roadmap)
 
         total_sources = len(result.retrieved) + len(result.visual_matches)
         if total_sources:

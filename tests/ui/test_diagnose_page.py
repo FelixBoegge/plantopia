@@ -101,3 +101,111 @@ def test_result_stage_renders_a_differential(app):
     assert any("Feel the soil" in i.value for i in app.info)
     # No candidate here is transmissible, so no contagion warning should appear.
     assert not app.warning
+
+
+def test_a_raising_answer_call_shows_an_error_not_a_traceback(app, monkeypatch):
+    """service.answer() can raise (e.g. the SQLite write failure persist re-raises).
+
+    The photos have already been analysed by that point, so a bare traceback would
+    both look broken and throw away a diagnosis the user already paid for. The page
+    must catch it and show a message instead.
+    """
+    app.run()
+    _submit_intake(app)
+    assert not app.exception
+
+    # The ``app`` fixture already replaced ``ui.bootstrap.get_service`` with a lambda
+    # returning one fixed service instance — fetch that same instance and make its
+    # ``answer`` raise, the way a real SQLite write failure re-raises out of persist.
+    import ui.bootstrap as bootstrap_module
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(bootstrap_module.get_service(), "answer", _explode)
+
+    answer = next(t for t in app.text_input if t.label == "How much light?")
+    answer.set_value("A few hours of morning sun")
+    submit_button = next(b for b in app.button if b.label == "Get my diagnosis")
+    submit_button.click().run()
+
+    assert not app.exception
+    assert app.error
+    assert app.session_state["stage"] == "questions"
+
+
+def test_healthy_result_does_not_claim_no_treatment_plan(monkeypatch, make_deps, tmp_path):
+    """A healthy plant is a first-class success outcome (PLAN §14), not a diagnosis
+    that happens to be missing its roadmap. Rendering both messages together reads as
+    a contradiction: "this plant looks healthy" immediately followed by "no treatment
+    plan was produced for this diagnosis".
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.diagnosis_graph import build_diagnosis_graph
+    from agent.schemas import (
+        Differential,
+        ImageQuality,
+        PlantCheck,
+        Question,
+        QuestionSet,
+        Severity,
+        SpeciesGuess,
+        Symptom,
+        SymptomPosition,
+        SymptomSet,
+    )
+    from services.diagnosis_service import DiagnosisService
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    gate = ScriptedStructuredModel(
+        [
+            PlantCheck(is_plant=True, what_it_is="a potted basil plant"),
+            ImageQuality(usable=True, problem=None, guidance=None),
+        ]
+    )
+    vision = ScriptedStructuredModel(
+        [
+            SpeciesGuess(common_name="Basil", scientific_name="Ocimum basilicum", confidence=0.9),
+            SymptomSet(
+                symptoms=[
+                    Symptom(
+                        description="No abnormality",
+                        position=SymptomPosition.WHOLE_PLANT,
+                        severity=Severity.MONITOR,
+                    )
+                ],
+                soil_condition="moist",
+                overall_vigor="good",
+            ),
+        ]
+    )
+    chat = ScriptedStructuredModel(
+        [
+            QuestionSet(
+                questions=[Question(key="light_hours", text="How much light?", kind="text")]
+            ),
+            Differential(is_healthy=True, candidates=[], reasoning="No symptoms of concern."),
+        ]
+    )
+
+    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
+    service = DiagnosisService(
+        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
+    )
+    monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
+
+    app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
+    app.run()
+    _submit_intake(app)
+    assert not app.exception
+
+    answer = next(t for t in app.text_input if t.label == "How much light?")
+    answer.set_value("Bright indirect light")
+    submit_button = next(b for b in app.button if b.label == "Get my diagnosis")
+    submit_button.click().run()
+
+    assert not app.exception
+    assert app.session_state["stage"] == "result"
+    assert any("looks healthy" in s.value for s in app.success)
+    assert not any("No treatment plan was produced" in i.value for i in app.info)

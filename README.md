@@ -155,8 +155,7 @@ Phase 2.
 
 ```bash
 uv run pytest                    # unit + graph tests, no network, a few seconds
-uv run pytest -m integration     # real SQLite and Chroma
-uv run pytest -m ui              # Streamlit AppTest page tests
+uv run pytest -m ui --no-cov     # Streamlit AppTest page tests
 uv run pytest --cov              # coverage, gated at 85%
 uv run ruff check . && uv run ruff format .
 ```

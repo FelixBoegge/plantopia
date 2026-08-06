@@ -51,15 +51,6 @@ def _passage(score: float, doc_id: str = "root-rot") -> Passage:
     return Passage(doc_id=doc_id, section="Symptoms", text="brown mushy roots", score=score)
 
 
-def _settings_with_thresholds() -> Settings:
-    return Settings(
-        openrouter_api_key="sk-test",
-        retrieval_score_threshold=0.35,
-        species_confidence_threshold=0.5,
-        image_match_threshold=0.45,
-    )
-
-
 def _weather() -> WeatherSummary:
     return WeatherSummary(
         min_temp_c=-1.0,
