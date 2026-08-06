@@ -6,7 +6,7 @@
 
 **Architecture:** A layered monolith. Streamlit calls a service layer; the service layer drives a LangGraph state machine whose nodes are closures over an injected `Deps` object holding models, retriever and repositories. That injection seam is what makes every node unit-testable with a scripted fake model and zero network calls.
 
-**Tech Stack:** Python 3.12, uv, Streamlit, LangGraph, LangChain, OpenAI, Pydantic v2, Chroma, SQLite, httpx, pytest.
+**Tech Stack:** Python 3.12, uv, Streamlit, LangGraph, LangChain, **OpenRouter** (all model calls, via the OpenAI-compatible API), FastEmbed (local embeddings), Pydantic v2, Chroma, SQLite, httpx, pytest.
 
 **Spec:** [`PLAN.md`](../../PLAN.md) — read §5, §6, §9, §10, §11 and §19 before starting.
 
@@ -25,6 +25,9 @@ Every task's requirements implicitly include this section.
 - **Tests assert on structure and control flow, never on generated prose** (spec §19.1).
 - **Never assert on wall-clock time.** Time arrives through `Deps.now`, a `Callable[[], datetime]`.
 - **All datetimes are timezone-aware UTC.** `datetime.now(tz=UTC)`, never naive `datetime.now()`.
+- **Every model call goes through OpenRouter.** `core/llm.py` is the only module that constructs a model. OpenRouter is OpenAI-API-compatible, so `ChatOpenAI` is used with `base_url` pointed at it. Never import a provider SDK anywhere else.
+- **OpenRouter has no embeddings endpoint.** Retrieval embeddings run locally via FastEmbed. Do not reach for `OpenAIEmbeddings`.
+- **Model slugs are configuration, never literals in code.** Three tiers: `gate_model`, `vision_model`, `reasoning_model`.
 - **Secrets come from the environment only.** Never hardcode a key, never commit `.env`, never log a key.
 - **All SQL uses parameterised queries.** No f-string interpolation into SQL, ever.
 - **Every task ends with a commit.** Conventional commit prefixes: `feat:`, `test:`, `fix:`, `chore:`, `docs:`.
@@ -93,7 +96,7 @@ Files created by this plan, and what each is responsible for.
 - Produces:
   - `core.config.Settings` — pydantic-settings model
   - `core.config.get_settings() -> Settings` — cached accessor
-  - `Settings` fields used by later tasks: `openai_api_key: str`, `openai_model: str`, `openai_vision_model: str`, `tavily_api_key: str | None`, `db_path: Path`, `chroma_path: Path`, `corpus_path: Path`, `retrieval_score_threshold: float`, `species_confidence_threshold: float`, `diagnosis_confidence_threshold: float`, `max_clarifying_questions: int`, `max_upload_bytes: int`
+  - `Settings` fields used by later tasks: `openrouter_api_key: str`, `openrouter_base_url: str`, `app_url: str`, `app_title: str`, `gate_model: str`, `vision_model: str`, `reasoning_model: str`, `embedding_model: str`, `tavily_api_key: str | None`, `db_path: Path`, `chroma_path: Path`, `corpus_path: Path`, `upload_path: Path`, `retrieval_score_threshold: float`, `species_confidence_threshold: float`, `diagnosis_confidence_threshold: float`, `max_clarifying_questions: int`, `max_upload_bytes: int`, `max_images_per_observation: int`, `default_temperature: float`
 
 - [ ] **Step 1: Initialise the project with uv**
 
@@ -101,7 +104,7 @@ Files created by this plan, and what each is responsible for.
 uv init --name plantopia --python 3.12 --no-workspace
 rm -f main.py hello.py
 uv add streamlit langgraph langchain langchain-openai langchain-community \
-       chromadb pydantic pydantic-settings httpx pillow python-frontmatter
+       chromadb fastembed pydantic pydantic-settings httpx pillow python-frontmatter
 uv add --dev pytest pytest-cov pytest-mock pytest-asyncio respx time-machine syrupy ruff
 ```
 
@@ -165,19 +168,36 @@ from core.config import Settings
 
 
 def test_settings_reads_required_key_from_env(monkeypatch):
-    monkeypatch.setenv("PLANTOPIA_OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
     settings = Settings()
-    assert settings.openai_api_key == "sk-test"
+    assert settings.openrouter_api_key == "sk-test"
+
+
+def test_settings_defaults_to_the_openrouter_endpoint(monkeypatch):
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    assert Settings().openrouter_base_url == "https://openrouter.ai/api/v1"
+
+
+def test_the_three_model_tiers_are_distinct(monkeypatch):
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    settings = Settings()
+    assert len({settings.gate_model, settings.vision_model, settings.reasoning_model}) == 3
+
+
+def test_model_tiers_are_overridable_from_the_environment(monkeypatch):
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_VISION_MODEL", "openai/gpt-4.1")
+    assert Settings().vision_model == "openai/gpt-4.1"
 
 
 def test_settings_raises_when_required_key_missing(monkeypatch):
-    monkeypatch.delenv("PLANTOPIA_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("PLANTOPIA_OPENROUTER_API_KEY", raising=False)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
 
 
 def test_settings_applies_defaults(monkeypatch):
-    monkeypatch.setenv("PLANTOPIA_OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
     settings = Settings()
     assert settings.max_clarifying_questions == 4
     assert 0.0 < settings.retrieval_score_threshold < 1.0
@@ -185,7 +205,7 @@ def test_settings_applies_defaults(monkeypatch):
 
 
 def test_settings_thresholds_must_be_probabilities(monkeypatch):
-    monkeypatch.setenv("PLANTOPIA_OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
     monkeypatch.setenv("PLANTOPIA_RETRIEVAL_SCORE_THRESHOLD", "1.5")
     with pytest.raises(ValidationError):
         Settings()
@@ -218,9 +238,22 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    openai_api_key: str
-    openai_model: str = "gpt-4o"
-    openai_vision_model: str = "gpt-4o"
+    # OpenRouter. Every model call in the application goes through it.
+    openrouter_api_key: str
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    app_url: str = "http://localhost:8501"
+    app_title: str = "Plantopia"
+
+    # Three model tiers. OpenRouter makes swapping trivial, so the pipeline uses the
+    # cheapest model that can do each job. Verify these slugs at openrouter.ai/models
+    # before the first real run — availability and naming change.
+    gate_model: str = "google/gemini-2.5-flash-lite"
+    vision_model: str = "google/gemini-2.5-flash"
+    reasoning_model: str = "anthropic/claude-sonnet-4.5"
+
+    # Embeddings run locally. OpenRouter serves chat completions, not embeddings.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+
     tavily_api_key: str | None = None
 
     db_path: Path = Path("data/plantopia.db")
@@ -248,20 +281,33 @@ def get_settings() -> Settings:
 - [ ] **Step 7: Run the test to verify it passes**
 
 Run: `uv run pytest tests/unit/core/test_config.py -v`
-Expected: 4 passed
+Expected: 7 passed
 
 - [ ] **Step 8: Write `.env.example`**
 
 ```bash
-# Required
-PLANTOPIA_OPENAI_API_KEY=sk-your-key-here
+# Required — every model call is routed through OpenRouter
+PLANTOPIA_OPENROUTER_API_KEY=sk-or-v1-your-key-here
 
 # Optional — enables the web-search escalation tool
 PLANTOPIA_TAVILY_API_KEY=
 
-# Optional overrides (defaults shown)
-# PLANTOPIA_OPENAI_MODEL=gpt-4o
-# PLANTOPIA_OPENAI_VISION_MODEL=gpt-4o
+# Model tiers (defaults shown). Check openrouter.ai/models for current slugs.
+# gate    — the two binary image checks; runs on every diagnosis, so keep it cheap
+# vision  — species identification and symptom extraction; needs real visual acuity
+# reasoning — question selection, diagnosis, treatment plan; text only, needs judgement
+# PLANTOPIA_GATE_MODEL=google/gemini-2.5-flash-lite
+# PLANTOPIA_VISION_MODEL=google/gemini-2.5-flash
+# PLANTOPIA_REASONING_MODEL=anthropic/claude-sonnet-4.5
+
+# Embeddings run locally — OpenRouter serves chat completions, not embeddings
+# PLANTOPIA_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+
+# Sent to OpenRouter for attribution; shows up on your dashboard
+# PLANTOPIA_APP_URL=http://localhost:8501
+# PLANTOPIA_APP_TITLE=Plantopia
+
+# Behaviour thresholds
 # PLANTOPIA_RETRIEVAL_SCORE_THRESHOLD=0.35
 # PLANTOPIA_SPECIES_CONFIDENCE_THRESHOLD=0.50
 # PLANTOPIA_DIAGNOSIS_CONFIDENCE_THRESHOLD=0.35
@@ -292,7 +338,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _test_env(monkeypatch):
     """Every test runs with a dummy API key so Settings never fails to construct."""
-    monkeypatch.setenv("PLANTOPIA_OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
 ```
 
 - [ ] **Step 10: Commit**
@@ -315,6 +361,7 @@ git commit -m "chore: scaffold project with uv, pytest and configuration"
 - Consumes: `core.config.get_settings`
 - Produces:
   - `core.llm.build_chat_model(*, model: str | None = None, temperature: float | None = None) -> BaseChatModel`
+  - `core.llm.build_gate_model(*, temperature=None)`, `build_vision_model(...)`, `build_reasoning_model(...)` — the three tiers
   - `tests.fakes.chat_models.ScriptedChatModel(responses: list[str])` — returns queued strings in order
   - `tests.fakes.chat_models.ScriptedStructuredModel(objects: list[BaseModel])` — its `with_structured_output` returns queued Pydantic objects in order
   - `tests.fakes.chat_models.FailingChatModel(exc: Exception)` — raises on every call
@@ -332,7 +379,13 @@ import pytest
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
-from core.llm import build_chat_model
+from core.config import get_settings
+from core.llm import (
+    build_chat_model,
+    build_gate_model,
+    build_reasoning_model,
+    build_vision_model,
+)
 from tests.fakes.chat_models import (
     FailingChatModel,
     ScriptedChatModel,
@@ -344,15 +397,27 @@ class _Answer(BaseModel):
     value: int
 
 
-def test_build_chat_model_uses_configured_model():
-    model = build_chat_model()
-    assert model.model_name == "gpt-4o"
+def test_build_chat_model_defaults_to_the_reasoning_tier():
+    assert build_chat_model().model_name == get_settings().reasoning_model
 
 
 def test_build_chat_model_honours_override():
     model = build_chat_model(model="some-other-model", temperature=0.0)
     assert model.model_name == "some-other-model"
     assert model.temperature == 0.0
+
+
+def test_every_model_points_at_openrouter():
+    for factory in (build_chat_model, build_reasoning_model, build_vision_model,
+                    build_gate_model):
+        assert "openrouter.ai" in str(factory().openai_api_base)
+
+
+def test_the_tiers_resolve_to_their_configured_slugs():
+    settings = get_settings()
+    assert build_gate_model().model_name == settings.gate_model
+    assert build_vision_model().model_name == settings.vision_model
+    assert build_reasoning_model().model_name == settings.reasoning_model
 
 
 def test_scripted_chat_model_returns_responses_in_order():
@@ -395,7 +460,16 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'core.llm'`
 
 ```python
 """Chat-model factory. This module is the seam tests replace — nothing else
-constructs a model directly."""
+constructs a model directly.
+
+Every model call is routed through OpenRouter, which exposes an OpenAI-compatible
+chat-completions API, so ``ChatOpenAI`` works unchanged with a different base URL.
+The benefit is that swapping between providers is a configuration change rather than
+a code change.
+
+Three tiers exist because the pipeline's jobs differ enormously in difficulty, and on
+OpenRouter the price difference between tiers is often more than tenfold.
+"""
 
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
@@ -408,24 +482,44 @@ def build_chat_model(
     model: str | None = None,
     temperature: float | None = None,
 ) -> BaseChatModel:
-    """Return a configured chat model.
+    """Return a chat model pointed at OpenRouter.
 
     Args:
-        model: Override the configured model id.
+        model: Model slug, for example ``"google/gemini-2.5-flash"``. Defaults to the
+            configured reasoning tier.
         temperature: Override the configured default temperature.
     """
     settings = get_settings()
     return ChatOpenAI(
-        model=model or settings.openai_model,
+        model=model or settings.reasoning_model,
         temperature=settings.default_temperature if temperature is None else temperature,
-        api_key=settings.openai_api_key,
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+        default_headers={
+            "HTTP-Referer": settings.app_url,
+            "X-Title": settings.app_title,
+        },
     )
 
 
+def build_reasoning_model(*, temperature: float | None = None) -> BaseChatModel:
+    """Text reasoning: question selection, diagnosis, treatment planning."""
+    return build_chat_model(model=get_settings().reasoning_model, temperature=temperature)
+
+
 def build_vision_model(*, temperature: float | None = None) -> BaseChatModel:
-    """Return a chat model configured for image input."""
-    settings = get_settings()
-    return build_chat_model(model=settings.openai_vision_model, temperature=temperature)
+    """Species identification and symptom extraction. Needs real visual acuity."""
+    return build_chat_model(model=get_settings().vision_model, temperature=temperature)
+
+
+def build_gate_model(*, temperature: float | None = None) -> BaseChatModel:
+    """The two binary image checks.
+
+    ``guard_input`` and ``quality_check`` ask yes-or-no questions about an image and
+    run on every single diagnosis. A cheap model is entirely adequate and this is
+    where most of the per-diagnosis cost would otherwise go.
+    """
+    return build_chat_model(model=get_settings().gate_model, temperature=temperature)
 ```
 
 - [ ] **Step 4: Write `tests/fakes/chat_models.py`**
@@ -520,7 +614,7 @@ Create an empty `tests/fakes/__init__.py`.
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `uv run pytest tests/unit/core/test_llm.py -v`
-Expected: 7 passed
+Expected: 9 passed
 
 If `ScriptedChatModel` construction fails on Pydantic field declaration, add `model_config = ConfigDict(arbitrary_types_allowed=True)` to the class — `BaseChatModel` is itself a Pydantic model, so fields must be declared as class attributes with annotations, exactly as written above.
 
@@ -1623,7 +1717,7 @@ def test_differential_round_trips_as_a_model(db, now, ids):
         differential=_differential(),
         contagion=ContagionAssessment(at_risk=False, advice="No quarantine needed."),
         retrieved=[Passage(doc_id="overwatering", section="Symptoms", text="...", score=0.8)],
-        model="gpt-4o",
+        model="test-model",
         now=now(),
     )
     record = repo.get(diagnosis_id)
@@ -1638,7 +1732,7 @@ def test_denormalised_columns_are_populated(db, now, ids):
     diagnosis_id = repo.create(
         observation_id=obs_id, plant_id=plant_id, differential=_differential(),
         contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[], model="gpt-4o", now=now(),
+        retrieved=[], model="test-model", now=now(),
     )
     row = db.execute("SELECT * FROM diagnoses WHERE id = ?", (diagnosis_id,)).fetchone()
     assert row["primary_candidate"] == "overwatering"
@@ -1653,7 +1747,7 @@ def test_healthy_diagnosis_has_null_primary(db, now, ids):
         observation_id=obs_id, plant_id=plant_id,
         differential=Differential(is_healthy=True, candidates=[], reasoning="Looks healthy."),
         contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[], model="gpt-4o", now=now(),
+        retrieved=[], model="test-model", now=now(),
     )
     row = db.execute("SELECT * FROM diagnoses WHERE id = ?", (diagnosis_id,)).fetchone()
     assert row["primary_candidate"] is None
@@ -1670,7 +1764,7 @@ def test_retrieved_passages_round_trip(db, now, ids):
     diagnosis_id = repo.create(
         observation_id=obs_id, plant_id=plant_id, differential=_differential(),
         contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=passages, model="gpt-4o", now=now(),
+        retrieved=passages, model="test-model", now=now(),
     )
     assert repo.get(diagnosis_id).retrieved == passages
 
@@ -1681,13 +1775,13 @@ def test_latest_for_plant_returns_the_newest(db, now, ids):
     repo.create(
         observation_id=obs_id, plant_id=plant_id, differential=_differential(),
         contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[], model="gpt-4o", now=now(),
+        retrieved=[], model="test-model", now=now(),
     )
     newest = repo.create(
         observation_id=obs_id, plant_id=plant_id,
         differential=Differential(is_healthy=True, candidates=[], reasoning="Recovered."),
         contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[], model="gpt-4o", now=now(),
+        retrieved=[], model="test-model", now=now(),
     )
     assert repo.latest_for_plant(plant_id).id == newest
 
@@ -1702,7 +1796,7 @@ def test_deleting_a_plant_cascades_to_diagnoses(db, now, ids):
     DiagnosisRepository(db).create(
         observation_id=obs_id, plant_id=plant_id, differential=_differential(),
         contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[], model="gpt-4o", now=now(),
+        retrieved=[], model="test-model", now=now(),
     )
     PlantRepository(db).delete(plant_id)
     assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 0
@@ -1880,7 +1974,7 @@ def ids(db, now) -> tuple[int, int]:
     diagnosis_id = DiagnosisRepository(db).create(
         observation_id=obs_id, plant_id=plant_id, differential=_differential(),
         contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[], model="gpt-4o", now=now(),
+        retrieved=[], model="test-model", now=now(),
     )
     return plant_id, diagnosis_id
 
@@ -3404,7 +3498,7 @@ from tools.web_search import TAVILY_URL, should_escalate, web_search_plant_info
 
 def _settings(**overrides) -> Settings:
     defaults = {
-        "openai_api_key": "sk-test",
+        "openrouter_api_key": "sk-test",
         "retrieval_score_threshold": 0.35,
         "species_confidence_threshold": 0.50,
     }
@@ -3677,7 +3771,7 @@ GIF = b"GIF89a" + b"\x00" * 64
 
 
 def _settings(**overrides) -> Settings:
-    return Settings(openai_api_key="sk-test", **overrides)
+    return Settings(openrouter_api_key="sk-test", **overrides)
 
 
 class TestValidateUpload:
@@ -4123,8 +4217,12 @@ class Deps:
     """Everything the graph needs from the outside world."""
 
     settings: Settings
-    chat_model: BaseChatModel
-    vision_model: BaseChatModel
+
+    # Three model tiers, cheapest job to hardest. See core/llm.py for why.
+    gate_model: BaseChatModel  # guard_input, quality_check
+    vision_model: BaseChatModel  # identify_plant, assess_symptoms
+    chat_model: BaseChatModel  # question selection, diagnose, build_roadmap
+
     retriever: Retriever
 
     plants: PlantRepository
@@ -4164,9 +4262,10 @@ def make_deps(db, now, chroma_retriever):
 
     def _make(**overrides) -> Deps:
         defaults = {
-            "settings": Settings(openai_api_key="sk-test"),
-            "chat_model": ScriptedStructuredModel([]),
+            "settings": Settings(openrouter_api_key="sk-test"),
+            "gate_model": ScriptedStructuredModel([]),
             "vision_model": ScriptedStructuredModel([]),
+            "chat_model": ScriptedStructuredModel([]),
             "retriever": chroma_retriever,
             "plants": PlantRepository(db),
             "observations": ObservationRepository(db),
@@ -4221,9 +4320,13 @@ git commit -m "feat: add graph state model and dependency container"
 - Produces:
   - `agent.vision.build_image_message(text: str, images: Sequence[ImageRef]) -> HumanMessage`
   - `agent.structured.StructuredOutputFailed` — exception
-  - `agent.structured.invoke_structured(model, schema, messages, *, retries: int = 1) -> BaseModel`
+  - `agent.structured.invoke_structured(model, schema, messages, *, retries: int = 1, method: str | None = None) -> BaseModel`
 
-**Why a shared helper:** six nodes request structured output from a model. Retry-on-validation-failure and error wrapping belong in one place, tested once.
+**Why a shared helper:** seven node calls request structured output from a model. Retry-on-validation-failure and error wrapping belong in one place, tested once.
+
+**Why `method` exists:** the whole pipeline depends on structured output, and LangChain's default route is tool calling. Most models routed through OpenRouter support it — the OpenAI, Anthropic and Gemini families do — but many open-weight models do not, or do so unreliably. If you swap to one that struggles, passing `method="json_schema"` is the fix, and having the parameter here means it is a one-line change rather than a refactor.
+
+**Verify this early.** The first time you run against a real model (Task 25, Step 8), confirm the structured calls succeed before writing more prompts. A model that cannot reliably produce schema-valid output is the single failure mode that would invalidate the most work.
 
 - [ ] **Step 1: Write the failing test for vision messages**
 
@@ -4429,6 +4532,7 @@ def invoke_structured(
     messages: Sequence[BaseMessage],
     *,
     retries: int = 1,
+    method: str | None = None,
 ) -> T:
     """Invoke ``model`` for a ``schema``-shaped result.
 
@@ -4437,16 +4541,21 @@ def invoke_structured(
         schema: The Pydantic model to validate against.
         messages: The prompt.
         retries: Repair attempts after the first failure.
+        method: Passed through to ``with_structured_output``. Leave unset to use
+            LangChain's default of tool calling. If you switch to an OpenRouter model
+            that does not support tools, pass ``"json_schema"`` — this parameter is
+            the escape hatch that makes such a switch a one-line change.
 
     Raises:
         StructuredOutputFailed: if every attempt fails.
     """
+    kwargs = {"method": method} if method else {}
     prompt = list(messages)
     last_error: Exception | None = None
 
     for attempt in range(retries + 1):
         try:
-            return model.with_structured_output(schema).invoke(prompt)
+            return model.with_structured_output(schema, **kwargs).invoke(prompt)
         except ValidationError as exc:
             last_error = exc
             logger.warning("structured output failed validation on attempt %d", attempt + 1)
@@ -4527,7 +4636,7 @@ def _state(images) -> DiagnosisState:
 class TestGuardInput:
     def test_passes_a_plant_image(self, make_deps, sample_images):
         deps = make_deps(
-            vision_model=ScriptedStructuredModel(
+            gate_model=ScriptedStructuredModel(
                 [PlantCheck(is_plant=True, what_it_is="a potted basil plant")]
             )
         )
@@ -4536,7 +4645,7 @@ class TestGuardInput:
 
     def test_rejects_a_non_plant_image(self, make_deps, sample_images):
         deps = make_deps(
-            vision_model=ScriptedStructuredModel(
+            gate_model=ScriptedStructuredModel(
                 [PlantCheck(is_plant=False, what_it_is="a photograph of a person")]
             )
         )
@@ -4546,7 +4655,7 @@ class TestGuardInput:
 
     def test_rejection_reason_mentions_what_was_seen(self, make_deps, sample_images):
         deps = make_deps(
-            vision_model=ScriptedStructuredModel(
+            gate_model=ScriptedStructuredModel(
                 [PlantCheck(is_plant=False, what_it_is="a photograph of a person")]
             )
         )
@@ -4554,24 +4663,33 @@ class TestGuardInput:
         assert "person" in result["rejection_reason"]
 
     def test_model_failure_rejects_rather_than_proceeding(self, make_deps, sample_images):
-        deps = make_deps(vision_model=FailingChatModel(RuntimeError("api down")))
+        deps = make_deps(gate_model=FailingChatModel(RuntimeError("api down")))
         result = make_guard_input(deps)(_state(sample_images))
         assert result["rejected"] is True
         assert result["errors"]
 
     def test_the_model_receives_every_image(self, make_deps, sample_images):
         model = ScriptedStructuredModel([PlantCheck(is_plant=True, what_it_is="basil")])
-        deps = make_deps(vision_model=model)
+        deps = make_deps(gate_model=model)
         make_guard_input(deps)(_state(sample_images))
         prompt = model.prompts[0]
         image_blocks = [b for b in prompt[-1].content if b["type"] == "image_url"]
         assert len(image_blocks) == len(sample_images)
 
+    def test_the_gate_tier_is_used_not_the_vision_tier(self, make_deps, sample_images):
+        """The gate runs on every diagnosis; it must not burn the expensive model."""
+        gate = ScriptedStructuredModel([PlantCheck(is_plant=True, what_it_is="basil")])
+        vision = ScriptedStructuredModel([])
+        deps = make_deps(gate_model=gate, vision_model=vision)
+        make_guard_input(deps)(_state(sample_images))
+        assert gate.call_count == 1
+        assert vision.call_count == 0
+
 
 class TestQualityCheck:
     def test_usable_image_passes(self, make_deps, sample_images):
         deps = make_deps(
-            vision_model=ScriptedStructuredModel(
+            gate_model=ScriptedStructuredModel(
                 [ImageQuality(usable=True, problem=None, guidance=None)]
             )
         )
@@ -4580,7 +4698,7 @@ class TestQualityCheck:
 
     def test_unusable_image_carries_guidance(self, make_deps, sample_images):
         deps = make_deps(
-            vision_model=ScriptedStructuredModel(
+            gate_model=ScriptedStructuredModel(
                 [
                     ImageQuality(
                         usable=False,
@@ -4596,7 +4714,7 @@ class TestQualityCheck:
 
     def test_model_failure_degrades_to_usable(self, make_deps, sample_images):
         """A quality check that cannot run must not block a diagnosis."""
-        deps = make_deps(vision_model=FailingChatModel(RuntimeError("api down")))
+        deps = make_deps(gate_model=FailingChatModel(RuntimeError("api down")))
         result = make_quality_check(deps)(_state(sample_images))
         assert result["quality"].usable is True
         assert result["errors"]
@@ -4676,7 +4794,7 @@ def make_guard_input(deps: Deps) -> NodeFn:
             build_image_message("Is this plant material?", state.images),
         ]
         try:
-            check = invoke_structured(deps.vision_model, PlantCheck, messages)
+            check = invoke_structured(deps.gate_model, PlantCheck, messages)
         except StructuredOutputFailed as exc:
             logger.warning("guard_input could not run: %s", exc)
             return {
@@ -4715,7 +4833,7 @@ def make_quality_check(deps: Deps) -> NodeFn:
             build_image_message("Are these usable for diagnosis?", state.images),
         ]
         try:
-            quality = invoke_structured(deps.vision_model, ImageQuality, messages)
+            quality = invoke_structured(deps.gate_model, ImageQuality, messages)
         except StructuredOutputFailed as exc:
             logger.warning("quality_check could not run: %s", exc)
             return {
@@ -4731,7 +4849,7 @@ def make_quality_check(deps: Deps) -> NodeFn:
 - [ ] **Step 6: Run to verify it passes**
 
 Run: `uv run pytest tests/unit/agent/nodes/test_intake.py -v`
-Expected: 8 passed
+Expected: 9 passed
 
 - [ ] **Step 7: Commit**
 
@@ -5188,7 +5306,7 @@ def test_model_questions_are_included(make_deps, sample_images):
 def test_count_is_capped_at_the_configured_maximum(make_deps, sample_images):
     deps = make_deps(
         chat_model=_model_questions("a", "b", "c", "d", "e", "f"),
-        settings=Settings(openai_api_key="sk-test", max_clarifying_questions=4),
+        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=4),
     )
     assert len(select_questions(deps, _state(sample_images))) == 4
 
@@ -5233,7 +5351,7 @@ def test_always_asked_questions_survive_the_cap(make_deps, sample_images):
     """The cap must never evict a question we consider mandatory."""
     deps = make_deps(
         chat_model=_model_questions("a", "b", "c", "d", "e"),
-        settings=Settings(openai_api_key="sk-test", max_clarifying_questions=2),
+        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=2),
     )
     keys = {q.key for q in select_questions(deps, _state(sample_images))}
     assert ALWAYS_ASK_KEYS <= keys
@@ -5578,7 +5696,7 @@ class TestWeather:
 class TestWebEscalation:
     def _settings(self) -> Settings:
         return Settings(
-            openai_api_key="sk-test",
+            openrouter_api_key="sk-test",
             retrieval_score_threshold=0.35,
             species_confidence_threshold=0.5,
         )
@@ -5914,7 +6032,7 @@ def test_records_the_differential(make_deps, sample_images):
 def test_high_confidence_is_not_flagged(make_deps, sample_images):
     deps = make_deps(
         chat_model=ScriptedStructuredModel([_differential(0.8)]),
-        settings=Settings(openai_api_key="sk-test", diagnosis_confidence_threshold=0.35),
+        settings=Settings(openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35),
     )
     assert make_diagnose(deps)(_state(sample_images))["low_confidence"] is False
 
@@ -5922,7 +6040,7 @@ def test_high_confidence_is_not_flagged(make_deps, sample_images):
 def test_low_confidence_is_flagged(make_deps, sample_images):
     deps = make_deps(
         chat_model=ScriptedStructuredModel([_differential(0.2)]),
-        settings=Settings(openai_api_key="sk-test", diagnosis_confidence_threshold=0.35),
+        settings=Settings(openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35),
     )
     assert make_diagnose(deps)(_state(sample_images))["low_confidence"] is True
 
@@ -5931,7 +6049,7 @@ def test_a_healthy_plant_is_never_flagged_low_confidence(make_deps, sample_image
     healthy = Differential(is_healthy=True, candidates=[], reasoning="This plant looks fine.")
     deps = make_deps(
         chat_model=ScriptedStructuredModel([healthy]),
-        settings=Settings(openai_api_key="sk-test", diagnosis_confidence_threshold=0.9),
+        settings=Settings(openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.9),
     )
     result = make_diagnose(deps)(_state(sample_images))
     assert result["differential"].is_healthy is True
@@ -6814,7 +6932,7 @@ def make_persist(deps: Deps) -> NodeFn:
                 differential=state.differential,
                 contagion=state.contagion,
                 retrieved=state.retrieved,
-                model=deps.settings.openai_model,
+                model=deps.settings.reasoning_model,
                 now=now,
             )
 
@@ -6880,11 +6998,16 @@ Append to `tests/conftest.py`:
 ```python
 @pytest.fixture
 def pipeline_models():
-    """Scripted models covering a full happy-path run.
+    """Scripted models covering a full happy-path run, one per tier.
 
-    The vision model answers four calls in order: PlantCheck, ImageQuality,
-    SpeciesGuess, SymptomSet. The chat model answers three: QuestionSet,
-    Differential, Roadmap.
+    Returns ``(gate, vision, chat)``:
+
+    - gate answers two calls in order: PlantCheck, ImageQuality
+    - vision answers two: SpeciesGuess, SymptomSet
+    - chat answers three: QuestionSet, Differential, Roadmap
+
+    Because each model's script is ordered, these fixtures also assert the pipeline's
+    call order implicitly: reorder the nodes and the wrong object comes back.
     """
     from agent.schemas import (
         Candidate,
@@ -6904,10 +7027,15 @@ def pipeline_models():
     )
     from tests.fakes.chat_models import ScriptedStructuredModel
 
-    vision = ScriptedStructuredModel(
+    gate = ScriptedStructuredModel(
         [
             PlantCheck(is_plant=True, what_it_is="a potted basil plant"),
             ImageQuality(usable=True, problem=None, guidance=None),
+        ]
+    )
+
+    vision = ScriptedStructuredModel(
+        [
             SpeciesGuess(common_name="Basil", scientific_name="Ocimum basilicum", confidence=0.9),
             SymptomSet(
                 symptoms=[
@@ -6958,7 +7086,7 @@ def pipeline_models():
             ),
         ]
     )
-    return vision, chat
+    return gate, vision, chat
 ```
 
 - [ ] **Step 3: Write the failing test**
@@ -6997,9 +7125,9 @@ class TestInterrupt:
     def test_the_graph_halts_at_gather_context(
         self, make_deps, sample_images, pipeline_models, config
     ):
-        vision, chat = pipeline_models
+        gate, vision, chat = pipeline_models
         graph = build_diagnosis_graph(
-            make_deps(vision_model=vision, chat_model=chat), MemorySaver()
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
         )
         result = graph.invoke(_initial(sample_images), config)
         assert "__interrupt__" in result
@@ -7007,9 +7135,9 @@ class TestInterrupt:
     def test_the_interrupt_carries_the_questions(
         self, make_deps, sample_images, pipeline_models, config
     ):
-        vision, chat = pipeline_models
+        gate, vision, chat = pipeline_models
         graph = build_diagnosis_graph(
-            make_deps(vision_model=vision, chat_model=chat), MemorySaver()
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
         )
         result = graph.invoke(_initial(sample_images), config)
         payload = result["__interrupt__"][0].value
@@ -7020,9 +7148,9 @@ class TestInterrupt:
     def test_diagnosis_is_not_reached_before_the_resume(
         self, make_deps, sample_images, pipeline_models, config, db
     ):
-        vision, chat = pipeline_models
+        gate, vision, chat = pipeline_models
         graph = build_diagnosis_graph(
-            make_deps(vision_model=vision, chat_model=chat), MemorySaver()
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
         )
         graph.invoke(_initial(sample_images), config)
 
@@ -7033,9 +7161,9 @@ class TestInterrupt:
     def test_resuming_completes_the_run(
         self, make_deps, sample_images, pipeline_models, config
     ):
-        vision, chat = pipeline_models
+        gate, vision, chat = pipeline_models
         graph = build_diagnosis_graph(
-            make_deps(vision_model=vision, chat_model=chat), MemorySaver()
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
         )
         graph.invoke(_initial(sample_images), config)
 
@@ -7049,9 +7177,9 @@ class TestInterrupt:
     def test_the_answers_survive_the_resume(
         self, make_deps, sample_images, pipeline_models, config
     ):
-        vision, chat = pipeline_models
+        gate, vision, chat = pipeline_models
         graph = build_diagnosis_graph(
-            make_deps(vision_model=vision, chat_model=chat), MemorySaver()
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
         )
         graph.invoke(_initial(sample_images), config)
         final = graph.invoke(Command(resume={"watering": "every other day"}), config)
@@ -7060,9 +7188,9 @@ class TestInterrupt:
     def test_a_completed_run_persists_everything(
         self, make_deps, sample_images, pipeline_models, config, db
     ):
-        vision, chat = pipeline_models
+        gate, vision, chat = pipeline_models
         graph = build_diagnosis_graph(
-            make_deps(vision_model=vision, chat_model=chat), MemorySaver()
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
         )
         graph.invoke(_initial(sample_images), config)
         graph.invoke(Command(resume={"watering": "every other day"}), config)
@@ -7076,10 +7204,10 @@ class TestRejectionPaths:
     def test_a_non_plant_image_ends_the_run_immediately(
         self, make_deps, sample_images, config, db
     ):
-        vision = ScriptedStructuredModel(
+        gate = ScriptedStructuredModel(
             [PlantCheck(is_plant=False, what_it_is="a photograph of a person")]
         )
-        graph = build_diagnosis_graph(make_deps(vision_model=vision), MemorySaver())
+        graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
         result = graph.invoke(_initial(sample_images), config)
 
         assert result["rejected"] is True
@@ -7087,17 +7215,17 @@ class TestRejectionPaths:
         assert "__interrupt__" not in result
 
     def test_a_rejected_image_writes_nothing(self, make_deps, sample_images, config, db):
-        vision = ScriptedStructuredModel(
+        gate = ScriptedStructuredModel(
             [PlantCheck(is_plant=False, what_it_is="a kitchen worktop")]
         )
-        graph = build_diagnosis_graph(make_deps(vision_model=vision), MemorySaver())
+        graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
         graph.invoke(_initial(sample_images), config)
         assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 0
 
     def test_an_unusable_photo_ends_the_run_with_guidance(
         self, make_deps, sample_images, config
     ):
-        vision = ScriptedStructuredModel(
+        gate = ScriptedStructuredModel(
             [
                 PlantCheck(is_plant=True, what_it_is="a plant, very blurry"),
                 ImageQuality(
@@ -7107,7 +7235,7 @@ class TestRejectionPaths:
                 ),
             ]
         )
-        graph = build_diagnosis_graph(make_deps(vision_model=vision), MemorySaver())
+        graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
         result = graph.invoke(_initial(sample_images), config)
 
         assert result["quality"].usable is False
@@ -7120,9 +7248,9 @@ class TestOrdering:
         self, make_deps, sample_images, pipeline_models, config
     ):
         """The scripted vision model would return the wrong object if order changed."""
-        vision, chat = pipeline_models
+        gate, vision, chat = pipeline_models
         graph = build_diagnosis_graph(
-            make_deps(vision_model=vision, chat_model=chat), MemorySaver()
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
         )
         graph.invoke(_initial(sample_images), config)
         state = graph.get_state(config)
@@ -7138,8 +7266,10 @@ class TestOrdering:
             calls.append((location, days))
             return None
 
-        vision, chat = pipeline_models
-        deps = make_deps(vision_model=vision, chat_model=chat, weather=_weather)
+        gate, vision, chat = pipeline_models
+        deps = make_deps(
+            gate_model=gate, vision_model=vision, chat_model=chat, weather=_weather
+        )
         graph = build_diagnosis_graph(deps, MemorySaver())
         graph.invoke(
             _initial(sample_images, location_kind="outdoor", location_text="Berlin"), config
@@ -7156,8 +7286,10 @@ class TestOrdering:
             calls.append((location, days))
             return None
 
-        vision, chat = pipeline_models
-        deps = make_deps(vision_model=vision, chat_model=chat, weather=_weather)
+        gate, vision, chat = pipeline_models
+        deps = make_deps(
+            gate_model=gate, vision_model=vision, chat_model=chat, weather=_weather
+        )
         graph = build_diagnosis_graph(deps, MemorySaver())
         graph.invoke(_initial(sample_images, location_kind="indoor"), config)
         graph.invoke(Command(resume={"watering": "weekly"}), config)
@@ -7348,8 +7480,8 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 
 @pytest.fixture
 def service(make_deps, pipeline_models, tmp_path):
-    vision, chat = pipeline_models
-    deps = make_deps(vision_model=vision, chat_model=chat)
+    gate, vision, chat = pipeline_models
+    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
     graph = build_diagnosis_graph(deps, MemorySaver())
     return DiagnosisService(deps, graph, upload_dir=tmp_path)
 
@@ -7424,10 +7556,10 @@ def test_answer_completes_the_diagnosis(service):
 
 
 def test_a_rejected_upload_returns_a_rejection(make_deps, tmp_path):
-    vision = ScriptedStructuredModel(
+    gate = ScriptedStructuredModel(
         [PlantCheck(is_plant=False, what_it_is="a photograph of a person")]
     )
-    deps = make_deps(vision_model=vision)
+    deps = make_deps(gate_model=gate)
     service = DiagnosisService(
         deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
     )
@@ -7704,7 +7836,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from agent.deps import Deps
 from agent.diagnosis_graph import build_diagnosis_graph
 from core.config import get_settings
-from core.llm import build_chat_model, build_vision_model
+from core.llm import build_gate_model, build_reasoning_model, build_vision_model
 from data.db import apply_schema, connect
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
@@ -7723,7 +7855,7 @@ def get_service() -> DiagnosisService:
     """Build the service and everything under it. Cached for the process."""
     from datetime import UTC, datetime
 
-    from langchain_openai import OpenAIEmbeddings
+    from langchain_community.embeddings import FastEmbedEmbeddings
 
     settings = get_settings()
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -7731,16 +7863,21 @@ def get_service() -> DiagnosisService:
     conn = connect(settings.db_path)
     apply_schema(conn)
 
+    # Embeddings run locally. OpenRouter serves chat completions and has no
+    # embeddings endpoint, so retrieval uses a small local model rather than
+    # introducing a second provider and a second API key. FastEmbed downloads an
+    # ONNX model (~130 MB) on first run, then works offline and costs nothing.
     vectorstore = build_vectorstore(
         chunks=load_corpus(settings.corpus_path),
-        embeddings=OpenAIEmbeddings(api_key=settings.openai_api_key),
+        embeddings=FastEmbedEmbeddings(model_name=settings.embedding_model),
         persist_directory=settings.chroma_path,
     )
 
     deps = Deps(
         settings=settings,
-        chat_model=build_chat_model(),
+        gate_model=build_gate_model(),
         vision_model=build_vision_model(),
+        chat_model=build_reasoning_model(),
         retriever=ChromaRetriever(vectorstore),
         plants=PlantRepository(conn),
         observations=ObservationRepository(conn),
@@ -8037,8 +8174,8 @@ def app(monkeypatch, make_deps, pipeline_models, tmp_path):
     from agent.diagnosis_graph import build_diagnosis_graph
     from services.diagnosis_service import DiagnosisService
 
-    vision, chat = pipeline_models
-    deps = make_deps(vision_model=vision, chat_model=chat)
+    gate, vision, chat = pipeline_models
+    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
     service = DiagnosisService(
         deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
     )
@@ -8080,7 +8217,7 @@ If `AppTest` cannot resolve the monkeypatched `get_service` because the page imp
 - [ ] **Step 8: Run the app manually and confirm the wizard works end to end**
 
 ```bash
-cp .env.example .env   # then add a real PLANTOPIA_OPENAI_API_KEY
+cp .env.example .env   # then add a real PLANTOPIA_OPENROUTER_API_KEY
 uv run streamlit run app.py
 ```
 
@@ -8357,10 +8494,29 @@ cd plantopia
 uv sync
 
 cp .env.example .env
-# add your PLANTOPIA_OPENAI_API_KEY
+# add your PLANTOPIA_OPENROUTER_API_KEY
 
 uv run streamlit run app.py
 ```
+
+**One key, three models.** Every model call is routed through
+[OpenRouter](https://openrouter.ai), which exposes an OpenAI-compatible API, so
+switching providers is a configuration change rather than a code change. The pipeline
+uses three tiers because its jobs differ enormously in difficulty:
+
+| Tier | Used by | Default |
+|---|---|---|
+| `gate` | the two binary image checks, which run on every diagnosis | `google/gemini-2.5-flash-lite` |
+| `vision` | species identification, symptom extraction | `google/gemini-2.5-flash` |
+| `reasoning` | question selection, diagnosis, treatment planning | `anthropic/claude-sonnet-4.5` |
+
+Override any of them in `.env`. Check [openrouter.ai/models](https://openrouter.ai/models)
+for current slugs — availability and naming change.
+
+**Embeddings run locally.** OpenRouter serves chat completions and has no embeddings
+endpoint, so retrieval uses FastEmbed with a small local model rather than requiring a
+second provider and a second key. The model (~130 MB) downloads on first run; after
+that retrieval is free and works offline.
 
 A Tavily key is optional. Without it, web-search escalation is skipped and diagnosis
 relies on the curated corpus alone.
