@@ -55,6 +55,8 @@ def select_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
     location is also asked where it is, because weather history depends on it.
 
     Mandatory questions are placed first so the configured cap can never evict them.
+    The cap itself is clamped to be no smaller than the mandatory count, so even a
+    configured maximum below ``len(ALWAYS_ASK)`` cannot cut into that block.
     """
     questions: list[Question] = list(ALWAYS_ASK)
 
@@ -70,7 +72,8 @@ def select_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
             seen.add(question.key)
             unique.append(question)
 
-    return unique[: deps.settings.max_clarifying_questions]
+    cap = max(deps.settings.max_clarifying_questions, len(ALWAYS_ASK))
+    return unique[:cap]
 
 
 def _model_questions(deps: Deps, state: DiagnosisState) -> list[Question]:

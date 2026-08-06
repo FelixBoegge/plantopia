@@ -115,3 +115,12 @@ def test_always_asked_questions_survive_the_cap(make_deps, sample_images):
     )
     keys = {q.key for q in select_questions(deps, _state(sample_images))}
     assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300
+
+
+def test_a_cap_below_the_mandatory_count_cannot_evict_them(make_deps, sample_images):
+    deps = make_deps(
+        chat_model=_model_questions("a", "b"),
+        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=1),
+    )
+    keys = {q.key for q in select_questions(deps, _state(sample_images))}
+    assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300
