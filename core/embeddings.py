@@ -62,11 +62,13 @@ class ImageEmbedder:
             )
             response.raise_for_status()
             data = response.json().get("data") or []
-            if not data:
+            if not data or not isinstance(data, list):
+                return None
+            if not isinstance(data[0], dict):
                 return None
             vector = data[0].get("embedding")
             return list(vector) if vector else None
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        except (httpx.HTTPError, ValueError, TypeError):
             logger.warning("image embedding failed", exc_info=True)
             return None
         finally:

@@ -77,3 +77,15 @@ def test_a_model_that_rejects_images_returns_none():
 def test_empty_image_data_returns_none_without_a_request():
     with respx.mock:
         assert _embedder().embed_image("", "image/png") is None
+
+
+@respx.mock
+def test_a_non_list_data_payload_returns_none():
+    respx.post(EMBEDDINGS_URL).mock(return_value=httpx.Response(200, json={"data": "unexpected"}))
+    assert _embedder().embed_image("aGk=", "image/png") is None
+
+
+@respx.mock
+def test_a_non_dict_data_item_returns_none():
+    respx.post(EMBEDDINGS_URL).mock(return_value=httpx.Response(200, json={"data": ["oops"]}))
+    assert _embedder().embed_image("aGk=", "image/png") is None
