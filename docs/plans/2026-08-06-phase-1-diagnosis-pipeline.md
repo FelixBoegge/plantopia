@@ -499,6 +499,12 @@ def build_chat_model(
             "HTTP-Referer": settings.app_url,
             "X-Title": settings.app_title,
         },
+        # OpenRouter load-balances a model across several upstream providers, and they
+        # do not all support the same parameters. Without this, a request can land on
+        # a provider that ignores tool calling, and every structured output in the
+        # pipeline fails intermittently and unreproducibly. This restricts routing to
+        # providers that honour the parameters we send.
+        extra_body={"provider": {"require_parameters": True}},
     )
 
 
