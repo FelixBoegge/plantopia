@@ -48,3 +48,16 @@ def test_settings_thresholds_must_be_probabilities(monkeypatch):
     monkeypatch.setenv("PLANTOPIA_RETRIEVAL_SCORE_THRESHOLD", "1.5")
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_cross_modal_retrieval_is_off_by_default(monkeypatch):
+    """No multimodal embedding model is currently reachable, so the path must not
+    fire doomed requests on every diagnosis."""
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    assert Settings().multimodal_embeddings is False
+
+
+def test_cross_modal_retrieval_can_be_enabled(monkeypatch):
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_MULTIMODAL_EMBEDDINGS", "true")
+    assert Settings().multimodal_embeddings is True

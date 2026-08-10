@@ -1,5 +1,6 @@
 """Wire the real dependencies once per Streamlit session."""
 
+import logging
 from pathlib import Path
 
 import streamlit as st
@@ -27,6 +28,8 @@ from tools.care_profiles import lookup_plant_care_profile
 from tools.weather import get_local_weather
 from tools.web_search import web_search_plant_info
 
+logger = logging.getLogger(__name__)
+
 
 @st.cache_resource
 def get_service() -> DiagnosisService:
@@ -53,11 +56,24 @@ def get_service() -> DiagnosisService:
     # The image embedder shares the collection's vector space, which is what makes
     # cross-modal retrieval work. If you change embedding_model, delete the Chroma
     # directory and re-index — vectors from two different models are not comparable.
-    image_embedder = ImageEmbedder(
-        api_key=settings.openrouter_api_key,
-        base_url=settings.openrouter_base_url,
-        model=settings.embedding_model,
+    #
+    # Wired only when the configured embedding model actually accepts images. Passing
+    # it unconditionally would cost one doomed HTTP call per uploaded image on every
+    # diagnosis; passing None disables the path cleanly in ChromaRetriever.
+    image_embedder = (
+        ImageEmbedder(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            model=settings.embedding_model,
+        )
+        if settings.multimodal_embeddings
+        else None
     )
+    if image_embedder is None:
+        logger.info(
+            "cross-modal image retrieval disabled (multimodal_embeddings=False); "
+            "diagnosis will use the text retrieval path only"
+        )
 
     deps = Deps(
         settings=settings,

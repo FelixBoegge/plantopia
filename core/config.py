@@ -24,17 +24,33 @@ class Settings(BaseSettings):
     app_title: str = "Plantopia"
 
     # Three model tiers. OpenRouter makes swapping trivial, so the pipeline uses the
-    # cheapest model that can do each job. Verify these slugs at openrouter.ai/models
-    # before the first real run — availability and naming change.
+    # cheapest model that can do each job.
+    #
+    # These defaults are the strongest combination verified reachable and tool-calling
+    # on a restricted (college-issued) OpenRouter key. Many stronger models —
+    # anthropic/claude-sonnet-4.5, openai/gpt-4.1, google/gemini-2.5-pro — return
+    # "No endpoints available matching your guardrail restrictions and data policy"
+    # on such accounts, so they are documented as overrides in .env.example rather
+    # than chosen here. Re-probe before assuming any slug still resolves.
     gate_model: str = "google/gemini-2.5-flash-lite"
     vision_model: str = "google/gemini-2.5-flash"
-    reasoning_model: str = "anthropic/claude-sonnet-4.5"
+    reasoning_model: str = "openai/gpt-4o"
 
-    # Retrieval embeddings, also via OpenRouter's /embeddings endpoint. Multimodal:
-    # text and images share one vector space, which is what makes the image-based
-    # retrieval path possible (spec §10.4).
-    embedding_model: str = "google/gemini-embedding-2"
+    # Retrieval embeddings, via OpenRouter's /embeddings endpoint.
+    embedding_model: str = "openai/text-embedding-3-small"
     image_match_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
+
+    # Whether embedding_model accepts image input. The cross-modal retrieval path
+    # (spec §10.4) embeds the photograph itself and searches the same corpus, which
+    # only works when text and images share one vector space.
+    #
+    # Off by default because no multimodal embedding model is currently reachable:
+    # gemini-embedding-001 is the only candidate and is data-policy blocked on
+    # restricted keys, while the OpenAI embedding models reject image input outright
+    # ("OpenAI embeddings do not support image_url inputs"). Left on, every diagnosis
+    # would make one doomed HTTP call per uploaded image. Turn it on together with a
+    # multimodal embedding_model and the path lights up with no code change.
+    multimodal_embeddings: bool = False
 
     tavily_api_key: str | None = None
 
