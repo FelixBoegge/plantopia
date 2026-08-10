@@ -7,5 +7,9 @@ __pycache__/
 .coverage
 htmlcov/
 data/plantopia.db
+# LangGraph's checkpointer opens its own SQLite file alongside the main one, plus the
+# usual -shm/-wal sidecars once WAL mode kicks in.
+data/plantopia.db.checkpoints*
 data/chroma/
 data/uploads/
+.playwright-mcp/

@@ -60,20 +60,53 @@ the price gap between tiers is often more than tenfold:
 |---|---|---|
 | `gate` | the two binary image checks, which run on every diagnosis | `google/gemini-2.5-flash-lite` |
 | `vision` | species identification, symptom extraction | `google/gemini-2.5-flash` |
-| `reasoning` | question selection, diagnosis, treatment planning | `anthropic/claude-sonnet-4.5` |
-| `embedding` | corpus indexing, query retrieval, and direct photograph matching | `google/gemini-embedding-2` |
+| `reasoning` | question selection, diagnosis, treatment planning | `openai/gpt-4o` |
+| `embedding` | corpus indexing and query retrieval | `openai/text-embedding-3-small` |
 
-Override any of them in `.env`. Check [openrouter.ai/models](https://openrouter.ai/models)
-for current slugs — availability and naming change.
+Every one of those was verified reachable **and tool-calling** on a restricted,
+college-issued OpenRouter key. That qualifier matters more than it sounds: a model that
+answers a chat request but cannot emit a tool call is useless here, because the whole
+pipeline depends on structured output.
 
-The embedding model is multimodal: text and images share one vector space, so a
-photograph of the plant can be matched against the corpus directly, not only through
-the vision model's written description of it — a second retrieval path that fails
-independently of the first (spec §10.4). That is a real constraint on substitution:
-swapping in a text-only embedding model gains nothing on cost (the corpus is only
-around 300 chunks, so the whole collection indexes for a fraction of a cent) and loses
-the photograph-matching path entirely. `qwen/qwen3-embedding-8b` and `baai/bge-m3` are
-worth trying only if that trade-off is acceptable for a given deployment.
+### Checking what your key can reach
+
+OpenRouter gates providers by data policy, and organisation-issued keys are often
+restricted. A blocked model returns
+
+```
+404 No endpoints available matching your guardrail restrictions and data policy
+```
+
+which is an **account setting, not a bad slug** — worth knowing before you spend an hour
+on the wrong hypothesis. On the key this was developed against, `anthropic/claude-sonnet-4.5`,
+`openai/gpt-4.1`, `google/gemini-2.5-pro` and `gemini-embedding-001` were all blocked
+while `openai/gpt-4o` and the Gemini Flash models worked. Distinguish the three failure
+modes by their message: `No endpoints available matching your guardrail…` is policy,
+`Model X does not exist` is a wrong slug, and `No endpoints found for X` is a real slug
+with nothing serving it.
+
+`.env.example` lists the stronger models as commented-out upgrades to try if your policy
+permits them.
+
+### Cross-modal retrieval is off by default
+
+The design includes a second retrieval path that embeds the photograph itself and
+searches the same corpus, bypassing the vision model's written description — two paths
+that fail independently (spec §10.4). It needs an embedding model accepting image input,
+and none is currently reachable: the OpenAI embedding models refuse images outright
+(*"OpenAI embeddings do not support image_url inputs"*), and `gemini-embedding-001`, the
+only candidate, is data-policy blocked on restricted keys.
+
+So `PLANTOPIA_MULTIMODAL_EMBEDDINGS` defaults to `false` and diagnosis runs on the text
+path alone. The code stays in place and tested; set that flag to `true` alongside a
+multimodal `PLANTOPIA_EMBEDDING_MODEL` and the path lights up with no code change.
+
+When it is off, the pipeline says so rather than staying quiet about it. The retriever
+reports that it cannot search by image, so the enrich node skips the call and does not
+list `search_by_photograph` among the tools used; the diagnose prompt states outright
+that no photograph-matched material is available. Both exist because the first live run
+showed what silence costs — the model narrated visual corroboration it had never been
+given, and the UI credited a search that could not have happened.
 
 A Tavily key is optional. Without it, web-search escalation is skipped and diagnosis
 relies on the curated corpus alone.
