@@ -45,7 +45,15 @@ filterwarnings = ["error::DeprecationWarning:plantopia.*"]
 
 [tool.coverage.run]
 source = ["core", "agent", "tools", "data", "knowledge", "services", "ui"]
-omit = ["*/__init__.py"]
+omit = [
+    "*/__init__.py",
+    # Real-infrastructure wiring only: opens a live SQLite connection, builds a Chroma
+    # collection against the embeddings API, and constructs model clients. There is
+    # nothing here to unit test that would not be a mock asserting on itself, and the
+    # UI tests substitute a faked service rather than exercising it. Counted in the
+    # denominator it only made the gate trip on unrelated changes.
+    "ui/bootstrap.py",
+]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
