@@ -186,6 +186,16 @@ def test_no_visual_heading_when_there_are_no_visual_matches(make_deps, sample_im
     assert "Visually similar" not in str(model.prompts[0])
 
 
+def test_absent_visual_matches_are_stated_rather_than_left_silent(make_deps, sample_images):
+    """The system prompt always describes a visually-similar section, so silence about
+    it invites the model to narrate corroboration it never received — observed on the
+    first live run, where it claimed the visual material agreed with its diagnosis."""
+    model = ScriptedStructuredModel([_differential()])
+    deps = make_deps(chat_model=model)
+    make_diagnose(deps)(_state(sample_images, visual_matches=[]))
+    assert "No photograph-matched reference material" in str(model.prompts[0])
+
+
 def test_diagnosis_proceeds_on_visual_matches_alone(make_deps, sample_images):
     """If symptom extraction failed, the image path can still ground the diagnosis."""
     visual = Passage(

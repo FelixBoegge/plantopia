@@ -32,9 +32,15 @@ class _Spy:
 
 
 class _StubRetriever:
-    def __init__(self, passages: list[Passage], image_passages: list[Passage] | None = None):
+    def __init__(
+        self,
+        passages: list[Passage],
+        image_passages: list[Passage] | None = None,
+        supports_image_search: bool = True,
+    ):
         self.passages = passages
         self.image_passages = image_passages or []
+        self.supports_image_search = supports_image_search
         self.queries: list[list[str]] = []
         self.image_calls: list[int] = []
 
@@ -187,6 +193,24 @@ class TestImagePath:
             settings=self._settings(),
         )
         assert "search_by_photograph" in make_enrich(deps)(_state(sample_images))["tools_used"]
+
+    def test_the_image_tool_is_not_recorded_when_the_retriever_cannot_do_it(
+        self, make_deps, sample_images
+    ):
+        """No multimodal embedding model is reachable on a restricted key, so the
+        retriever is built without an image embedder. Recording the tool anyway told
+        the first live run's user that a search happened which structurally could not."""
+        retriever = _StubRetriever([_passage(0.9)], supports_image_search=False)
+        deps = make_deps(retriever=retriever, settings=self._settings())
+        assert "search_by_photograph" not in make_enrich(deps)(_state(sample_images))["tools_used"]
+
+    def test_no_image_search_is_attempted_when_the_retriever_cannot_do_it(
+        self, make_deps, sample_images
+    ):
+        retriever = _StubRetriever([_passage(0.9)], supports_image_search=False)
+        deps = make_deps(retriever=retriever, settings=self._settings())
+        make_enrich(deps)(_state(sample_images))
+        assert retriever.image_calls == []
 
     def test_the_image_path_runs_even_without_extracted_symptoms(self, make_deps, sample_images):
         """Its whole value is not depending on the symptom description."""

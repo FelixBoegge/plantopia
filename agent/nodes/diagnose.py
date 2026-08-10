@@ -90,6 +90,16 @@ def _build_case(state: DiagnosisState) -> str:
                 "agrees with the described symptoms, and worth explaining when it does not",
             )
         )
+    else:
+        # Stated rather than omitted. The system prompt describes this section
+        # unconditionally, and on the first live run the model filled the silence by
+        # claiming the visual material corroborated its diagnosis — evidence the owner
+        # was shown in the reasoning and that never existed.
+        sections.append(
+            "No photograph-matched reference material is available for this case. Do not "
+            "refer to visually similar reference material in your reasoning, and do not "
+            "treat its absence as evidence either way."
+        )
 
     return "\n\n".join(sections)
 

@@ -74,6 +74,12 @@ def _retrieve_by_image(deps: Deps, state: DiagnosisState, tools_used: list[str])
     if not state.images:
         return []
 
+    # Asked of the retriever rather than of settings: what matters is whether this
+    # search can happen, not why. Reporting it as a tool used when no image embedder
+    # is wired tells the owner a second opinion was sought that never was.
+    if not deps.retriever.supports_image_search:
+        return []
+
     tools_used.append("search_by_photograph")
     matches = deps.retriever.search_by_image(state.images, k=VISUAL_RESULTS)
     kept = [p for p in matches if p.score >= deps.settings.image_match_threshold]

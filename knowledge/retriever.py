@@ -25,6 +25,16 @@ class Retriever(Protocol):
         """Return the best ``k`` passages across every query, best first."""
         ...
 
+    @property
+    def supports_image_search(self) -> bool:
+        """Whether the cross-modal path is wired at all.
+
+        Distinct from ``search_by_image`` returning nothing: this says the search
+        cannot happen, not that it happened and found nothing. Callers report tool
+        use to the user, and must not claim a search that structurally could not run.
+        """
+        ...
+
     def search_by_image(self, images: Sequence[ImageRef], k: int) -> list[Passage]:
         """Return corpus passages that match the photographs themselves.
 
@@ -88,6 +98,10 @@ class ChromaRetriever:
                 self._keep_best(best, document, score)
 
         return self._ranked(best, k)
+
+    @property
+    def supports_image_search(self) -> bool:
+        return self._image_embedder is not None
 
     def search_by_image(self, images: Sequence[ImageRef], k: int) -> list[Passage]:
         """Retrieve corpus passages by embedding the photographs directly.
