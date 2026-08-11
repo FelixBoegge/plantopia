@@ -18,12 +18,14 @@ from core.llm import (
 )
 from data.db import apply_schema, connect
 from data.repositories.diagnoses import DiagnosisRepository
+from data.repositories.feedback import FeedbackRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.roadmap import RoadmapRepository
 from knowledge.ingest import load_corpus
 from knowledge.retriever import ChromaRetriever, build_vectorstore
 from services.diagnosis_service import DiagnosisService
+from services.plant_service import PlantService
 from tools.care_profiles import lookup_plant_care_profile
 from tools.weather import get_local_weather
 from tools.web_search import web_search_plant_info
@@ -95,3 +97,28 @@ def get_service() -> DiagnosisService:
     graph = build_diagnosis_graph(deps, checkpointer)
 
     return DiagnosisService(deps, graph, upload_dir=settings.upload_path)
+
+
+@st.cache_resource
+def get_plant_service() -> PlantService:
+    """Build the plant-profile service. Cached for the process.
+
+    Opens its own connection to the same database file ``get_service`` uses.
+    ``data.db.transaction``'s write lock is module-level, not per-connection, so
+    writes through either connection still serialise correctly against each other
+    (see ``data/db.py``'s docstring).
+    """
+    from datetime import UTC, datetime
+
+    settings = get_settings()
+    conn = connect(settings.db_path)
+    apply_schema(conn)
+
+    return PlantService(
+        plants=PlantRepository(conn),
+        observations=ObservationRepository(conn),
+        diagnoses=DiagnosisRepository(conn),
+        roadmap=RoadmapRepository(conn),
+        feedback=FeedbackRepository(conn),
+        now=lambda: datetime.now(tz=UTC),
+    )
