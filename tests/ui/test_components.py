@@ -259,3 +259,81 @@ def test_render_timeline_with_no_diagnoses_says_so():
 
     assert not at.exception
     assert any("No diagnoses yet" in i.value for i in at.info)
+
+
+def _render_checklist_script(steps) -> None:
+    import streamlit as st
+
+    from ui.components.roadmap_checklist import render_roadmap_checklist
+
+    calls = st.session_state.setdefault("_mark_calls", [])
+    render_roadmap_checklist(steps, on_mark=lambda step_id, status: calls.append((step_id, status)))
+
+
+def test_checklist_renders_pending_and_done_steps_distinctly():
+    from datetime import UTC, datetime
+
+    from agent.schemas import IPMTier
+    from data.repositories.roadmap import RoadmapStepRecord
+
+    pending = RoadmapStepRecord(
+        id=1,
+        diagnosis_id=1,
+        plant_id=1,
+        ordinal=1,
+        action="Stop watering.",
+        rationale="r",
+        success_signal="s",
+        tier=IPMTier.CULTURAL,
+        due_date=datetime(2026, 1, 1, tzinfo=UTC),
+        status="pending",
+        completed_at=None,
+    )
+    done = RoadmapStepRecord(
+        id=2,
+        diagnosis_id=1,
+        plant_id=1,
+        ordinal=2,
+        action="Repot.",
+        rationale="r",
+        success_signal="s",
+        tier=IPMTier.MECHANICAL,
+        due_date=datetime(2026, 1, 1, tzinfo=UTC),
+        status="done",
+        completed_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    at = AppTest.from_function(_render_checklist_script, args=([pending, done],))
+    at.run()
+
+    assert not at.exception
+    assert len(at.checkbox) == 2
+    assert at.checkbox[0].value is False
+    assert at.checkbox[1].value is True
+
+
+def test_ticking_a_pending_step_calls_on_mark():
+    from datetime import UTC, datetime
+
+    from agent.schemas import IPMTier
+    from data.repositories.roadmap import RoadmapStepRecord
+
+    pending = RoadmapStepRecord(
+        id=1,
+        diagnosis_id=1,
+        plant_id=1,
+        ordinal=1,
+        action="Stop watering.",
+        rationale="r",
+        success_signal="s",
+        tier=IPMTier.CULTURAL,
+        due_date=datetime(2026, 1, 1, tzinfo=UTC),
+        status="pending",
+        completed_at=None,
+    )
+
+    at = AppTest.from_function(_render_checklist_script, args=([pending],))
+    at.run()
+    at.checkbox[0].check().run()
+
+    assert at.session_state["_mark_calls"] == [(1, "done")]
