@@ -337,3 +337,33 @@ def test_ticking_a_pending_step_calls_on_mark():
     at.checkbox[0].check().run()
 
     assert at.session_state["_mark_calls"] == [(1, "done")]
+
+
+def _render_feedback_script() -> None:
+    import streamlit as st
+
+    from ui.components.feedback import render_feedback_prompt
+
+    calls = st.session_state.setdefault("_feedback_calls", [])
+
+    def on_submit(rating: int | None, did_it_help: str | None, text: str | None) -> None:
+        calls.append((rating, did_it_help, text))
+
+    render_feedback_prompt(on_submit=on_submit)
+
+
+def test_feedback_prompt_renders_a_form():
+    at = AppTest.from_function(_render_feedback_script)
+    at.run()
+    assert not at.exception
+    assert at.radio
+    assert at.button
+
+
+def test_submitting_feedback_calls_on_submit():
+    at = AppTest.from_function(_render_feedback_script)
+    at.run()
+    at.radio[0].set_value("yes")
+    at.button[0].click().run()
+
+    assert at.session_state["_feedback_calls"] == [(None, "yes", "")]
