@@ -14,6 +14,7 @@ from agent.schemas import (
     ImageQuality,
     ImageRef,
     Passage,
+    ProgressVerdict,
     Question,
     Roadmap,
     SpeciesGuess,
@@ -61,6 +62,7 @@ class DiagnosisState(BaseModel):
     low_confidence: bool = False
     contagion: ContagionAssessment | None = None
     roadmap: Roadmap | None = None
+    verdict: ProgressVerdict | None = None
 
     # Bookkeeping
     observation_id: int | None = None

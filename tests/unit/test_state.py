@@ -59,3 +59,20 @@ def test_species_confidence_reads_through_to_the_guess():
 def test_location_text_is_optional():
     state = DiagnosisState(images=[_image()], plant_name="Basil", location_kind="outdoor")
     assert state.location_text is None
+
+
+def test_verdict_defaults_to_none():
+    state = DiagnosisState(images=[_image()], plant_name="Basil", location_kind="indoor")
+    assert state.verdict is None
+
+
+def test_verdict_can_be_set():
+    from agent.schemas import ProgressVerdict
+
+    state = DiagnosisState(
+        images=[_image()],
+        plant_name="Basil",
+        location_kind="indoor",
+        verdict=ProgressVerdict(verdict="improving", reasoning="Fewer symptoms."),
+    )
+    assert state.verdict.verdict == "improving"
