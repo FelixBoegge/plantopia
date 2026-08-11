@@ -12,6 +12,7 @@ import pytest
 from agent.prompts.diagnose import DIAGNOSE
 from agent.prompts.identify import IDENTIFY_PLANT
 from agent.prompts.intake import GUARD_INPUT, QUALITY_CHECK
+from agent.prompts.recheck import COMPARE_PROGRESS
 from agent.prompts.symptoms import ASSESS_SYMPTOMS
 
 VISION_PROMPTS = {
@@ -19,6 +20,7 @@ VISION_PROMPTS = {
     "QUALITY_CHECK": QUALITY_CHECK,
     "IDENTIFY_PLANT": IDENTIFY_PLANT,
     "ASSESS_SYMPTOMS": ASSESS_SYMPTOMS,
+    "COMPARE_PROGRESS": COMPARE_PROGRESS,
     "DIAGNOSE": DIAGNOSE,
 }
 
@@ -35,3 +37,18 @@ def test_every_vision_prompt_states_the_instruction_hierarchy(name):
     assert "never" in prompt and ("follow" in prompt or "obey" in prompt), (
         f"{name} does not tell the model to refuse instructions found in the image"
     )
+
+
+def test_compare_progress_names_the_four_verdicts():
+    from agent.prompts.recheck import COMPARE_PROGRESS
+
+    for verdict in ("improving", "static", "worsening", "new_problem"):
+        assert verdict in COMPARE_PROGRESS
+
+
+def test_revise_roadmap_repeats_the_dosing_rule():
+    """The same guardrail as build_roadmap (spec §13.5), independently stated here
+    rather than assumed to carry over from the original diagnosis."""
+    from agent.prompts.recheck import REVISE_ROADMAP
+
+    assert "dose" in REVISE_ROADMAP
