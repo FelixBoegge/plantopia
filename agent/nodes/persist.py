@@ -24,6 +24,7 @@ def make_persist(deps: Deps) -> NodeFn:
             return {"diagnosis_id": None}
 
         now = deps.now()
+        observation_kind = "recheck" if state.plant_id is not None else "initial"
 
         with transaction(deps.plants.connection):
             plant_id = state.plant_id
@@ -40,7 +41,7 @@ def make_persist(deps: Deps) -> NodeFn:
 
             observation_id = deps.observations.create(
                 plant_id=plant_id,
-                kind="initial",
+                kind=observation_kind,
                 photo_refs=[image.ref for image in state.images],
                 user_notes=state.user_notes,
                 now=now,

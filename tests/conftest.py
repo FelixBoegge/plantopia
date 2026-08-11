@@ -104,6 +104,98 @@ def sample_images():
 
 
 @pytest.fixture
+def sample_plant(db, now) -> int:
+    """A plant with one prior diagnosis and a partially completed roadmap — the
+    standard re-check starting point."""
+    from agent.schemas import (
+        Candidate,
+        ContagionAssessment,
+        Differential,
+        IPMTier,
+        Roadmap,
+        RoadmapStep,
+        Severity,
+    )
+    from data.repositories.diagnoses import DiagnosisRepository
+    from data.repositories.observations import ObservationRepository
+    from data.repositories.plants import PlantRepository
+    from data.repositories.roadmap import RoadmapRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Kitchen basil",
+        species="Basil",
+        species_confidence=0.9,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    observation_id = ObservationRepository(db).create(
+        plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
+    )
+    differential = Differential(
+        is_healthy=False,
+        reasoning="Wet soil and lower-leaf yellowing.",
+        candidates=[
+            Candidate(
+                disorder_id="overwatering",
+                name="Overwatering",
+                probability=0.7,
+                supporting_evidence=["wet soil"],
+                contradicting_evidence=[],
+                distinguishing_test="Feel the soil three days after watering.",
+                severity=Severity.ACT_THIS_WEEK,
+                transmissible=False,
+            ),
+            Candidate(
+                disorder_id="root-rot",
+                name="Root rot",
+                probability=0.3,
+                supporting_evidence=["wet soil"],
+                contradicting_evidence=[],
+                distinguishing_test="Unpot the plant and inspect the roots.",
+                severity=Severity.ACT_TODAY,
+                transmissible=False,
+            ),
+        ],
+    )
+    diagnosis_id = DiagnosisRepository(db).create(
+        observation_id=observation_id,
+        plant_id=plant_id,
+        differential=differential,
+        contagion=ContagionAssessment(at_risk=False, advice="No other plants at risk."),
+        retrieved=[],
+        model="test-model",
+        now=now(),
+    )
+    roadmap = Roadmap(
+        steps=[
+            RoadmapStep(
+                ordinal=1,
+                action="Stop watering until the top 3 cm is dry.",
+                rationale="Lets the roots breathe.",
+                success_signal="No new yellow leaves.",
+                tier=IPMTier.CULTURAL,
+                day_offset=0,
+            ),
+            RoadmapStep(
+                ordinal=2,
+                action="Repot into a container with drainage holes.",
+                rationale="Standing water at the roots caused this.",
+                success_signal="Soil dries out within three days of watering.",
+                tier=IPMTier.MECHANICAL,
+                day_offset=7,
+            ),
+        ]
+    )
+    step_ids = RoadmapRepository(db).create_from_roadmap(
+        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=roadmap, now=now()
+    )
+    RoadmapRepository(db).mark(step_ids[0], status="done", now=now())
+    return plant_id
+
+
+@pytest.fixture
 def pipeline_models():
     """Scripted models covering a full happy-path run, one per tier.
 

@@ -18,6 +18,7 @@ from agent.nodes.identify import make_identify_plant
 from agent.nodes.intake import make_guard_input, make_quality_check
 from agent.nodes.persist import make_persist
 from agent.nodes.plan import make_build_roadmap, make_check_contagion
+from agent.nodes.recheck import make_compare_progress, make_revise_roadmap
 from agent.nodes.symptoms import make_assess_symptoms
 from agent.state import DiagnosisState
 
@@ -28,10 +29,26 @@ def route_after_guard(state: DiagnosisState) -> str:
 
 
 def route_after_quality(state: DiagnosisState) -> str:
-    """End the run if the photographs cannot support a diagnosis."""
+    """End the run if the photos cannot support a diagnosis. A known plant (a
+    re-check) skips identification — the species is already on record."""
     if state.quality is not None and not state.quality.usable:
         return "retake"
-    return "continue"
+    return "recheck" if state.plant_id is not None else "continue"
+
+
+def route_after_symptoms(state: DiagnosisState) -> str:
+    """A known plant compares progress against its prior diagnosis instead of
+    pausing for clarifying questions — roadmap-step completion already answers
+    what a re-check would otherwise have to ask."""
+    return "recheck" if state.plant_id is not None else "continue"
+
+
+def route_after_verdict(state: DiagnosisState) -> str:
+    """improving/static revise the existing plan; worsening/new_problem rejoin the
+    full diagnosis chain."""
+    if state.verdict is not None and state.verdict.verdict in ("improving", "static"):
+        return "revise"
+    return "escalate"
 
 
 def build_diagnosis_graph(deps: Deps, checkpointer: BaseCheckpointSaver):
@@ -55,16 +72,30 @@ def build_diagnosis_graph(deps: Deps, checkpointer: BaseCheckpointSaver):
     graph.add_node("check_contagion", make_check_contagion(deps))
     graph.add_node("build_roadmap", make_build_roadmap(deps))
     graph.add_node("persist", make_persist(deps))
+    graph.add_node("compare_progress", make_compare_progress(deps))
+    graph.add_node("revise_roadmap", make_revise_roadmap(deps))
 
     graph.add_edge(START, "guard_input")
     graph.add_conditional_edges(
         "guard_input", route_after_guard, {"reject": END, "continue": "quality_check"}
     )
     graph.add_conditional_edges(
-        "quality_check", route_after_quality, {"retake": END, "continue": "identify_plant"}
+        "quality_check",
+        route_after_quality,
+        {"retake": END, "continue": "identify_plant", "recheck": "assess_symptoms"},
     )
     graph.add_edge("identify_plant", "assess_symptoms")
-    graph.add_edge("assess_symptoms", "select_questions")
+    graph.add_conditional_edges(
+        "assess_symptoms",
+        route_after_symptoms,
+        {"continue": "select_questions", "recheck": "compare_progress"},
+    )
+    graph.add_conditional_edges(
+        "compare_progress",
+        route_after_verdict,
+        {"revise": "revise_roadmap", "escalate": "enrich"},
+    )
+    graph.add_edge("revise_roadmap", "persist")
     graph.add_edge("select_questions", "gather_context")
     graph.add_edge("gather_context", "enrich")
     graph.add_edge("enrich", "diagnose")
