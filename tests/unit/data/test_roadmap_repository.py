@@ -155,7 +155,9 @@ def test_due_dates_survive_a_month_boundary(db, ids):
 def test_mark_raises_on_an_unknown_step_id(db, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
-    repo.create_from_roadmap(diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now())
+    repo.create_from_roadmap(
+        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+    )
 
     with pytest.raises(ValueError, match="no roadmap step"):
         repo.mark(999_999, status="done", now=now())
