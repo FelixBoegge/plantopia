@@ -148,3 +148,114 @@ def test_render_roadmap_with_steps_shows_due_dates_today_and_later():
     captions = [c.value for c in at.caption]
     assert any("today" in c for c in captions)
     assert any("in 3 days" in c for c in captions)
+
+
+def _render_timeline_script(detail) -> None:
+    from ui.components.timeline import render_timeline
+
+    render_timeline(detail)
+
+
+def test_render_timeline_shows_every_diagnosis():
+    from datetime import UTC, datetime
+
+    from agent.schemas import Candidate, ContagionAssessment, Differential, Severity
+    from data.repositories.diagnoses import DiagnosisRecord
+    from data.repositories.observations import ObservationRecord
+    from data.repositories.plants import PlantRecord
+    from services.plant_service import PlantDetail
+
+    plant = PlantRecord(
+        id=1,
+        name="Basil",
+        species="Basil",
+        species_confidence=0.9,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    diagnosis = DiagnosisRecord(
+        id=10,
+        observation_id=1,
+        plant_id=1,
+        differential=Differential(
+            is_healthy=False,
+            reasoning="r",
+            candidates=[
+                Candidate(
+                    disorder_id="d1",
+                    name="Overwatering",
+                    probability=0.7,
+                    supporting_evidence=["e"],
+                    contradicting_evidence=[],
+                    distinguishing_test="Feel the soil after three days.",
+                    severity=Severity.ACT_THIS_WEEK,
+                    transmissible=False,
+                ),
+                Candidate(
+                    disorder_id="d2",
+                    name="Root rot",
+                    probability=0.2,
+                    supporting_evidence=["e2"],
+                    contradicting_evidence=[],
+                    distinguishing_test="Check roots for decay.",
+                    severity=Severity.ACT_THIS_WEEK,
+                    transmissible=False,
+                ),
+            ],
+        ),
+        contagion=ContagionAssessment(at_risk=False, advice="none"),
+        retrieved=[],
+        model="m",
+        cost_usd=None,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    observation = ObservationRecord(
+        id=1,
+        plant_id=1,
+        kind="initial",
+        photo_refs=["img-1"],
+        user_notes=None,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    detail = PlantDetail(
+        plant=plant,
+        observations=[observation],
+        diagnoses=[diagnosis],
+        roadmap_steps=[],
+        feedback_due=False,
+    )
+
+    at = AppTest.from_function(_render_timeline_script, args=(detail,))
+    at.run()
+
+    assert not at.exception
+    assert any("Overwatering" in m.value for m in at.markdown)
+
+
+def test_render_timeline_with_no_diagnoses_says_so():
+    from datetime import UTC, datetime
+
+    from data.repositories.plants import PlantRecord
+    from services.plant_service import PlantDetail
+
+    plant = PlantRecord(
+        id=2,
+        name="New plant",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    detail = PlantDetail(
+        plant=plant, observations=[], diagnoses=[], roadmap_steps=[], feedback_due=False
+    )
+
+    at = AppTest.from_function(_render_timeline_script, args=(detail,))
+    at.run()
+
+    assert not at.exception
+    assert any("No diagnoses yet" in i.value for i in at.info)
