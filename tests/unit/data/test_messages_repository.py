@@ -57,3 +57,10 @@ def test_list_for_plant_is_ordered_oldest_first(db, now):
     repo.create(plant_id=plant_id, role="user", content="first", tool_calls=None, now=now())
     repo.create(plant_id=plant_id, role="assistant", content="second", tool_calls=None, now=now())
     assert [m.content for m in repo.list_for_plant(plant_id)] == ["first", "second"]
+
+
+def test_empty_tool_calls_list_roundtrips_faithfully(db, now):
+    plant_id = _plant_id(db, now)
+    repo = MessageRepository(db)
+    repo.create(plant_id=plant_id, role="assistant", content="hello", tool_calls=[], now=now())
+    assert repo.list_for_plant(plant_id)[0].tool_calls == []

@@ -58,7 +58,7 @@ class MessageRepository:
                 plant_id,
                 role,
                 content,
-                json.dumps(tool_calls) if tool_calls else None,
+                json.dumps(tool_calls) if tool_calls is not None else None,
                 now.isoformat(),
             ),
         )
