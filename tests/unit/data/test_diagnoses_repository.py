@@ -172,3 +172,55 @@ def test_deleting_a_plant_cascades_to_diagnoses(db, now, ids):
     )
     PlantRepository(db).delete(plant_id)
     assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 0
+
+
+def test_list_for_plant_returns_every_diagnosis_newest_first(db, now):
+    from datetime import timedelta
+
+    from data.repositories.observations import ObservationRepository
+    from data.repositories.plants import PlantRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Basil",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    repo = DiagnosisRepository(db)
+    ids = []
+    for i in range(3):
+        obs_id = ObservationRepository(db).create(
+            plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
+        )
+        ids.append(
+            repo.create(
+                observation_id=obs_id,
+                plant_id=plant_id,
+                differential=_differential(),
+                contagion=None,
+                retrieved=[],
+                model="test-model",
+                now=now() + timedelta(days=i),
+            )
+        )
+
+    result = [d.id for d in repo.list_for_plant(plant_id)]
+    assert result == list(reversed(ids))
+
+
+def test_list_for_plant_is_empty_for_a_plant_with_no_diagnoses(db, now):
+    from data.repositories.plants import PlantRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Basil",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    assert DiagnosisRepository(db).list_for_plant(plant_id) == []

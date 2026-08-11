@@ -98,3 +98,10 @@ class DiagnosisRepository:
             "SELECT * FROM diagnoses WHERE plant_id = ? ORDER BY id DESC LIMIT 1", (plant_id,)
         ).fetchone()
         return _to_record(row) if row else None
+
+    def list_for_plant(self, plant_id: int) -> list[DiagnosisRecord]:
+        """Return every diagnosis for a plant, newest first."""
+        rows = self._conn.execute(
+            "SELECT * FROM diagnoses WHERE plant_id = ? ORDER BY id DESC", (plant_id,)
+        ).fetchall()
+        return [_to_record(r) for r in rows]
