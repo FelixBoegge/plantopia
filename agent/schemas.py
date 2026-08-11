@@ -190,6 +190,18 @@ class ContagionAssessment(BaseModel):
     advice: str
 
 
+class ProgressVerdict(BaseModel):
+    """The result of comparing a re-check photo against the prior diagnosis.
+
+    Compliance is not a field here: roadmap-step completion is already recorded by
+    ``RoadmapRepository``, so the model reads it from the prompt rather than being
+    asked to report it back.
+    """
+
+    verdict: Literal["improving", "static", "worsening", "new_problem"]
+    reasoning: str = Field(min_length=1)
+
+
 class RoadmapStep(BaseModel):
     ordinal: int = Field(ge=1)
     action: str = Field(min_length=5)

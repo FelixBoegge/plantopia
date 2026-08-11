@@ -162,3 +162,27 @@ class TestRoadmap:
     def test_requires_at_least_one_step(self):
         with pytest.raises(ValidationError):
             Roadmap(steps=[])
+
+
+class TestProgressVerdict:
+    def test_accepts_each_valid_verdict(self):
+        from agent.schemas import ProgressVerdict
+
+        for verdict in ("improving", "static", "worsening", "new_problem"):
+            ProgressVerdict(verdict=verdict, reasoning="Because the symptoms changed.")
+
+    def test_rejects_an_unknown_verdict(self):
+        from pydantic import ValidationError
+
+        from agent.schemas import ProgressVerdict
+
+        with pytest.raises(ValidationError):
+            ProgressVerdict(verdict="cured", reasoning="x")
+
+    def test_reasoning_cannot_be_empty(self):
+        from pydantic import ValidationError
+
+        from agent.schemas import ProgressVerdict
+
+        with pytest.raises(ValidationError):
+            ProgressVerdict(verdict="improving", reasoning="")
