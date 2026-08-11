@@ -61,6 +61,10 @@ exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedE
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# ruff format reformats fenced ```python blocks inside .md files by default, which
+# would otherwise rewrite code samples embedded in docs/plans every time `ruff
+# format .` runs at the repo root.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "PTH"]
