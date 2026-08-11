@@ -13,3 +13,4 @@ data/plantopia.db.checkpoints*
 data/chroma/
 data/uploads/
 .playwright-mcp/
+.superpowers/
