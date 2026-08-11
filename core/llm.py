@@ -76,9 +76,9 @@ def build_embeddings() -> Embeddings:
 
     ``check_embedding_ctx_length=False`` matters: LangChain otherwise tries to
     tokenise inputs with tiktoken keyed on the model name in order to chunk them, and
-    an OpenRouter slug like ``google/gemini-embedding-2`` is not a name tiktoken
-    recognises. Disabling it sends the text through unmodified, which is what we want
-    — corpus sections are well under any context limit.
+    a provider-prefixed OpenRouter slug like ``openai/text-embedding-3-small`` is not a
+    name tiktoken recognises. Disabling it sends the text through unmodified, which is
+    what we want — corpus sections are well under any context limit.
 
     For embedding *images* see ``core.embeddings.ImageEmbedder``: LangChain's
     embeddings interface is text-only, so the multimodal call is made directly.

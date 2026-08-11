@@ -1,6 +1,6 @@
 """Multimodal embedding.
 
-``google/gemini-embedding-2`` places text and images in one vector space, which lets
+A multimodal embedding model places text and images in one vector space, which lets
 a photograph be matched against the text corpus directly (spec §10.4). LangChain's
 ``Embeddings`` interface accepts strings only, so the image call is made against
 OpenRouter's ``/embeddings`` endpoint here.
