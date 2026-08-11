@@ -150,3 +150,17 @@ def test_due_dates_survive_a_month_boundary(db, ids):
     )
     steps = repo.list_for_plant(plant_id)
     assert steps[1].due_date == datetime(2026, 2, 4, 9, 0, tzinfo=UTC)
+
+
+def test_mark_raises_on_an_unknown_step_id(db, now, ids):
+    plant_id, diagnosis_id = ids
+    repo = RoadmapRepository(db)
+    repo.create_from_roadmap(diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now())
+
+    with pytest.raises(ValueError, match="no roadmap step"):
+        repo.mark(999_999, status="done", now=now())
+
+
+def test_connection_property_exposes_the_underlying_connection(db):
+    repo = RoadmapRepository(db)
+    assert repo.connection is db

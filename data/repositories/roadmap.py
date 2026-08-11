@@ -56,6 +56,11 @@ class RoadmapRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """The underlying connection, for callers that need to group writes."""
+        return self._conn
+
     def create_from_roadmap(
         self,
         *,
@@ -105,6 +110,10 @@ class RoadmapRepository:
 
         Does not commit. Callers own the transaction — wrap in
         ``data.db.transaction(...)`` (see ``agent/nodes/persist.py`` for the pattern).
+
+        Raises:
+            ValueError: if ``status`` is not a valid status, or ``step_id`` does not
+                match any roadmap step.
         """
         if status not in _VALID_STATUSES:
             raise ValueError(
@@ -112,10 +121,12 @@ class RoadmapRepository:
             )
 
         completed_at = None if status == "pending" else now.isoformat()
-        self._conn.execute(
+        cursor = self._conn.execute(
             "UPDATE roadmap_steps SET status = ?, completed_at = ? WHERE id = ?",
             (status, completed_at, step_id),
         )
+        if cursor.rowcount == 0:
+            raise ValueError(f"no roadmap step with id {step_id}")
 
     def due_before(self, when: datetime) -> list[RoadmapStepRecord]:
         """Return pending steps due at or before ``when``, most overdue first."""
