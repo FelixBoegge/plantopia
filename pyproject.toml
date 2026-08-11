@@ -53,6 +53,15 @@ omit = [
     # UI tests substitute a faked service rather than exercising it. Counted in the
     # denominator it only made the gate trip on unrelated changes.
     "ui/bootstrap.py",
+    # Pages and components ARE meaningfully tested — via streamlit.testing.v1.AppTest
+    # under the `ui` marker, deliberately excluded from the default `uv run pytest`
+    # run because it boots real Streamlit script sessions and is slower. Excluded
+    # here for the same denominator reason as ui/bootstrap.py above: a file that is
+    # tested, just not in this particular run, shouldn't count as a gap and shouldn't
+    # make the gate trip every time a new page or component is added (as it did for
+    # ui/pages/my_plants.py, and would identically for every later page/component).
+    "ui/pages/*",
+    "ui/components/*",
 ]
 
 [tool.coverage.report]
