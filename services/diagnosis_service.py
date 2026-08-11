@@ -147,7 +147,66 @@ class DiagnosisService:
             logger.info("species corrected by the user to %r", corrected.common_name)
 
         result = self._graph.invoke(Command(resume=answers), config)
+        return self._final_result(result)
 
+    def start_recheck(
+        self,
+        *,
+        plant_id: int,
+        uploads: list[bytes],
+        user_notes: str | None,
+        thread_id: str,
+    ) -> StartResult | FinalResult:
+        """Start a re-check run against an existing plant's prior diagnosis.
+
+        Unlike ``start``, species and location come from the existing plant record
+        rather than being asked for, and the run never pauses for clarifying
+        questions — roadmap-step completion already answers what a re-check would
+        otherwise have to ask (see the design spec §3).
+
+        Raises:
+            ValueError: if the plant does not exist, or the upload count is outside
+                the allowed range.
+        """
+        settings = self._deps.settings
+        plant = self._deps.plants.get(plant_id)
+        if plant is None:
+            raise ValueError(f"No plant with id {plant_id!r}.")
+
+        if not uploads:
+            raise ValueError("Please upload at least one photo.")
+        if len(uploads) > settings.max_images_per_observation:
+            raise ValueError(f"Please upload at most {settings.max_images_per_observation} photos.")
+
+        images = [store_upload(data, self._upload_dir, settings) for data in uploads]
+
+        state = DiagnosisState(
+            images=images,
+            plant_name=plant.name,
+            location_kind=plant.location_kind,
+            location_text=plant.location_text,
+            user_notes=user_notes,
+            plant_id=plant.id,
+            species=SpeciesGuess(
+                common_name=plant.species or "Unknown",
+                scientific_name=None,
+                confidence=plant.species_confidence or 0.0,
+            ),
+        )
+
+        result = self._graph.invoke(state, self._config(thread_id))
+
+        if result.get("rejected"):
+            return StartResult(status="rejected", message=result.get("rejection_reason") or "")
+
+        quality = result.get("quality")
+        if quality is not None and not quality.usable:
+            message = quality.guidance or "Please upload a clearer photo."
+            return StartResult(status="retake", message=message)
+
+        return self._final_result(result)
+
+    def _final_result(self, result: dict) -> FinalResult:
         return FinalResult(
             differential=result.get("differential"),
             roadmap=result.get("roadmap"),

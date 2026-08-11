@@ -6,7 +6,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from agent.diagnosis_graph import build_diagnosis_graph
 from agent.schemas import PlantCheck
 from core.guards import UploadRejected
-from services.diagnosis_service import DiagnosisService
+from services.diagnosis_service import DiagnosisService, FinalResult, StartResult
 from tests.fakes.chat_models import ScriptedStructuredModel
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
@@ -201,3 +201,104 @@ def test_the_final_result_exposes_the_tools_that_ran(service):
     )
     final = service.answer({"watering": "daily"}, thread_id="t8")
     assert "search_plant_knowledge" in final.tools_used
+
+
+@pytest.fixture
+def recheck_service(make_deps, tmp_path):
+    def _make(*, gate, vision, chat):
+        from agent.diagnosis_graph import build_diagnosis_graph
+
+        deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
+        graph = build_diagnosis_graph(deps, MemorySaver())
+        return DiagnosisService(deps, graph, upload_dir=tmp_path)
+
+    return _make
+
+
+def test_start_recheck_returns_a_final_result_on_success(
+    recheck_service, sample_plant, sample_images
+):
+    from agent.schemas import (
+        ImageQuality,
+        IPMTier,
+        PlantCheck,
+        ProgressVerdict,
+        Roadmap,
+        RoadmapStep,
+        Severity,
+        Symptom,
+        SymptomPosition,
+        SymptomSet,
+    )
+
+    gate = ScriptedStructuredModel(
+        [
+            PlantCheck(is_plant=True, what_it_is="a basil plant"),
+            ImageQuality(usable=True, problem=None, guidance=None),
+        ]
+    )
+    vision = ScriptedStructuredModel(
+        [
+            SymptomSet(
+                symptoms=[
+                    Symptom(
+                        description="Fewer yellow leaves",
+                        position=SymptomPosition.LOWER_LEAVES,
+                        severity=Severity.MONITOR,
+                    )
+                ],
+                soil_condition="drier",
+                overall_vigor="good",
+            )
+        ]
+    )
+    chat = ScriptedStructuredModel(
+        [
+            ProgressVerdict(verdict="improving", reasoning="Fewer symptoms."),
+            Roadmap(
+                steps=[
+                    RoadmapStep(
+                        ordinal=1,
+                        action="Continue.",
+                        rationale="Working.",
+                        success_signal="No new symptoms.",
+                        tier=IPMTier.CULTURAL,
+                        day_offset=7,
+                    )
+                ]
+            ),
+        ]
+    )
+    service = recheck_service(gate=gate, vision=vision, chat=chat)
+
+    result = service.start_recheck(
+        plant_id=sample_plant,
+        uploads=[PNG],
+        user_notes=None,
+        thread_id="rc1",
+    )
+    assert isinstance(result, FinalResult)
+    assert result.differential is not None
+    assert result.diagnosis_id is not None
+
+
+def test_start_recheck_reports_a_rejection_like_start_does(recheck_service, sample_plant):
+    gate = ScriptedStructuredModel([PlantCheck(is_plant=False, what_it_is="a screenshot")])
+    service = recheck_service(
+        gate=gate, vision=ScriptedStructuredModel([]), chat=ScriptedStructuredModel([])
+    )
+    result = service.start_recheck(
+        plant_id=sample_plant, uploads=[PNG], user_notes=None, thread_id="rc2"
+    )
+    assert isinstance(result, StartResult)
+    assert result.status == "rejected"
+
+
+def test_start_recheck_raises_for_an_unknown_plant(recheck_service):
+    service = recheck_service(
+        gate=ScriptedStructuredModel([]),
+        vision=ScriptedStructuredModel([]),
+        chat=ScriptedStructuredModel([]),
+    )
+    with pytest.raises(ValueError, match="No plant"):
+        service.start_recheck(plant_id=999_999, uploads=[PNG], user_notes=None, thread_id="rc3")
