@@ -132,6 +132,130 @@ def test_feedback_is_not_due_with_no_steps_done(db, now):
     assert _service(db, now).get_plant_detail(plant_id).feedback_due is False
 
 
+def test_feedback_is_not_due_when_only_an_older_diagnosis_has_a_done_step(db, now):
+    """A done step on an OLDER diagnosis must not make feedback due for the latest one.
+
+    Guards against a naive "any step anywhere is done" implementation that ignores
+    which diagnosis a roadmap step belongs to.
+    """
+    from agent.schemas import (
+        Candidate,
+        ContagionAssessment,
+        Differential,
+        IPMTier,
+        Roadmap,
+        RoadmapStep,
+        Severity,
+    )
+    from data.repositories.diagnoses import DiagnosisRepository
+    from data.repositories.observations import ObservationRepository
+    from data.repositories.plants import PlantRepository
+    from data.repositories.roadmap import RoadmapRepository
+
+    def _differential() -> Differential:
+        return Differential(
+            is_healthy=False,
+            reasoning="r",
+            candidates=[
+                Candidate(
+                    disorder_id="d",
+                    name="D",
+                    probability=0.6,
+                    supporting_evidence=["e"],
+                    contradicting_evidence=[],
+                    distinguishing_test="Do the fifteen-character test.",
+                    severity=Severity.MONITOR,
+                    transmissible=False,
+                ),
+                Candidate(
+                    disorder_id="d2",
+                    name="D2",
+                    probability=0.4,
+                    supporting_evidence=["e"],
+                    contradicting_evidence=[],
+                    distinguishing_test="Do another fifteen-char test.",
+                    severity=Severity.MONITOR,
+                    transmissible=False,
+                ),
+            ],
+        )
+
+    plant_id = PlantRepository(db).create(
+        name="Basil",
+        species="Basil",
+        species_confidence=0.9,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+
+    # Older diagnosis, with its one roadmap step marked done.
+    old_obs_id = ObservationRepository(db).create(
+        plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
+    )
+    old_diagnosis_id = DiagnosisRepository(db).create(
+        observation_id=old_obs_id,
+        plant_id=plant_id,
+        differential=_differential(),
+        contagion=ContagionAssessment(at_risk=False, advice="none"),
+        retrieved=[],
+        model="m",
+        now=now(),
+    )
+    old_step_ids = RoadmapRepository(db).create_from_roadmap(
+        diagnosis_id=old_diagnosis_id,
+        plant_id=plant_id,
+        roadmap=Roadmap(
+            steps=[
+                RoadmapStep(
+                    ordinal=1,
+                    action="Wait and observe.",
+                    rationale="It just started.",
+                    success_signal="No change in three days.",
+                    tier=IPMTier.CULTURAL,
+                    day_offset=0,
+                )
+            ]
+        ),
+        now=now(),
+    )
+    RoadmapRepository(db).mark(old_step_ids[0], status="done", now=now())
+
+    # Newer diagnosis, whose own roadmap step is still pending.
+    new_obs_id = ObservationRepository(db).create(
+        plant_id=plant_id, kind="recheck", photo_refs=[], user_notes=None, now=now()
+    )
+    new_diagnosis_id = DiagnosisRepository(db).create(
+        observation_id=new_obs_id,
+        plant_id=plant_id,
+        differential=_differential(),
+        contagion=ContagionAssessment(at_risk=False, advice="none"),
+        retrieved=[],
+        model="m",
+        now=now(),
+    )
+    RoadmapRepository(db).create_from_roadmap(
+        diagnosis_id=new_diagnosis_id,
+        plant_id=plant_id,
+        roadmap=Roadmap(
+            steps=[
+                RoadmapStep(
+                    ordinal=1,
+                    action="Wait and observe again.",
+                    rationale="Re-check after the last treatment.",
+                    success_signal="No change in three days.",
+                    tier=IPMTier.CULTURAL,
+                    day_offset=0,
+                )
+            ]
+        ),
+        now=now(),
+    )
+
+    assert _service(db, now).get_plant_detail(plant_id).feedback_due is False
+
+
 def test_feedback_is_not_due_once_already_given(db, now, sample_plant):
     service = _service(db, now)
     diagnosis_id = service.get_plant_detail(sample_plant).diagnoses[0].id
