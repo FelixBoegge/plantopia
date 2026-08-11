@@ -209,3 +209,37 @@ def test_healthy_result_does_not_claim_no_treatment_plan(monkeypatch, make_deps,
     assert app.session_state["stage"] == "result"
     assert any("looks healthy" in s.value for s in app.success)
     assert not any("No treatment plan was produced" in i.value for i in app.info)
+
+
+def test_thread_id_rotates_after_a_rejection(monkeypatch, make_deps, tmp_path):
+    """A second attempt after a rejection must not resume the abandoned run's
+    checkpoint (U7) — it should look exactly like a first attempt."""
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.diagnosis_graph import build_diagnosis_graph
+    from agent.schemas import PlantCheck
+    from services.diagnosis_service import DiagnosisService
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    gate = ScriptedStructuredModel(
+        [
+            PlantCheck(is_plant=False, what_it_is="a photograph of a person"),
+            PlantCheck(is_plant=False, what_it_is="a screenshot"),
+        ]
+    )
+    deps = make_deps(gate_model=gate)
+    service = DiagnosisService(
+        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
+    )
+    monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
+
+    app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
+    app.run()
+    _submit_intake(app)
+    first_thread = app.session_state["thread_id"]
+    assert app.session_state["stage"] == "upload"
+
+    _submit_intake(app)
+    second_thread = app.session_state["thread_id"]
+
+    assert first_thread != second_thread

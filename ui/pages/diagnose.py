@@ -22,6 +22,14 @@ if "thread_id" not in st.session_state:
 service = bootstrap.get_service()
 
 
+def _rotate_thread() -> None:
+    """Start the next attempt on a fresh thread so an abandoned run's checkpoint
+    (a rejection or a retake) never merges into the retry (U7)."""
+    import uuid
+
+    st.session_state.thread_id = uuid.uuid4().hex
+
+
 def _reset() -> None:
     import uuid
 
@@ -65,8 +73,10 @@ if st.session_state.stage == "upload":
         else:
             if result.status == "rejected":
                 st.error(result.message)
+                _rotate_thread()
             elif result.status == "retake":
                 st.warning(result.message)
+                _rotate_thread()
             else:
                 st.session_state.questions = result.questions
                 st.session_state.species = result.species
