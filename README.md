@@ -187,8 +187,8 @@ Phase 2.
 ## Development
 
 ```bash
-uv run pytest                    # unit + graph + Streamlit AppTest page tests, no network
-uv run pytest -m ui --no-cov     # just the Streamlit AppTest page tests, in isolation
+uv run pytest                    # unit + graph tests, no network, a few seconds
+uv run pytest -m ui --no-cov     # Streamlit AppTest page tests
 uv run pytest --cov              # coverage, gated at 85%
 uv run ruff check . && uv run ruff format .
 ```
