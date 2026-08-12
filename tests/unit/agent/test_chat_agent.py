@@ -47,6 +47,35 @@ def test_the_agent_is_compiled_with_the_checkpointer_it_was_given(make_deps, db,
     assert agent.checkpointer is checkpointer
 
 
+def test_every_tool_gets_a_clean_model_visible_name(make_deps, db, now):
+    """The Python function needs a ``_tool`` suffix to avoid shadowing the imported
+    ``search_plant_knowledge``, but the name the model reads should not carry it —
+    ``@tool`` defaults to the function name unless given one explicitly."""
+    from agent.chat_agent import _make_tools
+
+    plant_id = PlantRepository(db).create(
+        name="Basil",
+        species="Basil",
+        species_confidence=0.9,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    tools, _ = _make_tools(make_deps(), plant_id)
+
+    names = sorted(t.name for t in tools)
+    assert names == [
+        "get_local_weather",
+        "get_plant_journal",
+        "lookup_plant_care_profile",
+        "search_plant_knowledge",
+        "suggest_new_diagnosis",
+        "web_search_plant_info",
+    ]
+    assert not any(name.endswith("_tool") for name in names)
+
+
 def test_the_care_profile_tool_reports_an_unknown_species(make_deps, db, now):
     from agent.chat_agent import _make_tools
 

@@ -125,7 +125,10 @@ def _make_tools(deps: Deps, plant_id: int) -> tuple[list, dict]:
             f"temperature — {low}-{high}C; humidity — {profile.humidity}."
         )
 
-    @tool
+    # Named explicitly: the Python function needs a suffix to avoid shadowing the
+    # imported ``search_plant_knowledge``, but "_tool" has no business showing up in
+    # the tool name the model reads.
+    @tool("search_plant_knowledge")
     def search_plant_knowledge_tool(query: str) -> str:
         """Search the curated disorder knowledge base for information relevant to a
         described symptom or question."""

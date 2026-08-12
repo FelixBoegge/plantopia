@@ -9,9 +9,21 @@ from pathlib import Path
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 # Serialises transaction() across threads sharing one connection (see its docstring).
-# Module-level and unkeyed by connection: the app only ever has one connection alive
-# at a time in practice (one process, one cached DiagnosisService), so one lock is
-# simpler than a per-connection registry and no less correct for that shape.
+#
+# Module-level and unkeyed by connection. As of Phase 2 the app holds three live
+# connections to the same file, not one: get_service, get_plant_service and
+# get_chat_service each open their own. One unkeyed lock is still correct — and now
+# strictly stronger than a per-connection registry would be:
+#
+#   * Within a connection, it provides what the docstring below describes: no thread's
+#     commit()/rollback() lands on another thread's still-open transaction.
+#   * Across connections, it happens to serialise writers too, which SQLite would
+#     otherwise resolve by making the second writer fail with "database is locked"
+#     (there is one write lock per database file, whatever the connection count).
+#
+# The cost is that a write through one connection briefly blocks a write through
+# another. At this scale — a handful of small inserts per user action — that is not
+# worth a per-connection registry to avoid.
 _write_lock = threading.Lock()
 
 

@@ -10,8 +10,7 @@ from collections.abc import Callable
 import streamlit as st
 
 from data.repositories.roadmap import RoadmapStepRecord
-
-_TIER_LABEL = {1: "Cultural", 2: "Mechanical", 3: "Biological", 4: "Chemical"}
+from ui.components._ipm_labels import TIER_LABEL
 
 
 def render_roadmap_checklist(
@@ -30,7 +29,7 @@ def render_roadmap_checklist(
             value=step.status == "done",
             key=f"roadmap_step_{step.id}",
         )
-        st.caption(f"{_TIER_LABEL[int(step.tier)]} · due {step.due_date.strftime('%d %b')}")
+        st.caption(f"{TIER_LABEL[step.tier]} · due {step.due_date.strftime('%d %b')}")
 
         if checked and step.status == "pending":
             on_mark(step.id, "done")

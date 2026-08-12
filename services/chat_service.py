@@ -116,7 +116,12 @@ class ChatService:
         agent, escalation = make_chat_agent(self._deps, plant_id, self._checkpointer)
         config = {"configurable": {"thread_id": self._thread_id(plant_id)}}
         result = agent.invoke({"messages": [{"role": "user", "content": content}]}, config)
-        reply = result["messages"][-1].content
+        # Coerced to str: some providers return content as a list of blocks, which
+        # sqlite3 rejects outright (InterfaceError), and messages.content is NOT NULL —
+        # so an empty or missing reply gets stand-in text rather than a failed insert.
+        reply = str(result["messages"][-1].content or "").strip()
+        if not reply:
+            reply = "(no reply was produced)"
         tool_calls = _extract_tool_calls(result["messages"])
 
         with transaction(self._messages.connection):

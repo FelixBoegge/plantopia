@@ -2,14 +2,8 @@
 
 import streamlit as st
 
-from agent.schemas import IPMTier, Roadmap
-
-_TIER_LABEL = {
-    IPMTier.CULTURAL: "Adjust conditions",
-    IPMTier.MECHANICAL: "Physical treatment",
-    IPMTier.BIOLOGICAL: "Biological control",
-    IPMTier.CHEMICAL: "Chemical treatment",
-}
+from agent.schemas import Roadmap
+from ui.components._ipm_labels import TIER_LABEL
 
 
 def render_roadmap(roadmap: Roadmap | None) -> None:
@@ -25,6 +19,6 @@ def render_roadmap(roadmap: Roadmap | None) -> None:
         due = "today" if step.day_offset == 0 else f"in {step.day_offset} days"
         with st.container(border=True):
             st.markdown(f"**{step.ordinal}. {step.action}**")
-            st.caption(f"{_TIER_LABEL[step.tier]} · {due}")
+            st.caption(f"{TIER_LABEL[step.tier]} · {due}")
             st.markdown(f"*Why:* {step.rationale}")
             st.markdown(f"*You'll know it worked when:* {step.success_signal}")

@@ -271,6 +271,41 @@ def test_extracting_from_a_message_list_with_no_user_turn_is_not_a_crash():
     assert [c["name"] for c in _extract_tool_calls(messages)] == ["get_plant_journal"]
 
 
+def test_a_block_list_reply_is_coerced_to_text(make_deps, db, now):
+    """Some providers return content as a list of blocks rather than a string. sqlite3
+    rejects a list outright (InterfaceError), so the reply is coerced before it reaches
+    the insert."""
+    plant_id = _plant_id(db, now)
+    model = ScriptedToolCallingModel(
+        [AIMessage(content=[{"type": "text", "text": "Yellowing is normal."}])]
+    )
+    deps = make_deps(chat_model=model)
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
+
+    turn = service.send(plant_id, "Is this normal?")
+
+    assert isinstance(turn.reply, str)
+    assert "Yellowing is normal." in turn.reply
+    assert service.history(plant_id)[-1].content == turn.reply
+
+
+def test_an_empty_reply_gets_stand_in_text_not_a_blank_row(make_deps, db, now):
+    """``messages.content`` is NOT NULL, and a blank bubble tells the owner nothing."""
+    plant_id = _plant_id(db, now)
+    model = ScriptedToolCallingModel([AIMessage(content="")])
+    deps = make_deps(chat_model=model)
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
+
+    turn = service.send(plant_id, "Is this normal?")
+
+    assert turn.reply
+    assert service.history(plant_id)[-1].content == turn.reply
+
+
 def test_history_is_empty_before_any_messages(make_deps, db, now):
     plant_id = _plant_id(db, now)
     deps = make_deps()
