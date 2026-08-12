@@ -243,3 +243,40 @@ def test_thread_id_rotates_after_a_rejection(monkeypatch, make_deps, tmp_path):
     second_thread = app.session_state["thread_id"]
 
     assert first_thread != second_thread
+
+
+def test_thread_id_rotates_after_a_retake(monkeypatch, make_deps, tmp_path):
+    """The retake branch of the same rotation (U7). An unusable photo abandons the run
+    just as a rejection does, so the retry must not resume its checkpoint either."""
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.diagnosis_graph import build_diagnosis_graph
+    from agent.schemas import ImageQuality, PlantCheck
+    from services.diagnosis_service import DiagnosisService
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    gate = ScriptedStructuredModel(
+        [
+            PlantCheck(is_plant=True, what_it_is="a potted basil plant"),
+            ImageQuality(usable=False, problem="blurry", guidance="Hold the camera steady."),
+            PlantCheck(is_plant=True, what_it_is="a potted basil plant"),
+            ImageQuality(usable=False, problem="too dark", guidance="Try daylight."),
+        ]
+    )
+    deps = make_deps(gate_model=gate)
+    service = DiagnosisService(
+        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
+    )
+    monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
+
+    app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
+    app.run()
+    _submit_intake(app)
+    first_thread = app.session_state["thread_id"]
+    assert app.warning, "an unusable photo should ask for a retake"
+    assert app.session_state["stage"] == "upload"
+
+    _submit_intake(app)
+    second_thread = app.session_state["thread_id"]
+
+    assert first_thread != second_thread

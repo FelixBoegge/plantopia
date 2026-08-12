@@ -13,14 +13,6 @@ logger = logging.getLogger(__name__)
 
 st.title("🌿 Diagnose a plant")
 
-if "thread_id" not in st.session_state:
-    import uuid
-
-    st.session_state.thread_id = uuid.uuid4().hex
-    st.session_state.stage = "upload"
-
-service = bootstrap.get_service()
-
 
 def _rotate_thread() -> None:
     """Start the next attempt on a fresh thread so an abandoned run's checkpoint
@@ -31,12 +23,21 @@ def _rotate_thread() -> None:
 
 
 def _reset() -> None:
-    import uuid
-
-    st.session_state.thread_id = uuid.uuid4().hex
+    """Send the wizard back to the upload stage for a brand-new plant."""
+    _rotate_thread()
     st.session_state.stage = "upload"
     for key in ("questions", "species", "result"):
         st.session_state.pop(key, None)
+
+
+# Both of the other places that needed a fresh thread id used to inline
+# ``uuid.uuid4().hex`` themselves; they call _rotate_thread() now, so the rotation
+# rule lives in exactly one place.
+if "thread_id" not in st.session_state:
+    _rotate_thread()
+    st.session_state.stage = "upload"
+
+service = bootstrap.get_service()
 
 
 if st.session_state.stage == "upload":

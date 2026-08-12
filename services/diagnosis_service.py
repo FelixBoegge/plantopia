@@ -15,6 +15,7 @@ from agent.deps import Deps
 from agent.schemas import (
     ContagionAssessment,
     Differential,
+    ImageRef,
     Passage,
     Question,
     Roadmap,
@@ -85,14 +86,7 @@ class DiagnosisService:
             ValueError: if the upload count is outside the allowed range.
             UploadRejected: if any upload fails validation.
         """
-        settings = self._deps.settings
-
-        if not uploads:
-            raise ValueError("Please upload at least one photo.")
-        if len(uploads) > settings.max_images_per_observation:
-            raise ValueError(f"Please upload at most {settings.max_images_per_observation} photos.")
-
-        images = [store_upload(data, self._upload_dir, settings) for data in uploads]
+        images = self._prepare_images(uploads)
 
         state = DiagnosisState(
             images=images,
@@ -104,13 +98,9 @@ class DiagnosisService:
 
         result = self._graph.invoke(state, self._config(thread_id))
 
-        if result.get("rejected"):
-            return StartResult(status="rejected", message=result.get("rejection_reason") or "")
-
-        quality = result.get("quality")
-        if quality is not None and not quality.usable:
-            message = quality.guidance or "Please upload a clearer photo."
-            return StartResult(status="retake", message=message)
+        stopped = self._stopped_at_the_guards(result)
+        if stopped is not None:
+            return stopped
 
         interrupts = result.get("__interrupt__") or []
         if not interrupts:
@@ -177,17 +167,11 @@ class DiagnosisService:
             ValueError: if the plant does not exist, or the upload count is outside
                 the allowed range.
         """
-        settings = self._deps.settings
         plant = self._deps.plants.get(plant_id)
         if plant is None:
             raise ValueError(f"No plant with id {plant_id!r}.")
 
-        if not uploads:
-            raise ValueError("Please upload at least one photo.")
-        if len(uploads) > settings.max_images_per_observation:
-            raise ValueError(f"Please upload at most {settings.max_images_per_observation} photos.")
-
-        images = [store_upload(data, self._upload_dir, settings) for data in uploads]
+        images = self._prepare_images(uploads)
 
         state = DiagnosisState(
             images=images,
@@ -214,15 +198,46 @@ class DiagnosisService:
 
         result = self._graph.invoke(state, self._config(thread_id))
 
+        stopped = self._stopped_at_the_guards(result)
+        if stopped is not None:
+            return stopped
+
+        return self._final_result(result)
+
+    def _prepare_images(self, uploads: list[bytes]) -> list[ImageRef]:
+        """Validate the upload count and write the files to disk.
+
+        Shared by ``start`` and ``start_recheck``: both entry points feed the same
+        guards, and a limit enforced in only one of them would be a hole.
+
+        Raises:
+            ValueError: if the upload count is outside the allowed range.
+            UploadRejected: if any upload fails validation.
+        """
+        settings = self._deps.settings
+        if not uploads:
+            raise ValueError("Please upload at least one photo.")
+        if len(uploads) > settings.max_images_per_observation:
+            raise ValueError(f"Please upload at most {settings.max_images_per_observation} photos.")
+        return [store_upload(data, self._upload_dir, settings) for data in uploads]
+
+    @staticmethod
+    def _stopped_at_the_guards(result: dict) -> StartResult | None:
+        """The intake guards' verdict on a finished run, or ``None`` to keep reading it.
+
+        ``guard_input`` and ``quality_check`` are shared by both entry points, so both
+        can end this way; ``None`` means neither guard stopped the run.
+        """
         if result.get("rejected"):
             return StartResult(status="rejected", message=result.get("rejection_reason") or "")
 
         quality = result.get("quality")
         if quality is not None and not quality.usable:
-            message = quality.guidance or "Please upload a clearer photo."
-            return StartResult(status="retake", message=message)
+            return StartResult(
+                status="retake", message=quality.guidance or "Please upload a clearer photo."
+            )
 
-        return self._final_result(result)
+        return None
 
     def _final_result(self, result: dict) -> FinalResult:
         # A ProgressVerdict for a re-check, absent for a first-time diagnosis.

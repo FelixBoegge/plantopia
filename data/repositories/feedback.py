@@ -1,34 +1,19 @@
 """Persistence for treatment-outcome feedback."""
 
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
 DidItHelp = Literal["yes", "no", "unclear", "too_early"]
 
 
-@dataclass(frozen=True, slots=True)
-class FeedbackRecord:
-    id: int
-    diagnosis_id: int
-    rating: int | None
-    did_it_help: DidItHelp | None
-    free_text: str | None
-    created_at: datetime
-
-
-def _to_record(row: sqlite3.Row) -> FeedbackRecord:
-    return FeedbackRecord(
-        id=row["id"],
-        diagnosis_id=row["diagnosis_id"],
-        rating=row["rating"],
-        did_it_help=row["did_it_help"],
-        free_text=row["free_text"],
-        created_at=datetime.fromisoformat(row["created_at"]),
-    )
-
-
+# No ``FeedbackRecord`` dataclass and no ``_to_record`` row mapper here, unlike every
+# other repository in this package: nothing reads a feedback row back into the app. The
+# Plant detail page only needs to know *whether* feedback exists
+# (``exists_for_diagnosis``), and the answers themselves are for the owner to query
+# offline. Both were written speculatively in Phase 2 and never called, so they are gone
+# rather than left as working code nothing exercises — add them back together with the
+# read method that needs them.
 class FeedbackRepository:
     """Reads and writes the ``feedback`` table.
 
