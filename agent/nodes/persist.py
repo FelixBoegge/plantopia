@@ -38,6 +38,15 @@ def make_persist(deps: Deps) -> NodeFn:
                     photo_ref=state.images[0].ref if state.images else None,
                     now=now,
                 )
+            elif state.species_name is not None:
+                # A re-check of a plant that was never identified goes through
+                # identify_plant (see route_after_quality) and can produce a species
+                # here for the first time — persist it back onto the plant record.
+                deps.plants.update_species(
+                    plant_id,
+                    species=state.species_name,
+                    species_confidence=state.species_confidence,
+                )
 
             observation_id = deps.observations.create(
                 plant_id=plant_id,

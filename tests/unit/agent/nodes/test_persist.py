@@ -110,6 +110,50 @@ def test_reuses_an_existing_plant(make_deps, sample_images, db, now):
     assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 1
 
 
+def test_recheck_of_a_never_identified_plant_saves_the_new_species(
+    make_deps, sample_images, db, now
+):
+    from data.repositories.plants import PlantRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Mystery plant",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    deps = make_deps()
+    make_persist(deps)(_state(sample_images, plant_id=plant_id))
+
+    row = db.execute("SELECT * FROM plants WHERE id = ?", (plant_id,)).fetchone()
+    assert row["species"] == "Basil"
+    assert row["species_confidence"] == 0.9
+
+
+def test_recheck_of_an_already_identified_plant_keeps_its_species(
+    make_deps, sample_images, db, now
+):
+    from data.repositories.plants import PlantRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Kitchen basil",
+        species="Basil",
+        species_confidence=0.9,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    deps = make_deps()
+    make_persist(deps)(_state(sample_images, plant_id=plant_id))
+
+    row = db.execute("SELECT * FROM plants WHERE id = ?", (plant_id,)).fetchone()
+    assert row["species"] == "Basil"
+    assert row["species_confidence"] == 0.9
+
+
 def test_writes_an_observation_with_the_photo_refs(make_deps, sample_images, db):
     deps = make_deps()
     result = make_persist(deps)(_state(sample_images))

@@ -88,3 +88,11 @@ class PlantRepository:
 
     def delete(self, plant_id: int) -> None:
         self._conn.execute("DELETE FROM plants WHERE id = ?", (plant_id,))
+
+    def update_species(
+        self, plant_id: int, *, species: str, species_confidence: float | None
+    ) -> None:
+        self._conn.execute(
+            "UPDATE plants SET species = ?, species_confidence = ? WHERE id = ?",
+            (species, species_confidence, plant_id),
+        )

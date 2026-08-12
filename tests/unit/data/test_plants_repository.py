@@ -92,6 +92,48 @@ def test_duplicate_names_are_allowed_and_distinguishable(db, now):
     assert len(repo.list_all()) == 2
 
 
+def test_update_species_changes_species_and_confidence(db, now):
+    repo = PlantRepository(db)
+    plant_id = repo.create(
+        name="Mystery plant",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+
+    repo.update_species(plant_id, species="Monstera deliciosa", species_confidence=0.82)
+
+    plant = repo.get(plant_id)
+    assert plant is not None
+    assert plant.species == "Monstera deliciosa"
+    assert plant.species_confidence == 0.82
+
+
+def test_update_species_leaves_other_fields_untouched(db, now):
+    repo = PlantRepository(db)
+    plant_id = repo.create(
+        name="Mystery plant",
+        species=None,
+        species_confidence=None,
+        location_kind="outdoor",
+        location_text="Berlin balcony",
+        photo_ref="img-3",
+        now=now(),
+    )
+
+    repo.update_species(plant_id, species="Monstera deliciosa", species_confidence=0.82)
+
+    plant = repo.get(plant_id)
+    assert plant is not None
+    assert plant.name == "Mystery plant"
+    assert plant.location_kind == "outdoor"
+    assert plant.location_text == "Berlin balcony"
+    assert plant.photo_ref == "img-3"
+
+
 def test_delete_cascades_to_observations(db, now):
     repo = PlantRepository(db)
     plant_id = repo.create(
