@@ -4,6 +4,8 @@ A ReAct loop (``langchain.agents.create_agent``), not a fixed graph — follow-u
 conversation has no predictable shape, unlike the diagnosis pipeline (PLAN.md §5.1).
 """
 
+from datetime import datetime
+
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 
@@ -111,16 +113,30 @@ def _make_tools(deps: Deps, plant_id: int) -> tuple[list, dict]:
 
     @tool
     def get_plant_journal() -> str:
-        """Read this plant's full observation and diagnosis history."""
+        """Read this plant's full observation, diagnosis, and roadmap history."""
+        observations = deps.observations.list_for_plant(plant_id)
         diagnoses = deps.diagnoses.list_for_plant(plant_id)
-        if not diagnoses:
-            return "No diagnosis history recorded for this plant."
-        lines = [
-            f"- {d.created_at.date()}: "
-            + ("healthy" if d.differential.is_healthy else d.differential.primary.name)
-            for d in diagnoses
-        ]
-        return "\n".join(lines)
+        roadmap_steps = deps.roadmap.list_for_plant(plant_id)
+        if not observations and not diagnoses and not roadmap_steps:
+            return "No history recorded for this plant."
+
+        events: list[tuple[datetime, str]] = []
+        for o in observations:
+            notes = f' — "{o.user_notes}"' if o.user_notes else ""
+            events.append(
+                (o.created_at, f"Observation ({o.kind}, {len(o.photo_refs)} photo(s)){notes}")
+            )
+        for d in diagnoses:
+            outcome = "healthy" if d.differential.is_healthy else d.differential.primary.name
+            events.append((d.created_at, f"Diagnosis: {outcome}"))
+        for s in roadmap_steps:
+            completed = f", completed {s.completed_at.date()}" if s.completed_at else ""
+            events.append(
+                (s.due_date, f"Roadmap step {s.ordinal} ({s.status}{completed}): {s.action}")
+            )
+
+        events.sort(key=lambda event: event[0])
+        return "\n".join(f"- {when.date()}: {text}" for when, text in events)
 
     escalation: dict[str, str] = {}
 

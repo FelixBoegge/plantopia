@@ -64,6 +64,46 @@ def test_the_weather_tool_reports_when_it_cannot_run(make_deps, db, now):
     assert "could not" in weather_tool.invoke({"location": "Berlin"}).lower()
 
 
+def test_the_journal_tool_reports_no_history_for_a_fresh_plant(make_deps, db, now):
+    from agent.chat_agent import _make_tools
+
+    plant_id = PlantRepository(db).create(
+        name="Basil",
+        species="Basil",
+        species_confidence=0.9,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    deps = make_deps()
+    tools, _ = _make_tools(deps, plant_id)
+    journal_tool = next(t for t in tools if t.name == "get_plant_journal")
+    assert "no history" in journal_tool.invoke({}).lower()
+
+
+def test_the_journal_tool_aggregates_observations_diagnoses_and_roadmap_steps(
+    make_deps, db, now, sample_plant
+):
+    """``sample_plant`` seeds one observation, one diagnosis (Overwatering leading,
+    Root rot second), and two roadmap steps — one marked done, one still pending.
+    The journal must surface all three sources, not just diagnoses.
+    """
+    from agent.chat_agent import _make_tools
+
+    deps = make_deps()
+    tools, _ = _make_tools(deps, sample_plant)
+    journal_tool = next(t for t in tools if t.name == "get_plant_journal")
+    journal = journal_tool.invoke({}).lower()
+
+    assert "observation" in journal
+    assert "overwatering" in journal
+    assert "stop watering" in journal
+    assert "repot" in journal
+    assert "done" in journal
+    assert "pending" in journal
+
+
 def test_suggest_new_diagnosis_populates_the_escalation_dict(make_deps, db, now):
     from agent.chat_agent import _make_tools
 
