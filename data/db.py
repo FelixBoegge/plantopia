@@ -18,12 +18,20 @@ SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 #   * Within a connection, it provides what the docstring below describes: no thread's
 #     commit()/rollback() lands on another thread's still-open transaction.
 #   * Across connections, it happens to serialise writers too, which SQLite would
-#     otherwise resolve by making the second writer fail with "database is locked"
-#     (there is one write lock per database file, whatever the connection count).
+#     otherwise resolve itself: sqlite3's default ~5 second busy timeout makes a
+#     competing writer wait first, and only raise "database is locked" if that
+#     timeout is exceeded (there is one write lock per database file, whatever the
+#     connection count). This lock avoids relying on that timeout at all.
 #
 # The cost is that a write through one connection briefly blocks a write through
 # another. At this scale — a handful of small inserts per user action — that is not
 # worth a per-connection registry to avoid.
+#
+# Coverage gap: this only guards writes routed through transaction() below.
+# apply_schema()'s executescript() auto-commits outside it, so schema application on
+# each connection races the others uncovered by this lock. Harmless in practice —
+# applying the schema is idempotent and only ever races other apply_schema() calls at
+# process startup, never against a transaction() write.
 _write_lock = threading.Lock()
 
 
