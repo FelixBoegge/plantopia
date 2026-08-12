@@ -11,6 +11,7 @@ from agent.chat_agent import make_chat_agent
 from agent.deps import Deps
 from data.db import transaction
 from data.repositories.messages import MessageRecord, MessageRepository
+from data.repositories.plants import PlantRecord
 
 # Tool output can be long — four retrieved corpus passages, or a whole journal. The
 # stored summary exists to show the owner what the agent consulted, not to be a second
@@ -96,6 +97,16 @@ class ChatService:
         """The ReAct loop's own scratch thread, distinct from any diagnosis thread
         for the same plant (design spec §5)."""
         return f"chat:{plant_id}"
+
+    def get_plant(self, plant_id: int) -> PlantRecord | None:
+        """The plant's own record, or ``None`` if it no longer exists.
+
+        A single-row lookup for callers that just need the plant (e.g. the Chat
+        page's title) — unlike ``PlantService.get_plant_detail``, which also queries
+        observations, diagnoses, roadmap steps and feedback that such a caller has
+        no use for.
+        """
+        return self._deps.plants.get(plant_id)
 
     def history(self, plant_id: int) -> list[MessageRecord]:
         return self._messages.list_for_plant(plant_id)

@@ -20,14 +20,18 @@ if plant_id is None:
     st.info("Choose a plant from My Plants first.")
     st.stop()
 
-detail = bootstrap.get_plant_service().get_plant_detail(plant_id)
-if detail is None:
+service = bootstrap.get_chat_service()
+
+# A single-row lookup (services.chat_service.ChatService.get_plant) rather than
+# bootstrap.get_plant_service().get_plant_detail(), which also queries observations,
+# diagnoses, roadmap steps and feedback — all wasted just to read the plant's name
+# for the page title.
+plant = service.get_plant(plant_id)
+if plant is None:
     st.error("That plant no longer exists.")
     st.stop()
 
-st.title(f"💬 Chat about {detail.plant.name}")
-
-service = bootstrap.get_chat_service()
+st.title(f"💬 Chat about {plant.name}")
 
 
 def _render_tool_calls(tool_calls: list[dict]) -> None:
