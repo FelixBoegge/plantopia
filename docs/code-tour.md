@@ -1726,4 +1726,113 @@ result past 500 characters — "the stored summary exists to show the owner what
 agent consulted, not to be a second copy of it." `ui/pages/chat.py` renders this list
 in a `st.expander` (§7.5).
 
+### 7.4 Services: the seam re-scoped for a re-check, and a bug about which steps count
+
+§5.2 named `DiagnosisService`'s job: `StartResult`/`FinalResult` are the entire
+vocabulary the UI is allowed to know, so no `Command`, checkpoint config, or
+`__interrupt__` sentinel ever crosses into `ui/`. Phase 2 adds one new entry point,
+`start_recheck`, and it earns that boundary role the same way `start`/`answer` already
+did.
+
+**`start_recheck` seeds state from the plant record instead of asking for it:**
+
+```python
+species=(
+    SpeciesGuess(
+        common_name=plant.species,
+        scientific_name=None,
+        confidence=plant.species_confidence or 0.0,
+    )
+    if plant.species is not None
+    else None
+),
+```
+
+That `if plant.species is not None else None` is the service-side half of §7.2's
+routing fix — the comment right above it in the real file spells out the bug this
+replaced: a placeholder `"Unknown"` species used to satisfy both `identify_plant`'s
+idempotency guard and the router's skip condition, so a never-identified plant could
+never acquire one. Leaving it genuinely `None` is what makes `route_after_quality`
+send the run through `identify_plant` instead.
+
+**Its return type is narrower than `start`'s**, and that narrowing is meaningful, not
+accidental: `StartResult | FinalResult`, with no interrupt case. A re-check never
+pauses (§7.2's `route_after_symptoms`), so by the time `_stopped_at_the_guards` has
+ruled out a rejection or a retake, the graph has already run to completion — there is
+no third branch to handle. `_prepare_images` and `_stopped_at_the_guards` are shared
+`staticmethod`s specifically so this guarantee holds identically for both entry
+points: "a limit enforced in only one of them would be a hole." Thread-id rotation on
+a rejected/retake re-check — the `U7` fix for this second entry point — lives in
+`ui/pages/plant_detail.py`'s `_rotate_recheck_thread`, not here; §7.5 covers it.
+
+**`FinalResult` grew two fields, both purely for rendering:**
+
+```python
+"""``verdict``/``verdict_reasoning`` are flattened off ``ProgressVerdict`` rather than
+carrying the object: both are ``None`` for a first-time diagnosis, where no
+re-check comparison ever ran, and the UI only ever needs the two strings. They are
+render-only — nothing persists them, because nothing needs them after the
+post-submit rerun."""
+```
+
+Flattening to two `str | None` fields rather than passing the `ProgressVerdict` object
+through keeps `FinalResult` a plain data bag the UI can render without importing an
+agent schema — the same reasoning §1.2 gave for `Deps` existing at all: each layer
+should only need to know the vocabulary of the layer directly below it.
+
+**`PlantService` (new in Phase 2) is where a genuine cross-task bug lived**, caught
+only by the whole-branch review because no single task's tests created two diagnoses
+for the same plant. `RoadmapRepository.list_for_plant` returns every step ever
+created — across every diagnosis and every re-check, since a re-check always writes a
+brand-new roadmap (design decision P2-4) rather than editing the old one in place.
+Read unscoped, the Plant detail checklist mixed a superseded plan's steps in with the
+current one, all still tickable, and the pending-step badge on My Plants summed across
+every plan the plant had ever had — climbing monotonically forever instead of
+reflecting the plant's current state:
+
+```python
+def _steps_for_latest_diagnosis(
+    self, plant_id: int, latest_diagnosis: DiagnosisRecord | None
+) -> list[RoadmapStepRecord]:
+    if latest_diagnosis is None:
+        return []
+    return [
+        step
+        for step in self._roadmap.list_for_plant(plant_id)
+        if step.diagnosis_id == latest_diagnosis.id
+    ]
+```
+
+Both `list_plants`'s pending count and `get_plant_detail`'s checklist now call through
+this one helper rather than `list_for_plant` directly — fixing the scoping once,
+centrally, rather than in each of the two call sites. Older steps are not deleted or
+hidden entirely; they stay visible through that diagnosis's own timeline entry (§7.5's
+`timeline.py`), just not as live, tickable checkboxes on a plan that's been replaced.
+Two tests guard the fix directly: `test_the_checklist_shows_only_the_latest_diagnosis_steps`
+and `test_the_pending_count_reflects_only_the_latest_diagnosis` in
+`tests/unit/services/test_plant_service.py`, both requiring two diagnoses on record to
+even construct the scenario the bug needed.
+
+**`feedback_due` composes three conditions**, and the interesting one is the
+scoping this same fix protects it from:
+
+```python
+feedback_due = (
+    latest_diagnosis is not None
+    and not self._feedback.exists_for_diagnosis(latest_diagnosis.id)
+    and any(step.status == "done" for step in roadmap_steps)
+)
+```
+
+`roadmap_steps` here is already the scoped list from `_steps_for_latest_diagnosis` —
+if it weren't, a step completed under an old, superseded plan would keep triggering a
+feedback prompt for a brand-new diagnosis that hasn't had a single step actioned yet.
+`test_feedback_is_not_due_when_only_an_older_diagnosis_has_a_done_step` is the test
+that would fail first if that scoping regressed.
+
+`mark_roadmap_step` and `submit_feedback` are both one-line wrappers around a
+repository write inside `transaction(...)` — `mark_roadmap_step` is also where `M10`'s
+fix (§7.1) actually surfaces to a user: a bad `step_id` now raises instead of
+no-op'ing, right at the point a UI button calls it.
+
 ---
