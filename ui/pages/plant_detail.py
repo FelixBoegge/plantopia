@@ -94,6 +94,7 @@ if st.session_state.get("recheck_result") is not None:
         if result.differential is not None:
             st.write(result.differential.reasoning)
 
+# No extra session state to set: the Chat page reads ``selected_plant_id``, which is
+# what got us onto this page in the first place.
 if st.button("Chat about this plant"):
-    st.session_state.chat_plant_id = plant_id
     st.switch_page("ui/pages/chat.py")
