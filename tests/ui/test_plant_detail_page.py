@@ -211,6 +211,103 @@ def test_submitting_recheck_without_photos_shows_a_friendly_error(app):
     assert any("upload at least one photo" in e.value for e in app.error)
 
 
+def _scripted_gate(outcome: str):
+    """A gate/quality script that fails the same way twice."""
+    from agent.schemas import ImageQuality, PlantCheck
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    if outcome == "rejected":
+        return ScriptedStructuredModel(
+            [
+                PlantCheck(is_plant=False, what_it_is="a photograph of a person"),
+                PlantCheck(is_plant=False, what_it_is="a screenshot"),
+            ]
+        )
+    blurry = ImageQuality(usable=False, problem="too blurry", guidance="Hold the camera still.")
+    return ScriptedStructuredModel(
+        [
+            PlantCheck(is_plant=True, what_it_is="a basil plant"),
+            blurry,
+            PlantCheck(is_plant=True, what_it_is="a basil plant"),
+            blurry,
+        ]
+    )
+
+
+@pytest.mark.parametrize("outcome", ["rejected", "retake"])
+def test_the_recheck_thread_id_rotates_after_a_rejection_or_retake(
+    monkeypatch, make_deps, sample_plant, db, now, tmp_path, outcome
+):
+    """The re-check twin of ``test_thread_id_rotates_after_a_rejection`` in
+    tests/ui/test_diagnose_page.py (U7).
+
+    The wizard rotates a uuid ``thread_id``. The re-check entry point derived its
+    thread id from the plant id and the latest diagnosis id — and neither a rejection
+    nor a retake writes a diagnosis, so both left the id unchanged and the second
+    attempt resumed the abandoned run's checkpoint. Exactly the bug class U7 closed
+    for the wizard, still open here while docs/known-limitations.md called U7 resolved
+    without qualification.
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.diagnosis_graph import build_diagnosis_graph
+    from data.repositories.diagnoses import DiagnosisRepository
+    from data.repositories.feedback import FeedbackRepository
+    from data.repositories.observations import ObservationRepository
+    from data.repositories.plants import PlantRepository
+    from data.repositories.roadmap import RoadmapRepository
+    from services.diagnosis_service import DiagnosisService
+    from services.plant_service import PlantService
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    plant_service = PlantService(
+        plants=PlantRepository(db),
+        observations=ObservationRepository(db),
+        diagnoses=DiagnosisRepository(db),
+        roadmap=RoadmapRepository(db),
+        feedback=FeedbackRepository(db),
+        now=now,
+    )
+    deps = make_deps(
+        gate_model=_scripted_gate(outcome),
+        vision_model=ScriptedStructuredModel([]),
+        chat_model=ScriptedStructuredModel([]),
+    )
+    diagnosis_service = DiagnosisService(
+        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
+    )
+
+    # Record what thread id each attempt actually ran on — the only place the
+    # difference shows, since neither outcome writes anything to the database.
+    threads: list[str] = []
+    start_recheck = diagnosis_service.start_recheck
+
+    def _recording(**kwargs):
+        threads.append(kwargs["thread_id"])
+        return start_recheck(**kwargs)
+
+    diagnosis_service.start_recheck = _recording
+
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: plant_service)
+    monkeypatch.setattr("ui.bootstrap.get_service", lambda: diagnosis_service)
+
+    at = AppTest.from_file(str(_PLANT_DETAIL_PAGE), default_timeout=30)
+    at.session_state["selected_plant_id"] = sample_plant
+    at.run()
+
+    for _ in range(2):
+        next(b for b in at.button if b.label == "Re-check this plant").click().run()
+        at.file_uploader[0].upload("leaf.png", _PNG_BYTES, "image/png")
+        next(b for b in at.button if b.label == "Submit re-check").click().run()
+        assert not at.exception
+
+    assert len(threads) == 2
+    assert threads[0] != threads[1], (
+        f"both {outcome} attempts ran on thread {threads[0]!r} — the second resumed "
+        "the abandoned run's checkpoint"
+    )
+
+
 def test_recheck_result_does_not_leak_to_a_different_plant(app, db, now):
     """``recheck_stage``/``recheck_result`` are bare session-state keys, not scoped
     by plant. Completing a re-check on one plant and then navigating to another

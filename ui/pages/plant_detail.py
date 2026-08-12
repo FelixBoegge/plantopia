@@ -21,6 +21,7 @@ if plant_id is None:
 if st.session_state.get("_recheck_owner_plant_id") != plant_id:
     st.session_state.pop("recheck_stage", None)
     st.session_state.pop("recheck_result", None)
+    st.session_state.pop("recheck_attempt", None)
     st.session_state._recheck_owner_plant_id = plant_id
 
 service = bootstrap.get_plant_service()
@@ -55,6 +56,24 @@ st.subheader("Re-check")
 if "recheck_stage" not in st.session_state:
     st.session_state.recheck_stage = "closed"
 
+
+def _rotate_recheck_thread() -> None:
+    """Start the next re-check attempt on a fresh thread so an abandoned run's
+    checkpoint (a rejection or a retake) never merges into the retry (U7).
+
+    ``ui/pages/diagnose.py``'s ``_rotate_thread()`` rotates a uuid. Here the thread id
+    is derived from the plant and its latest diagnosis, and neither a rejection nor a
+    retake writes a diagnosis — so an attempt counter is the part that has to move.
+    """
+    st.session_state.recheck_attempt = st.session_state.get("recheck_attempt", 0) + 1
+
+
+def _recheck_thread_id() -> str:
+    latest_diagnosis_id = detail.diagnoses[0].id if detail.diagnoses else 0
+    attempt = st.session_state.get("recheck_attempt", 0)
+    return f"recheck-{plant_id}-{latest_diagnosis_id}-{attempt}"
+
+
 if st.session_state.recheck_stage == "closed":
     if st.button("Re-check this plant"):
         st.session_state.recheck_stage = "upload"
@@ -72,13 +91,17 @@ elif st.session_state.recheck_stage == "upload":
                     plant_id=plant_id,
                     uploads=[f.getvalue() for f in uploads or []],
                     user_notes=notes or None,
-                    thread_id=(
-                        f"recheck-{plant_id}-{detail.diagnoses[0].id if detail.diagnoses else 0}"
-                    ),
+                    thread_id=_recheck_thread_id(),
                 )
-        except (UploadRejected, ValueError) as exc:
+        except (UploadRejected, ValueError, RuntimeError) as exc:
+            # RuntimeError is unreachable from start_recheck today (it never has to
+            # report "finished without interrupting" the way start() does), but
+            # diagnose.py catches it around start() and the asymmetry would invite a
+            # traceback the day start_recheck gains such a path.
             st.error(str(exc))
         else:
+            if isinstance(result, StartResult) and result.status in ("rejected", "retake"):
+                _rotate_recheck_thread()
             st.session_state.recheck_result = result
             st.session_state.recheck_stage = "closed"
             st.rerun()
