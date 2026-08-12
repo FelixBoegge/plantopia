@@ -156,16 +156,12 @@ def _render_timeline_script(detail) -> None:
     render_timeline(detail)
 
 
-def test_render_timeline_shows_every_diagnosis():
+def _timeline_plant():
     from datetime import UTC, datetime
 
-    from agent.schemas import Candidate, ContagionAssessment, Differential, Severity
-    from data.repositories.diagnoses import DiagnosisRecord
-    from data.repositories.observations import ObservationRecord
     from data.repositories.plants import PlantRecord
-    from services.plant_service import PlantDetail
 
-    plant = PlantRecord(
+    return PlantRecord(
         id=1,
         name="Basil",
         species="Basil",
@@ -175,17 +171,25 @@ def test_render_timeline_shows_every_diagnosis():
         photo_ref=None,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
-    diagnosis = DiagnosisRecord(
-        id=10,
-        observation_id=1,
+
+
+def _timeline_diagnosis(diagnosis_id: int, observation_id: int, name: str, day: int):
+    from datetime import UTC, datetime
+
+    from agent.schemas import Candidate, ContagionAssessment, Differential, Severity
+    from data.repositories.diagnoses import DiagnosisRecord
+
+    return DiagnosisRecord(
+        id=diagnosis_id,
+        observation_id=observation_id,
         plant_id=1,
         differential=Differential(
             is_healthy=False,
-            reasoning="r",
+            reasoning=f"reasoning for {name}",
             candidates=[
                 Candidate(
                     disorder_id="d1",
-                    name="Overwatering",
+                    name=name,
                     probability=0.7,
                     supporting_evidence=["e"],
                     contradicting_evidence=[],
@@ -209,20 +213,37 @@ def test_render_timeline_shows_every_diagnosis():
         retrieved=[],
         model="m",
         cost_usd=None,
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        created_at=datetime(2026, 1, day, tzinfo=UTC),
     )
-    observation = ObservationRecord(
-        id=1,
+
+
+def _timeline_observation(observation_id: int, kind: str):
+    from datetime import UTC, datetime
+
+    from data.repositories.observations import ObservationRecord
+
+    return ObservationRecord(
+        id=observation_id,
         plant_id=1,
-        kind="initial",
+        kind=kind,
         photo_refs=["img-1"],
         user_notes=None,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
+
+
+def test_render_timeline_shows_every_diagnosis():
+    """Two diagnoses, both rendered — a single-entry timeline could not tell an
+    iterating renderer apart from one that only ever shows the newest."""
+    from services.plant_service import PlantDetail
+
     detail = PlantDetail(
-        plant=plant,
-        observations=[observation],
-        diagnoses=[diagnosis],
+        plant=_timeline_plant(),
+        observations=[_timeline_observation(1, "initial"), _timeline_observation(2, "initial")],
+        diagnoses=[
+            _timeline_diagnosis(11, 2, "Spider mites", day=8),
+            _timeline_diagnosis(10, 1, "Overwatering", day=1),
+        ],
         roadmap_steps=[],
         feedback_due=False,
     )
@@ -231,7 +252,56 @@ def test_render_timeline_shows_every_diagnosis():
     at.run()
 
     assert not at.exception
-    assert any("Overwatering" in m.value for m in at.markdown)
+    markdown = [m.value for m in at.markdown]
+    assert any("Overwatering" in m for m in markdown)
+    assert any("Spider mites" in m for m in markdown)
+
+
+def test_render_timeline_marks_a_recheck_distinctly_from_a_fresh_diagnosis():
+    """``persist`` records kind="recheck" vs "initial" on the observation, and the
+    timeline iterated only over diagnoses — so a re-check's entry looked identical to a
+    brand-new diagnosis and the recorded distinction never reached the owner, even
+    though the chat agent's journal tool already read it."""
+    from services.plant_service import PlantDetail
+    from ui.components.timeline import _RECHECK_MARKER
+
+    detail = PlantDetail(
+        plant=_timeline_plant(),
+        observations=[_timeline_observation(1, "initial"), _timeline_observation(2, "recheck")],
+        diagnoses=[
+            _timeline_diagnosis(11, 2, "Overwatering again", day=8),
+            _timeline_diagnosis(10, 1, "Overwatering", day=1),
+        ],
+        roadmap_steps=[],
+        feedback_due=False,
+    )
+
+    at = AppTest.from_function(_render_timeline_script, args=(detail,))
+    at.run()
+
+    assert not at.exception
+    captions = [c.value for c in at.caption]
+    # Exactly one of the two entries is marked: the one whose observation was a re-check.
+    assert captions.count(_RECHECK_MARKER) == 1
+
+
+def test_render_timeline_marks_nothing_when_every_observation_is_initial():
+    from services.plant_service import PlantDetail
+    from ui.components.timeline import _RECHECK_MARKER
+
+    detail = PlantDetail(
+        plant=_timeline_plant(),
+        observations=[_timeline_observation(1, "initial")],
+        diagnoses=[_timeline_diagnosis(10, 1, "Overwatering", day=1)],
+        roadmap_steps=[],
+        feedback_due=False,
+    )
+
+    at = AppTest.from_function(_render_timeline_script, args=(detail,))
+    at.run()
+
+    assert not at.exception
+    assert _RECHECK_MARKER not in [c.value for c in at.caption]
 
 
 def test_render_timeline_with_no_diagnoses_says_so():
