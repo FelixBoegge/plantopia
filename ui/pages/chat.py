@@ -25,9 +25,23 @@ st.title(f"💬 Chat about {detail.plant.name}")
 
 service = bootstrap.get_chat_service()
 
+
+def _render_tool_calls(tool_calls: list[dict]) -> None:
+    """Show what the agent looked up, collapsed by default (design spec §5)."""
+    with st.expander(f"Tool calls ({len(tool_calls)})"):
+        for call in tool_calls:
+            st.markdown(f"**{call.get('name', 'unknown tool')}**")
+            if call.get("args"):
+                st.caption(", ".join(f"{k}: {v}" for k, v in call["args"].items()))
+            if call.get("result"):
+                st.caption(call["result"])
+
+
 for message in service.history(plant_id):
     with st.chat_message(message.role):
         st.write(message.content)
+        if message.tool_calls:
+            _render_tool_calls(message.tool_calls)
 
 prompt = st.chat_input("Ask about this plant")
 if prompt:

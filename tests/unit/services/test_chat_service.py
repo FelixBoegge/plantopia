@@ -3,6 +3,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
+from agent.schemas import Passage
 from data.db import apply_schema, connect
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.messages import MessageRepository
@@ -135,6 +136,139 @@ def test_send_reports_an_escalation(make_deps, db, now):
 
     assert turn.escalated is True
     assert "flagged" in turn.reply.lower()
+
+
+def test_the_tool_calls_of_a_turn_are_persisted_with_the_reply(make_deps, db, now):
+    """``MessageRecord.tool_calls``, its JSON round-trip, and the ``"tool"`` role were
+    all built in an earlier task and then never written to — ``send`` hardcoded
+    ``tool_calls=None``. Design spec §5 wants the transcript rendered "with tool calls
+    shown collapsibly", which needs them recorded in the first place."""
+    plant_id = _plant_id(db, now)
+    model = ScriptedToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "suggest_new_diagnosis",
+                        "args": {"reason": "new brown spots"},
+                        "id": "call1",
+                    }
+                ],
+            ),
+            AIMessage(content="I've flagged this for a fresh look."),
+        ]
+    )
+    deps = make_deps(chat_model=model)
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
+
+    service.send(plant_id, "There are new brown spots now, not yellowing.")
+
+    assistant = service.history(plant_id)[-1]
+    assert assistant.role == "assistant"
+    assert assistant.tool_calls is not None
+    assert [call["name"] for call in assistant.tool_calls] == ["suggest_new_diagnosis"]
+    assert assistant.tool_calls[0]["args"] == {"reason": "new brown spots"}
+    # The tool's own output is recorded alongside the call, matched by tool_call_id.
+    assert "flagged" in assistant.tool_calls[0]["result"].lower()
+
+
+def test_a_turn_with_no_tool_calls_persists_none(make_deps, db, now):
+    """``None``, not an empty list: ``MessageRepository`` round-trips a falsy value to
+    ``None`` anyway, and the UI keys the collapsible section off "is there anything"."""
+    plant_id = _plant_id(db, now)
+    model = ScriptedToolCallingModel([AIMessage(content="Some yellowing is normal.")])
+    deps = make_deps(chat_model=model)
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
+
+    service.send(plant_id, "Is this normal?")
+
+    assert service.history(plant_id)[-1].tool_calls is None
+
+
+def test_only_this_turns_tool_calls_are_persisted(make_deps, db, now):
+    """Now that the loop has memory, ``result["messages"]`` holds the whole
+    conversation — so a naive sweep of it would re-record every earlier turn's tool
+    calls onto every later reply."""
+    plant_id = _plant_id(db, now)
+    model = ScriptedToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "get_plant_journal", "args": {}, "id": "call1"}],
+            ),
+            AIMessage(content="Nothing on record yet."),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "lookup_plant_care_profile", "args": {"species": "Basil"}, "id": "c2"}
+                ],
+            ),
+            AIMessage(content="Basil wants full sun."),
+        ]
+    )
+    deps = make_deps(chat_model=model)
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
+
+    service.send(plant_id, "What has happened to this plant so far?")
+    service.send(plant_id, "And what does a basil want generally?")
+
+    replies = [m for m in service.history(plant_id) if m.role == "assistant"]
+    assert [call["name"] for call in replies[0].tool_calls] == ["get_plant_journal"]
+    assert [call["name"] for call in replies[1].tool_calls] == ["lookup_plant_care_profile"]
+
+
+def test_a_long_tool_result_is_truncated(make_deps, db, now):
+    """Four retrieved corpus passages or a whole journal can run to thousands of
+    characters. The stored summary shows what the agent consulted; it is not meant to
+    be a second copy of it."""
+    from services.chat_service import _MAX_RESULT_CHARS
+
+    plant_id = _plant_id(db, now)
+    long_text = "x" * (_MAX_RESULT_CHARS * 3)
+    model = ScriptedToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "web_search_plant_info", "args": {"query": "q"}, "id": "c1"}],
+            ),
+            AIMessage(content="Here is what I found."),
+        ]
+    )
+    deps = make_deps(
+        chat_model=model,
+        web_search=lambda query: [
+            Passage(doc_id="web:1", section="body", text=long_text, score=0.5)
+        ],
+    )
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
+
+    service.send(plant_id, "Anything new on this online?")
+
+    stored = service.history(plant_id)[-1].tool_calls[0]["result"]
+    assert len(stored) == _MAX_RESULT_CHARS + 1  # the ellipsis
+    assert stored.endswith("…")
+
+
+def test_extracting_from_a_message_list_with_no_user_turn_is_not_a_crash():
+    """Defensive: ``send`` always puts a HumanMessage in, but the boundary scan should
+    fall back to "the whole list" rather than silently returning nothing if some future
+    caller does not."""
+    from services.chat_service import _extract_tool_calls
+
+    messages = [
+        AIMessage(content="", tool_calls=[{"name": "get_plant_journal", "args": {}, "id": "c1"}]),
+        AIMessage(content="Nothing yet."),
+    ]
+    assert [c["name"] for c in _extract_tool_calls(messages)] == ["get_plant_journal"]
 
 
 def test_history_is_empty_before_any_messages(make_deps, db, now):

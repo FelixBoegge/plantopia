@@ -155,6 +155,45 @@ def test_chat_history_does_not_leak_across_plants(monkeypatch, make_deps, db, no
     assert any("Office pothos" in t.value for t in at.title)
 
 
+def test_persisted_tool_calls_render_collapsibly(monkeypatch, make_deps, db, now):
+    """Design spec §5: "message history rendered with tool calls shown collapsibly"."""
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from data.db import transaction
+    from data.repositories.messages import MessageRepository
+    from services.chat_service import ChatService
+
+    plant_id = _create_plant(db, now, "Basil")
+    messages = MessageRepository(db)
+    with transaction(db):
+        messages.create(
+            plant_id=plant_id,
+            role="assistant",
+            content="Basil wants full sun.",
+            tool_calls=[
+                {
+                    "name": "lookup_plant_care_profile",
+                    "args": {"species": "Basil"},
+                    "result": "Basil: full sun, evenly moist.",
+                }
+            ],
+            now=now(),
+        )
+
+    service = ChatService(deps=make_deps(), messages=messages, checkpointer=MemorySaver(), now=now)
+    monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+
+    at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
+    at.session_state["selected_plant_id"] = plant_id
+    at.run()
+
+    assert not at.exception
+    assert any("Tool calls" in e.label for e in at.expander)
+    assert any("lookup_plant_care_profile" in m.value for m in at.markdown)
+    assert any("full sun" in c.value for c in at.caption)
+
+
 def test_a_plant_that_no_longer_exists_is_reported_not_crashed(monkeypatch, make_deps, db, now):
     from langgraph.checkpoint.memory import MemorySaver
 

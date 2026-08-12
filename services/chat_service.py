@@ -4,12 +4,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agent.chat_agent import make_chat_agent
 from agent.deps import Deps
 from data.db import transaction
 from data.repositories.messages import MessageRecord, MessageRepository
+
+# Tool output can be long — four retrieved corpus passages, or a whole journal. The
+# stored summary exists to show the owner what the agent consulted, not to be a second
+# copy of it.
+_MAX_RESULT_CHARS = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +24,48 @@ class ChatTurn:
 
     reply: str
     escalated: bool
+
+
+def _messages_from_this_turn(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Everything the agent produced after the newest user message.
+
+    ``send`` adds exactly one ``HumanMessage`` per turn, and with a checkpointer wired
+    in ``messages`` is the *whole* conversation — so the last human message is the
+    boundary between this turn's work and every earlier turn's.
+    """
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return list(messages[index + 1 :])
+    return list(messages)
+
+
+def _extract_tool_calls(messages: list[BaseMessage]) -> list[dict] | None:
+    """Summarise the tool calls made during one turn, or ``None`` if there were none.
+
+    An ``AIMessage`` carries the calls the model asked for (name, args, id) and a
+    following ``ToolMessage`` carries each result, tied back by ``tool_call_id``. Both
+    halves are useful to a reader — what the agent looked up, and what came back — so
+    both are recorded, with the result truncated.
+    """
+    turn = _messages_from_this_turn(messages)
+    results = {
+        m.tool_call_id: str(m.content)
+        for m in turn
+        if isinstance(m, ToolMessage) and m.tool_call_id
+    }
+
+    calls: list[dict] = []
+    for message in turn:
+        if not isinstance(message, AIMessage):
+            continue
+        for call in message.tool_calls or []:
+            result = results.get(call.get("id") or "", "")
+            if len(result) > _MAX_RESULT_CHARS:
+                result = result[:_MAX_RESULT_CHARS] + "…"
+            calls.append(
+                {"name": call.get("name", ""), "args": call.get("args") or {}, "result": result}
+            )
+    return calls or None
 
 
 class ChatService:
@@ -69,9 +117,14 @@ class ChatService:
         config = {"configurable": {"thread_id": self._thread_id(plant_id)}}
         result = agent.invoke({"messages": [{"role": "user", "content": content}]}, config)
         reply = result["messages"][-1].content
+        tool_calls = _extract_tool_calls(result["messages"])
 
         with transaction(self._messages.connection):
             self._messages.create(
-                plant_id=plant_id, role="assistant", content=reply, tool_calls=None, now=self._now()
+                plant_id=plant_id,
+                role="assistant",
+                content=reply,
+                tool_calls=tool_calls,
+                now=self._now(),
             )
         return ChatTurn(reply=reply, escalated=bool(escalation))
