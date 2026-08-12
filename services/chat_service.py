@@ -6,6 +6,7 @@ from datetime import datetime
 
 from agent.chat_agent import make_chat_agent
 from agent.deps import Deps
+from data.db import transaction
 from data.repositories.messages import MessageRecord, MessageRepository
 
 
@@ -36,17 +37,25 @@ class ChatService:
         return self._messages.list_for_plant(plant_id)
 
     def send(self, plant_id: int, content: str) -> ChatTurn:
-        """Record the user's message, run the agent, record and return its reply."""
-        self._messages.create(
-            plant_id=plant_id, role="user", content=content, tool_calls=None, now=self._now()
-        )
+        """Record the user's message, run the agent, record and return its reply.
+
+        The user's message and the assistant's reply are committed in separate
+        transactions rather than one spanning the agent invocation: the user's
+        message should stay durable even if the agent call itself fails partway
+        through.
+        """
+        with transaction(self._messages.connection):
+            self._messages.create(
+                plant_id=plant_id, role="user", content=content, tool_calls=None, now=self._now()
+            )
 
         agent, escalation = make_chat_agent(self._deps, plant_id)
         config = {"configurable": {"thread_id": f"chat:{plant_id}"}}
         result = agent.invoke({"messages": [{"role": "user", "content": content}]}, config)
         reply = result["messages"][-1].content
 
-        self._messages.create(
-            plant_id=plant_id, role="assistant", content=reply, tool_calls=None, now=self._now()
-        )
+        with transaction(self._messages.connection):
+            self._messages.create(
+                plant_id=plant_id, role="assistant", content=reply, tool_calls=None, now=self._now()
+            )
         return ChatTurn(reply=reply, escalated=bool(escalation))
