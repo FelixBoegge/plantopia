@@ -57,12 +57,19 @@ class PlantService:
         self._now = now
 
     def list_plants(self) -> list[PlantSummary]:
-        """Every plant, newest first, with its latest diagnosis and pending step count."""
+        """Every plant, newest first, with its latest diagnosis and pending step count.
+
+        The count is scoped to the latest diagnosis's own plan, for the same reason
+        ``get_plant_detail`` scopes the checklist: counting every step ever created
+        made the badge climb monotonically with each re-check.
+        """
         summaries = []
         for plant in self._plants.list_all():
             latest = self._diagnoses.latest_for_plant(plant.id)
             pending = sum(
-                1 for s in self._roadmap.list_for_plant(plant.id) if s.status == "pending"
+                1
+                for s in self._steps_for_latest_diagnosis(plant.id, latest)
+                if s.status == "pending"
             )
             summaries.append(
                 PlantSummary(plant=plant, latest_diagnosis=latest, pending_step_count=pending)
@@ -77,17 +84,13 @@ class PlantService:
 
         observations = self._observations.list_for_plant(plant_id)
         diagnoses_list = self._diagnoses.list_for_plant(plant_id)
-        roadmap_steps = self._roadmap.list_for_plant(plant_id)
         latest_diagnosis = diagnoses_list[0] if diagnoses_list else None
+        roadmap_steps = self._steps_for_latest_diagnosis(plant_id, latest_diagnosis)
 
         feedback_due = (
             latest_diagnosis is not None
             and not self._feedback.exists_for_diagnosis(latest_diagnosis.id)
-            and any(
-                step.status == "done"
-                for step in roadmap_steps
-                if step.diagnosis_id == latest_diagnosis.id
-            )
+            and any(step.status == "done" for step in roadmap_steps)
         )
 
         return PlantDetail(
@@ -97,6 +100,28 @@ class PlantService:
             roadmap_steps=roadmap_steps,
             feedback_due=feedback_due,
         )
+
+    def _steps_for_latest_diagnosis(
+        self, plant_id: int, latest_diagnosis: DiagnosisRecord | None
+    ) -> list[RoadmapStepRecord]:
+        """This plant's current plan only.
+
+        ``RoadmapRepository.list_for_plant`` returns every step ever created for the
+        plant, across every diagnosis and every re-check — and a re-check always writes
+        a whole new roadmap (design decision P2-4). Unscoped, the checklist mixed
+        superseded plans in with the current one, all still tickable, and the pending
+        count summed across all of them.
+
+        Steps from older diagnoses stay in the database untouched; they remain visible
+        through that diagnosis's timeline entry, just not as live checkboxes.
+        """
+        if latest_diagnosis is None:
+            return []
+        return [
+            step
+            for step in self._roadmap.list_for_plant(plant_id)
+            if step.diagnosis_id == latest_diagnosis.id
+        ]
 
     def mark_roadmap_step(self, step_id: int, *, status: StepStatus) -> None:
         """Tick, skip, or reopen a roadmap step."""

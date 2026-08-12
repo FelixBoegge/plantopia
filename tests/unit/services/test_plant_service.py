@@ -132,53 +132,52 @@ def test_feedback_is_not_due_with_no_steps_done(db, now):
     assert _service(db, now).get_plant_detail(plant_id).feedback_due is False
 
 
-def test_feedback_is_not_due_when_only_an_older_diagnosis_has_a_done_step(db, now):
-    """A done step on an OLDER diagnosis must not make feedback due for the latest one.
+def _differential():
+    from agent.schemas import Candidate, Differential, Severity
 
-    Guards against a naive "any step anywhere is done" implementation that ignores
-    which diagnosis a roadmap step belongs to.
-    """
-    from agent.schemas import (
-        Candidate,
-        ContagionAssessment,
-        Differential,
-        IPMTier,
-        Roadmap,
-        RoadmapStep,
-        Severity,
+    return Differential(
+        is_healthy=False,
+        reasoning="r",
+        candidates=[
+            Candidate(
+                disorder_id="d",
+                name="D",
+                probability=0.6,
+                supporting_evidence=["e"],
+                contradicting_evidence=[],
+                distinguishing_test="Do the fifteen-character test.",
+                severity=Severity.MONITOR,
+                transmissible=False,
+            ),
+            Candidate(
+                disorder_id="d2",
+                name="D2",
+                probability=0.4,
+                supporting_evidence=["e"],
+                contradicting_evidence=[],
+                distinguishing_test="Do another fifteen-char test.",
+                severity=Severity.MONITOR,
+                transmissible=False,
+            ),
+        ],
     )
+
+
+def _rechecked_plant(db, now) -> tuple[int, list[int], list[int]]:
+    """A plant that has been through one diagnosis and then one re-check.
+
+    Every re-check writes a new ``diagnoses`` row and a whole new roadmap (design
+    decision P2-4), so this is the ordinary post-re-check shape rather than an edge
+    case. The older plan has two steps (one ticked, one abandoned still-pending); the
+    current plan has one, still pending.
+
+    Returns ``(plant_id, old_step_ids, new_step_ids)``.
+    """
+    from agent.schemas import ContagionAssessment, IPMTier, Roadmap, RoadmapStep
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.observations import ObservationRepository
     from data.repositories.plants import PlantRepository
     from data.repositories.roadmap import RoadmapRepository
-
-    def _differential() -> Differential:
-        return Differential(
-            is_healthy=False,
-            reasoning="r",
-            candidates=[
-                Candidate(
-                    disorder_id="d",
-                    name="D",
-                    probability=0.6,
-                    supporting_evidence=["e"],
-                    contradicting_evidence=[],
-                    distinguishing_test="Do the fifteen-character test.",
-                    severity=Severity.MONITOR,
-                    transmissible=False,
-                ),
-                Candidate(
-                    disorder_id="d2",
-                    name="D2",
-                    probability=0.4,
-                    supporting_evidence=["e"],
-                    contradicting_evidence=[],
-                    distinguishing_test="Do another fifteen-char test.",
-                    severity=Severity.MONITOR,
-                    transmissible=False,
-                ),
-            ],
-        )
 
     plant_id = PlantRepository(db).create(
         name="Basil",
@@ -190,70 +189,104 @@ def test_feedback_is_not_due_when_only_an_older_diagnosis_has_a_done_step(db, no
         now=now(),
     )
 
-    # Older diagnosis, with its one roadmap step marked done.
-    old_obs_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
-    )
-    old_diagnosis_id = DiagnosisRepository(db).create(
-        observation_id=old_obs_id,
-        plant_id=plant_id,
-        differential=_differential(),
-        contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[],
-        model="m",
-        now=now(),
-    )
+    def _diagnose(kind: str) -> int:
+        observation_id = ObservationRepository(db).create(
+            plant_id=plant_id, kind=kind, photo_refs=[], user_notes=None, now=now()
+        )
+        return DiagnosisRepository(db).create(
+            observation_id=observation_id,
+            plant_id=plant_id,
+            differential=_differential(),
+            contagion=ContagionAssessment(at_risk=False, advice="none"),
+            retrieved=[],
+            model="m",
+            now=now(),
+        )
+
+    def _step(ordinal: int, action: str) -> RoadmapStep:
+        return RoadmapStep(
+            ordinal=ordinal,
+            action=action,
+            rationale="Re-check after the last treatment.",
+            success_signal="No change in three days.",
+            tier=IPMTier.CULTURAL,
+            day_offset=0,
+        )
+
+    old_diagnosis_id = _diagnose("initial")
     old_step_ids = RoadmapRepository(db).create_from_roadmap(
         diagnosis_id=old_diagnosis_id,
         plant_id=plant_id,
         roadmap=Roadmap(
-            steps=[
-                RoadmapStep(
-                    ordinal=1,
-                    action="Wait and observe.",
-                    rationale="It just started.",
-                    success_signal="No change in three days.",
-                    tier=IPMTier.CULTURAL,
-                    day_offset=0,
-                )
-            ]
+            steps=[_step(1, "Wait and observe."), _step(2, "Move it into more light.")]
         ),
         now=now(),
     )
     RoadmapRepository(db).mark(old_step_ids[0], status="done", now=now())
 
-    # Newer diagnosis, whose own roadmap step is still pending.
-    new_obs_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="recheck", photo_refs=[], user_notes=None, now=now()
-    )
-    new_diagnosis_id = DiagnosisRepository(db).create(
-        observation_id=new_obs_id,
-        plant_id=plant_id,
-        differential=_differential(),
-        contagion=ContagionAssessment(at_risk=False, advice="none"),
-        retrieved=[],
-        model="m",
-        now=now(),
-    )
-    RoadmapRepository(db).create_from_roadmap(
+    new_diagnosis_id = _diagnose("recheck")
+    new_step_ids = RoadmapRepository(db).create_from_roadmap(
         diagnosis_id=new_diagnosis_id,
         plant_id=plant_id,
-        roadmap=Roadmap(
-            steps=[
-                RoadmapStep(
-                    ordinal=1,
-                    action="Wait and observe again.",
-                    rationale="Re-check after the last treatment.",
-                    success_signal="No change in three days.",
-                    tier=IPMTier.CULTURAL,
-                    day_offset=0,
-                )
-            ]
-        ),
+        roadmap=Roadmap(steps=[_step(1, "Wait and observe again.")]),
         now=now(),
     )
+    return plant_id, old_step_ids, new_step_ids
 
+
+def test_feedback_is_not_due_when_only_an_older_diagnosis_has_a_done_step(db, now):
+    """A done step on an OLDER diagnosis must not make feedback due for the latest one.
+
+    Guards against a naive "any step anywhere is done" implementation that ignores
+    which diagnosis a roadmap step belongs to.
+    """
+    plant_id, _, _ = _rechecked_plant(db, now)
     assert _service(db, now).get_plant_detail(plant_id).feedback_due is False
+
+
+def test_the_checklist_shows_only_the_latest_diagnosis_steps(db, now):
+    """Every re-check writes a whole new roadmap (P2-4). Feeding the checklist every
+    step ever created for the plant left superseded plans mixed in with the current
+    one, all still tickable — so the owner could tick a step from a plan that had
+    already been replaced, and the list only ever grew."""
+    plant_id, old_step_ids, new_step_ids = _rechecked_plant(db, now)
+
+    steps = _service(db, now).get_plant_detail(plant_id).roadmap_steps
+
+    assert [s.id for s in steps] == new_step_ids
+    assert not set(old_step_ids) & {s.id for s in steps}
+
+
+def test_the_pending_count_reflects_only_the_latest_diagnosis(db, now):
+    """The My Plants badge counted pending steps across every diagnosis ever, so it
+    climbed monotonically with each re-check. Here the superseded plan leaves one
+    pending step behind and the current plan has one: the badge must read 1, not 2."""
+    plant_id, _, _ = _rechecked_plant(db, now)
+
+    summary = next(s for s in _service(db, now).list_plants() if s.plant.id == plant_id)
+
+    assert summary.pending_step_count == 1
+
+
+def test_a_plant_with_no_diagnoses_has_no_steps_and_no_pending_count(db, now):
+    """The latest-diagnosis filter must degrade to "nothing", not raise, for a plant
+    that has never been diagnosed."""
+    from data.repositories.plants import PlantRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Brand new",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    service = _service(db, now)
+
+    assert service.get_plant_detail(plant_id).roadmap_steps == []
+    summary = next(s for s in service.list_plants() if s.plant.id == plant_id)
+    assert summary.pending_step_count == 0
 
 
 def test_feedback_is_not_due_once_already_given(db, now, sample_plant):
