@@ -2,6 +2,7 @@
 
 import streamlit as st
 
+from core.guards import UploadRejected
 from services.diagnosis_service import FinalResult, StartResult
 from ui import bootstrap
 from ui.components.feedback import render_feedback_prompt
@@ -12,6 +13,15 @@ plant_id = st.session_state.get("selected_plant_id")
 if plant_id is None:
     st.info("Choose a plant from My Plants first.")
     st.stop()
+
+# The re-check keys below are bare session-state keys, not scoped by plant. Without
+# this reset, finishing a re-check on one plant and then navigating (within the same
+# session) to a different plant would carry the first plant's stale recheck_stage /
+# recheck_result over onto the second plant's page.
+if st.session_state.get("_recheck_owner_plant_id") != plant_id:
+    st.session_state.pop("recheck_stage", None)
+    st.session_state.pop("recheck_result", None)
+    st.session_state._recheck_owner_plant_id = plant_id
 
 service = bootstrap.get_plant_service()
 detail = service.get_plant_detail(plant_id)
@@ -56,15 +66,22 @@ elif st.session_state.recheck_stage == "upload":
     notes = st.text_area("Anything else worth noting? (optional)", key="recheck_notes")
     if st.button("Submit re-check"):
         diagnosis_service = bootstrap.get_service()
-        result = diagnosis_service.start_recheck(
-            plant_id=plant_id,
-            uploads=[f.getvalue() for f in uploads or []],
-            user_notes=notes or None,
-            thread_id=f"recheck-{plant_id}-{detail.diagnoses[0].id if detail.diagnoses else 0}",
-        )
-        st.session_state.recheck_result = result
-        st.session_state.recheck_stage = "closed"
-        st.rerun()
+        try:
+            with st.spinner("Looking at your photos…"):
+                result = diagnosis_service.start_recheck(
+                    plant_id=plant_id,
+                    uploads=[f.getvalue() for f in uploads or []],
+                    user_notes=notes or None,
+                    thread_id=(
+                        f"recheck-{plant_id}-{detail.diagnoses[0].id if detail.diagnoses else 0}"
+                    ),
+                )
+        except (UploadRejected, ValueError) as exc:
+            st.error(str(exc))
+        else:
+            st.session_state.recheck_result = result
+            st.session_state.recheck_stage = "closed"
+            st.rerun()
 
 if st.session_state.get("recheck_result") is not None:
     result = st.session_state.recheck_result

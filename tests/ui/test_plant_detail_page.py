@@ -186,3 +186,47 @@ def test_completing_a_recheck_shows_the_verdict_free_result(app):
     # and raises KeyError. Use "in" plus bracket access instead.
     assert "recheck_result" in app.session_state
     assert app.session_state["recheck_result"] is not None
+
+
+def test_submitting_recheck_without_photos_shows_a_friendly_error(app):
+    """``start_recheck`` raises ``ValueError`` for an empty upload list. Before this
+    fix, "Submit re-check" was clickable with no file chosen (it isn't inside an
+    ``st.form``, so there's no built-in guard), and the page let that ``ValueError``
+    surface as a raw, unhandled exception instead of a friendly error."""
+    app.run()
+    next(b for b in app.button if b.label == "Re-check this plant").click().run()
+
+    next(b for b in app.button if b.label == "Submit re-check").click().run()
+
+    assert not app.exception
+    assert any("upload at least one photo" in e.value for e in app.error)
+
+
+def test_recheck_result_does_not_leak_to_a_different_plant(app, db, now):
+    """``recheck_stage``/``recheck_result`` are bare session-state keys, not scoped
+    by plant. Completing a re-check on one plant and then navigating to another
+    (still within the same Streamlit session) must not carry the first plant's
+    stale re-check result over onto the second plant's page."""
+    app.run()
+    next(b for b in app.button if b.label == "Re-check this plant").click().run()
+    app.file_uploader[0].upload("leaf.png", _PNG_BYTES, "image/png")
+    next(b for b in app.button if b.label == "Submit re-check").click().run()
+    assert app.session_state["recheck_result"] is not None
+
+    from data.repositories.plants import PlantRepository
+
+    other_plant_id = PlantRepository(db).create(
+        name="Office pothos",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    app.session_state["selected_plant_id"] = other_plant_id
+    app.run()
+
+    assert not app.exception
+    assert "recheck_result" not in app.session_state
+    assert not any("Re-check complete" in s.value for s in app.success)
