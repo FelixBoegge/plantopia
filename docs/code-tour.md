@@ -1835,4 +1835,110 @@ repository write inside `transaction(...)` — `mark_roadmap_step` is also where
 fix (§7.1) actually surfaces to a user: a bad `step_id` now raises instead of
 no-op'ing, right at the point a UI button calls it.
 
+### 7.5 The UI: three pages, five components, and one shared reset
+
+`ui/bootstrap.py` gains two more factories alongside `get_service()` (§5.1),
+following the exact same shape: `get_plant_service()` and `get_chat_service()` each
+open their own connection to the same database file and cache the result
+process-wide. This is the concrete site of §7.1's "three live connections" comment —
+reading it there first is worth doing before this section, because it's the reason a
+write through one service and a read through another can never race incorrectly.
+
+**My Plants** (`ui/pages/my_plants.py`) is the simplest page in the phase — a grid of
+`st.container(border=True)` cards, one `PlantSummary` each, showing a health badge
+(⚠️ the primary candidate's name, 🟢 "Healthy", or "No diagnosis yet") and a pending-step
+caption sourced straight from §7.4's scoped count. Clicking "View" does the one thing
+every page in this phase agrees on as the shared contract: it sets
+`st.session_state.selected_plant_id` and calls `st.switch_page`. Plant detail and Chat
+both read that same key rather than accepting a parameter, which is what lets Chat be
+reachable directly from the sidebar (not only via Plant detail's button) without
+losing track of which plant it's for.
+
+**Plant detail** (`ui/pages/plant_detail.py`) is the largest page, composing
+`render_timeline`, `render_roadmap_checklist`, `render_feedback_prompt` (only when
+`detail.feedback_due`), and its own small re-check wizard — a two-stage state machine
+(`"closed"` / `"upload"`) simpler than `diagnose.py`'s because a re-check never
+interrupts (§7.2, §7.4). Three details are worth slowing down for:
+
+- **Thread-id rotation is this entry point's own `U7` fix**, separate from the
+  wizard's. `diagnose.py` rotates a `uuid`; a re-check instead derives its thread id
+  from the plant and its latest diagnosis (`f"recheck-{plant_id}-{latest_diagnosis_id}-{attempt}"`)
+  because neither a rejection nor a retake writes a new diagnosis — so without an
+  explicit `recheck_attempt` counter incremented by `_rotate_recheck_thread()`, that
+  id would never change between attempts and a retry would resume the abandoned run's
+  checkpoint. This was found by the *whole-branch* review, not the task review for
+  this page — the wizard's fix looked complete in isolation, and only reading both
+  entry points side by side surfaced that the second one had the identical bug in a
+  different shape.
+- **A cross-plant leak, closed by the ownership marker at the top of the file:**
+  `recheck_stage`/`recheck_result`/`recheck_attempt` are bare session-state keys, not
+  scoped by plant id. `_recheck_owner_plant_id` records which plant they currently
+  belong to, and a mismatch on arrival clears them via `ui/components/_recheck_state.py`
+  — otherwise finishing a re-check on one plant and navigating to another, in the same
+  browser session, would show the first plant's stale re-check result on the second
+  plant's page.
+- **The verdict renders with its underscore spaced out**, `result.verdict.replace('_',
+  ' ')` — deliberately not mapped through a lookup table of nicer prose, matching how
+  the README already describes the four verdicts (`improving`/`static`/`worsening`/
+  `new_problem`) rather than inventing a second vocabulary for the same four words.
+
+**Chat** (`ui/pages/chat.py`) renders history from `service.history(plant_id)`,
+showing each message's tool calls (if any) in a collapsed `st.expander` — §7.3's
+`_extract_tool_calls` output, one call per line with its name, args, and truncated
+result. The escalation handoff is the one piece of real cross-page state design in
+this phase: `_ESCALATION_KEY` is scoped by plant id
+(`"chat_escalation_plant_id"` → the plant it fired for, not a bare boolean), re-checked
+every turn so an escalation offer disappears the moment a later answer no longer
+warrants it, and its "Upload a new photo" button primes *three* of Plant detail's own
+session-state keys before switching pages — `selected_plant_id`, `recheck_stage`, and
+the `_recheck_owner_plant_id` marker — so Plant detail opens already at its upload
+form instead of behind its "Re-check this plant" button. It calls the same
+`clear_recheck_state()` Plant detail uses for the cross-plant leak above, for a
+concrete, previously-real reason spelled out in `_recheck_state.py`'s own docstring:
+an earlier version of this handoff popped `recheck_result` but not `recheck_attempt`,
+leaving a stale attempt counter for the next reset to trip over. Centralising the key
+list in one file is what makes that class of drift structurally harder to reintroduce.
+
+**Five components**, three of them new:
+
+- `timeline.py` marks a re-check entry with a `🔁 Re-check` caption by correlating
+  `diagnosis.observation_id` back to `detail.observations` — `persist` (§7.1) records
+  `kind="recheck"` on the *observation*, not the diagnosis, so rendering the
+  distinction requires joining the two lists the page already has in memory rather
+  than adding a redundant column.
+- `roadmap_checklist.py` now imports `TIER_LABEL` from the new
+  `ui/components/_ipm_labels.py` instead of keeping its own copy — `roadmap.py`
+  (Phase 1's read-only render of a fresh `Roadmap`) had one too, keyed differently
+  (`IPMTier` vs `int`). `IPMTier` being an `IntEnum` is what let one dict, keyed by
+  the enum, serve both call sites without a second copy or a conversion.
+- `feedback.py` collects a real star rating via `st.feedback("stars")` (0-based,
+  shifted by one to satisfy the `CHECK (rating BETWEEN 1 AND 5)` column constraint)
+  and gives its yes/no/unclear/too_early radio a real accessibility label, hidden
+  visually under the subheader above it rather than left empty.
+- `_recheck_state.py` and `_ipm_labels.py` are the two underscore-prefixed,
+  page-external modules in this phase — not components that render anything
+  themselves, but shared constants/helpers two independent pages or components would
+  otherwise have kept drifting copies of.
+
+**The build/config tail, for completeness:** `pyproject.toml` picked up two changes —
+`[tool.coverage.run] omit` now excludes `ui/pages/*` and `ui/components/*` alongside
+`ui/bootstrap.py`, which is `M1`'s resolution (§4.5): these files are genuinely tested,
+just under the `ui` pytest marker rather than the gated default run, and a marker
+folded into the default run turned out to be a structural dead end (deselected tests
+cannot move a coverage number the default run doesn't execute them under — tried and
+reverted before landing on the `omit` extension instead). `[tool.ruff] extend-exclude
+= ["*.md"]` stops `ruff format` from rewriting fenced Python code blocks embedded in
+plan and spec documents, discovered the hard way when an early task left three
+markdown files full of pure whitespace diffs. `.gitignore` gained a second checkpoint
+pattern, `data/plantopia.db.chat-checkpoints*`, once the chat agent's own `SqliteSaver`
+file (§7.1, §7.3) started showing up as untracked — the original single pattern only
+matched the diagnosis graph's `.checkpoints` suffix.
+
+This closes the Phase 2 tour. Between §7.1 and §7.5, every new or changed file this
+phase touched has been walked at least once — the data layer, the graph extension, the
+chat agent, the two orchestration services, and the UI surface that makes all of it
+visible — along with three real bugs the review process caught (chat memory, message
+durability, roadmap-checklist scoping) and the tests written specifically to keep each
+one from coming back.
+
 ---
