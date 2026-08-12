@@ -8,6 +8,8 @@ from datetime import datetime
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.graph.state import CompiledStateGraph
 
 from agent.deps import Deps
 from tools.knowledge import search_plant_knowledge
@@ -26,11 +28,21 @@ conversation alone — a text description cannot substitute for looking at the
 plant."""
 
 
-def make_chat_agent(deps: Deps, plant_id: int) -> tuple:
+def make_chat_agent(
+    deps: Deps, plant_id: int, checkpointer: BaseCheckpointSaver
+) -> tuple[CompiledStateGraph, dict[str, str]]:
     """Build a ReAct agent scoped to one plant.
 
+    Args:
+        deps: Everything the tools need from the outside world.
+        plant_id: The plant this conversation is about.
+        checkpointer: Where the ReAct loop's own message state lives. Required, not
+            optional: a graph compiled without one silently ignores ``thread_id``,
+            so every turn would arrive as turn one and the agent would remember
+            nothing said earlier in the same conversation (design spec §5).
+
     Returns:
-        A ``(agent, escalation)`` pair. ``escalation`` is a dict that
+        An ``(agent, escalation)`` pair. ``escalation`` is a dict that
         ``suggest_new_diagnosis`` populates with a ``"reason"`` key if the agent
         calls it during the run that follows; empty otherwise.
 
@@ -59,7 +71,12 @@ def make_chat_agent(deps: Deps, plant_id: int) -> tuple:
     )
 
     tools, escalation = _make_tools(deps, plant_id)
-    agent = create_agent(deps.chat_model, tools=tools, system_prompt=system_prompt)
+    agent = create_agent(
+        deps.chat_model,
+        tools=tools,
+        system_prompt=system_prompt,
+        checkpointer=checkpointer,
+    )
     return agent, escalation
 
 

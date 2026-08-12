@@ -67,12 +67,17 @@ class ScriptedToolCallingModel(BaseChatModel):
     raises ``NotImplementedError``, which is fatal the moment a tool-calling agent
     actually runs. Responses are queued ``AIMessage`` objects, which may carry
     ``tool_calls`` to script a multi-step ReAct loop.
+
+    ``prompts`` records the full message list handed to the model on every call, so
+    a test can assert on what the agent actually remembered between turns — a
+    checkpointer-less loop only ever passes the single newest message.
     """
 
     responses: list[AIMessage]
+    prompts: list[list[BaseMessage]] = []
 
     def __init__(self, responses: Sequence[AIMessage], **kwargs: Any) -> None:
-        super().__init__(responses=list(responses), **kwargs)
+        super().__init__(responses=list(responses), prompts=[], **kwargs)
 
     @property
     def _llm_type(self) -> str:
@@ -85,6 +90,7 @@ class ScriptedToolCallingModel(BaseChatModel):
 
     def _generate(self, messages: list[BaseMessage], **kwargs: Any) -> ChatResult:
         assert self.responses, "script exhausted: the model was called more times than scripted"
+        self.prompts.append(list(messages))
         message = self.responses.pop(0)
         return ChatResult(generations=[ChatGeneration(message=message)])
 

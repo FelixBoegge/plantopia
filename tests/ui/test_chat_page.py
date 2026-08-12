@@ -13,6 +13,7 @@ _CHAT_PAGE = Path(__file__).resolve().parent.parent.parent / "ui" / "pages" / "c
 @pytest.fixture
 def app(monkeypatch, make_deps, db, now):
     from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import MemorySaver
 
     from data.repositories.messages import MessageRepository
     from data.repositories.plants import PlantRepository
@@ -32,7 +33,9 @@ def app(monkeypatch, make_deps, db, now):
         [AIMessage(content="Some yellowing on lower leaves is normal.")]
     )
     deps = make_deps(chat_model=model)
-    service = ChatService(deps=deps, messages=MessageRepository(db), now=now)
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
@@ -46,11 +49,15 @@ def test_page_renders_without_exception(app):
 
 
 def test_shows_a_prompt_when_no_plant_is_selected(monkeypatch, make_deps, db, now):
+    from langgraph.checkpoint.memory import MemorySaver
+
     from data.repositories.messages import MessageRepository
     from services.chat_service import ChatService
 
     deps = make_deps()
-    service = ChatService(deps=deps, messages=MessageRepository(db), now=now)
+    service = ChatService(
+        deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+    )
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)

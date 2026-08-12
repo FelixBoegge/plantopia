@@ -133,15 +133,23 @@ def get_chat_service() -> ChatService:
     Reuses ``get_service()``'s ``Deps`` (same models, same repositories) rather than
     constructing a second one — the chat agent's tools are read-only wrappers over
     exactly what the diagnosis pipeline already has.
+
+    The ReAct loop gets its own ``SqliteSaver`` file rather than sharing the
+    diagnosis graph's. Thread ids alone would keep the two apart (``chat:{id}`` vs
+    the wizard's uuid/``recheck-…`` threads), but the diagnosis checkpoint file grows
+    by ~100 MB per run (M15) because graph state carries whole images, and a chat
+    transcript has no business sharing a file that gets pruned on that schedule.
     """
     from datetime import UTC, datetime
 
     settings = get_settings()
     conn = connect(settings.db_path)
+    apply_schema(conn)
 
     service = get_service()
     return ChatService(
         deps=service._deps,
         messages=MessageRepository(conn),
+        checkpointer=SqliteSaver(connect(Path(str(settings.db_path) + ".chat-checkpoints"))),
         now=lambda: datetime.now(tz=UTC),
     )

@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
 from agent.chat_agent import make_chat_agent
 from agent.deps import Deps
 from data.db import transaction
@@ -23,15 +25,29 @@ class ChatService:
 
     A fresh agent is built per ``send`` call rather than cached per plant: the
     system prompt bakes in the plant's latest diagnosis, and caching it would let
-    that go stale the moment a re-check completes between messages.
+    that go stale the moment a re-check completes between messages. Conversation
+    memory survives that rebuild because it lives in the checkpointer, keyed by
+    thread id, not in the agent object.
     """
 
     def __init__(
-        self, *, deps: Deps, messages: MessageRepository, now: Callable[[], datetime]
+        self,
+        *,
+        deps: Deps,
+        messages: MessageRepository,
+        checkpointer: BaseCheckpointSaver,
+        now: Callable[[], datetime],
     ) -> None:
         self._deps = deps
         self._messages = messages
+        self._checkpointer = checkpointer
         self._now = now
+
+    @staticmethod
+    def _thread_id(plant_id: int) -> str:
+        """The ReAct loop's own scratch thread, distinct from any diagnosis thread
+        for the same plant (design spec §5)."""
+        return f"chat:{plant_id}"
 
     def history(self, plant_id: int) -> list[MessageRecord]:
         return self._messages.list_for_plant(plant_id)
@@ -49,8 +65,8 @@ class ChatService:
                 plant_id=plant_id, role="user", content=content, tool_calls=None, now=self._now()
             )
 
-        agent, escalation = make_chat_agent(self._deps, plant_id)
-        config = {"configurable": {"thread_id": f"chat:{plant_id}"}}
+        agent, escalation = make_chat_agent(self._deps, plant_id, self._checkpointer)
+        config = {"configurable": {"thread_id": self._thread_id(plant_id)}}
         result = agent.invoke({"messages": [{"role": "user", "content": content}]}, config)
         reply = result["messages"][-1].content
 

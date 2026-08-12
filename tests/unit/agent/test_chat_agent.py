@@ -1,6 +1,7 @@
 """Tests for the plant-scoped chat agent's tool wrapping and prompt construction."""
 
 import pytest
+from langgraph.checkpoint.memory import MemorySaver
 
 from agent.chat_agent import make_chat_agent
 from data.repositories.plants import PlantRepository
@@ -9,7 +10,7 @@ from data.repositories.plants import PlantRepository
 def test_raises_for_an_unknown_plant(make_deps, db):
     deps = make_deps()
     with pytest.raises(ValueError, match="No plant"):
-        make_chat_agent(deps, plant_id=999_999)
+        make_chat_agent(deps, 999_999, MemorySaver())
 
 
 def test_builds_an_agent_for_a_known_plant(make_deps, db, now):
@@ -23,9 +24,27 @@ def test_builds_an_agent_for_a_known_plant(make_deps, db, now):
         now=now(),
     )
     deps = make_deps()
-    agent, escalation = make_chat_agent(deps, plant_id=plant_id)
+    agent, escalation = make_chat_agent(deps, plant_id, MemorySaver())
     assert agent is not None
     assert escalation == {}
+
+
+def test_the_agent_is_compiled_with_the_checkpointer_it_was_given(make_deps, db, now):
+    """A ``create_agent`` graph compiled without a checkpointer silently ignores
+    ``thread_id``, which is exactly how the chat loop lost its memory. Assert the
+    compiled graph actually holds one rather than trusting the call site."""
+    plant_id = PlantRepository(db).create(
+        name="Basil",
+        species="Basil",
+        species_confidence=0.9,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    checkpointer = MemorySaver()
+    agent, _ = make_chat_agent(make_deps(), plant_id, checkpointer)
+    assert agent.checkpointer is checkpointer
 
 
 def test_the_care_profile_tool_reports_an_unknown_species(make_deps, db, now):
