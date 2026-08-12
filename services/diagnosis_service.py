@@ -38,7 +38,14 @@ class StartResult:
 
 @dataclass(frozen=True, slots=True)
 class FinalResult:
-    """A completed diagnosis, ready to render."""
+    """A completed diagnosis, ready to render.
+
+    ``verdict``/``verdict_reasoning`` are flattened off ``ProgressVerdict`` rather than
+    carrying the object: both are ``None`` for a first-time diagnosis, where no
+    re-check comparison ever ran, and the UI only ever needs the two strings. They are
+    render-only — nothing persists them, because nothing needs them after the
+    post-submit rerun.
+    """
 
     differential: Differential | None
     roadmap: Roadmap | None
@@ -50,6 +57,8 @@ class FinalResult:
     visual_matches: list[Passage]
     tools_used: list[str]
     errors: list[str]
+    verdict: str | None = None
+    verdict_reasoning: str | None = None
 
 
 class DiagnosisService:
@@ -207,6 +216,8 @@ class DiagnosisService:
         return self._final_result(result)
 
     def _final_result(self, result: dict) -> FinalResult:
+        # A ProgressVerdict for a re-check, absent for a first-time diagnosis.
+        verdict = result.get("verdict")
         return FinalResult(
             differential=result.get("differential"),
             roadmap=result.get("roadmap"),
@@ -218,6 +229,8 @@ class DiagnosisService:
             visual_matches=result.get("visual_matches") or [],
             tools_used=result.get("tools_used") or [],
             errors=result.get("errors") or [],
+            verdict=verdict.verdict if verdict is not None else None,
+            verdict_reasoning=verdict.reasoning if verdict is not None else None,
         )
 
     @staticmethod

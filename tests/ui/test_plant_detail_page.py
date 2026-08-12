@@ -167,7 +167,10 @@ def test_recheck_button_starts_the_upload_flow(app):
     assert app.file_uploader
 
 
-def test_completing_a_recheck_shows_the_verdict_free_result(app):
+def test_completing_a_recheck_shows_the_verdict(app):
+    """Renamed from ``..._shows_the_verdict_free_result``: the verdict was computed by
+    ``compare_progress``, routed on, and then dropped by ``_final_result``, so the page
+    genuinely had none to show. README advertises it, so it now renders."""
     app.run()
     next(b for b in app.button if b.label == "Re-check this plant").click().run()
 
@@ -186,6 +189,12 @@ def test_completing_a_recheck_shows_the_verdict_free_result(app):
     # and raises KeyError. Use "in" plus bracket access instead.
     assert "recheck_result" in app.session_state
     assert app.session_state["recheck_result"] is not None
+
+    verdict_lines = [m.value for m in app.markdown if "Verdict" in m.value]
+    assert verdict_lines, "the re-check result block shows no verdict at all"
+    assert any("static" in line for line in verdict_lines)
+    # The verdict's own reasoning, not just the differential's, reaches the page.
+    assert any("No visible change yet" in c.value for c in app.caption)
 
 
 def test_submitting_recheck_without_photos_shows_a_friendly_error(app):

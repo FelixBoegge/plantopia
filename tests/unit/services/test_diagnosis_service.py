@@ -280,6 +280,27 @@ def test_start_recheck_returns_a_final_result_on_success(
     assert isinstance(result, FinalResult)
     assert result.differential is not None
     assert result.diagnosis_id is not None
+    # The graph computes a ProgressVerdict and routes on it; the service used to drop
+    # it on the floor, so the page could never show the verdict README advertises.
+    assert result.verdict == "improving"
+    assert result.verdict_reasoning == "Fewer symptoms."
+
+
+def test_a_first_time_diagnosis_has_no_verdict(service):
+    """``verdict`` is only meaningful against a prior diagnosis. A first-time run
+    never visits ``compare_progress``, so the field must stay ``None`` rather than
+    inventing a comparison that never happened."""
+    service.start(
+        uploads=[PNG],
+        plant_name="Basil",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+        thread_id="t9",
+    )
+    final = service.answer({"watering": "daily"}, thread_id="t9")
+    assert final.verdict is None
+    assert final.verdict_reasoning is None
 
 
 def test_start_recheck_reports_a_rejection_like_start_does(recheck_service, sample_plant):

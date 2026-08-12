@@ -91,6 +91,12 @@ if st.session_state.get("recheck_result") is not None:
         st.warning(result.message)
     elif isinstance(result, FinalResult):
         st.success("Re-check complete.")
+        if result.verdict is not None:
+            # Rendered with the underscore spaced out ("new problem"), matching how
+            # README words the four verdicts, rather than mapped to invented prose.
+            st.markdown(f"**Verdict:** {result.verdict.replace('_', ' ')}")
+            if result.verdict_reasoning:
+                st.caption(result.verdict_reasoning)
         if result.differential is not None:
             st.write(result.differential.reasoning)
 
