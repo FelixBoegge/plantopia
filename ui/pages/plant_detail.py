@@ -5,6 +5,7 @@ import streamlit as st
 from core.guards import UploadRejected
 from services.diagnosis_service import FinalResult, StartResult
 from ui import bootstrap
+from ui.components._recheck_state import clear_recheck_state
 from ui.components.feedback import render_feedback_prompt
 from ui.components.roadmap_checklist import render_roadmap_checklist
 from ui.components.timeline import render_timeline
@@ -19,9 +20,7 @@ if plant_id is None:
 # session) to a different plant would carry the first plant's stale recheck_stage /
 # recheck_result over onto the second plant's page.
 if st.session_state.get("_recheck_owner_plant_id") != plant_id:
-    st.session_state.pop("recheck_stage", None)
-    st.session_state.pop("recheck_result", None)
-    st.session_state.pop("recheck_attempt", None)
+    clear_recheck_state()
     st.session_state._recheck_owner_plant_id = plant_id
 
 service = bootstrap.get_plant_service()

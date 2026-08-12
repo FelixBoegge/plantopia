@@ -10,6 +10,7 @@ and this page would then show (and write to) the wrong plant's transcript.
 import streamlit as st
 
 from ui import bootstrap
+from ui.components._recheck_state import clear_recheck_state
 
 # Which plant's chat last escalated, if any. Scoped by plant id rather than a bare
 # boolean so the handoff offer cannot follow the user onto a different plant's chat.
@@ -78,9 +79,14 @@ if st.session_state.get(_ESCALATION_KEY) == plant_id:
         # it. Priming plant_detail.py's own stage key (and its ownership marker, which
         # would otherwise clear the stage on arrival) is what makes the page open
         # already-expanded instead of at its "Re-check this plant" button.
+        #
+        # clear_recheck_state() is the same reset plant_detail.py runs on a plant
+        # switch, so this handoff cannot leave a stale recheck_result or
+        # recheck_attempt behind — sharing it is what keeps the two sites from
+        # drifting the way they once did (see ui/components/_recheck_state.py).
         st.session_state.selected_plant_id = plant_id
+        clear_recheck_state()
         st.session_state.recheck_stage = "upload"
         st.session_state._recheck_owner_plant_id = plant_id
-        st.session_state.pop("recheck_result", None)
         st.session_state.pop(_ESCALATION_KEY, None)
         st.switch_page("ui/pages/plant_detail.py")
