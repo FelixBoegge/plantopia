@@ -1375,9 +1375,219 @@ rather than as placeholders.
 
 ---
 
-This closes the tour: every package in §1.1's layering diagram has now been walked
-end to end, from `app.py` down through `agent/`, `core/`, `knowledge/`, `tools/`, and
-`data/`, and back up through `services/` to `ui/`. What remains uncovered is narrow —
-`agent/state.py`'s full field list beyond §1.5's two callouts, and the test suite
-itself — and is better read directly than narrated, now that the architecture and its
-carried limitations have a map.
+This closes the Phase 1 tour: every package in §1.1's layering diagram has now been
+walked end to end, from `app.py` down through `agent/`, `core/`, `knowledge/`, `tools/`,
+and `data/`, and back up through `services/` to `ui/`. What remains uncovered from
+Phase 1 is narrow — `agent/state.py`'s full field list beyond §1.5's two callouts, and
+the test suite itself — and is better read directly than narrated, now that the
+architecture and its carried limitations have a map.
+
+Phase 2 (plant profiles, the re-check flow, treatment feedback, and the chat agent)
+extends this same architecture rather than replacing any of it — §7 picks up where §6
+left off.
+
+---
+
+## 7. Phase 2: plant profiles, re-check, and chat
+
+### 7.1 The data layer grows into tables Phase 1 only scaffolded
+
+`data/schema.sql` has not changed since Phase 1's very first commit
+(`af6b374`) — `feedback`, `user_profile`, and `messages` were all declared up front,
+alongside `plants`/`observations`/`diagnoses`/`roadmap_steps`. Phase 1 only ever wrote
+the first four tables; Phase 2 is what finally puts repositories in front of two of the
+other three. `user_profile` is still untouched — it is the "learned user profile"
+long-term-memory idea the owner explicitly deferred past Phase 2, so it remains
+schema-only forward work, same as `feedback`/`messages` were during Phase 1 (§4.5,
+`M11`).
+
+**`FeedbackRepository` is deliberately thin** — no `FeedbackRecord`, no `_to_record`,
+just `create` and `exists_for_diagnosis`:
+
+```python
+# No ``FeedbackRecord`` dataclass and no ``_to_record`` row mapper here, unlike every
+# other repository in this package: nothing reads a feedback row back into the app. The
+# Plant detail page only needs to know *whether* feedback exists
+# (``exists_for_diagnosis``), and the answers themselves are for the owner to query
+# offline. Both were written speculatively in Phase 2 and never called, so they are gone
+# rather than left as working code nothing exercises — add them back together with the
+# read method that needs them.
+```
+
+That comment is the aftermath of a real review finding, not a decision made up front:
+the fix wave for the final whole-branch review deleted a `FeedbackRecord`/`_to_record`
+pair after confirming zero references anywhere in the codebase — the YAGNI principle
+this document has named before (§3a.1, §3c.5) applied to a whole class this time, not
+just a branch.
+
+**`MessageRepository` is where a genuine data-loss bug lived**, caught only by the
+final whole-branch review, not by any task-level test:
+
+```python
+json.dumps(tool_calls) if tool_calls is not None else None
+```
+
+The task that first wrote this line had `if tool_calls else None` — indistinguishable
+from the fixed version for a *populated* tool-calls list, and silently wrong for a
+message with a real-but-empty list (`[]`), which collapsed to `NULL` and was
+unrecoverable as "no tool calls were made" versus "we never checked." Worse, and
+separately: nothing in `ChatService.send()` originally wrapped `MessageRepository`'s
+writes in `transaction()` at all. `sqlite3` connections default to non-autocommit —
+without a `commit()`, a write is invisible outside the connection that made it, and
+lost entirely on process exit. Every task-level test used one shared in-memory
+connection, so the same connection reading back what it just wrote looked identical to
+a working commit. The fix is two independent `transaction(self._messages.connection)`
+blocks around the user and assistant messages in `ChatService.send()`, verified by a
+test that opens a **second, separate connection** to the same database file and proves
+the write is durable — same-connection visibility would have passed the old, broken
+code too.
+
+**Three small, mechanical additions round out the rest of the layer:**
+
+- `DiagnosisRepository.list_for_plant` — every diagnosis for a plant, newest first,
+  next to the `latest_for_plant` Phase 1 already had. The Plant detail timeline needs
+  the whole history; the health badge only ever needed the latest one.
+- `RoadmapRepository.mark` now raises `ValueError` on an unknown `step_id` instead of
+  silently no-oping — this is `M10` from §4.5, closed the moment Phase 2 wired a real
+  "mark done" button to it and a bad id stopped being invisible.
+- `RoadmapRepository` gained a `.connection` property, matching the convention every
+  other repository already followed, because `PlantService.mark_roadmap_step` needed
+  to wrap the write in `transaction()`.
+
+**`data/db.py` picked up one new fact worth knowing before touching it:** the module
+comment now explains that the app holds **three** live connections to the same
+database file, not one — `get_service`, `get_plant_service`, and `get_chat_service`
+in `ui/bootstrap.py` each open their own. The module-level `_write_lock` is unkeyed by
+connection, and the comment argues that this is now *stronger* than it looks: within a
+connection it does what it always did (stop one thread's `commit()` from landing on
+another thread's open transaction); across connections it happens to serialise writers
+too, which SQLite's own busy-timeout would otherwise handle by making a second writer
+wait rather than fail outright. The lock just avoids depending on that timeout at all.
+
+The chat agent adds a second SQLite file alongside the main one: LangGraph's
+`SqliteSaver` checkpoints conversation state to `{db_path}.chat-checkpoints`, separate
+from the diagnosis graph's own `{db_path}.checkpoints`. Both are `.gitignore`d as a
+pattern (`data/plantopia.db.*checkpoints*` in spirit — written as two explicit
+patterns after the first one didn't match the new suffix and left checkpoint files
+showing up as untracked during a live-verification run).
+
+**Closing the loop on a gap found just before this walkthrough started:** a re-check
+of a plant whose first diagnosis never managed to identify it goes through
+`identify_plant` again (§7.2 covers the routing), which can produce a real species
+guess for the first time — but until today, `agent/nodes/persist.py` only ever wrote
+`species`/`species_confidence` when *creating* a plant, never when updating one that
+already existed. `PlantRepository.update_species` is the one-method fix, called from
+`persist`'s existing-plant branch whenever `state.species_name` is not `None`. It is
+idempotent for a plant whose species was already known (it writes back the same
+value), so the extra call is harmless where it fires the second, third, and every
+subsequent re-check.
+
+### 7.2 The re-check graph: same nodes, a second entry path, one new fork
+
+§1.4 showed a straight line from `guard_input` to `persist` with two forks. Phase 2
+does not replace that graph — it grafts a second path onto it that rejoins the
+original one partway through, plus a third fork at the point where the two paths
+diverge:
+
+```
+                    ↓ continue (route_after_quality)
+       … known plant, species already on record? ──(recheck)──→ assess_symptoms
+                    │                                                  │
+                    ↓ continue (never identified, or a new plant)      ↓ known plant?
+       identify_plant → assess_symptoms ← ─────────────────────────────┘  (route_after_symptoms)
+                    │                                                  │
+                    ↓ new plant                                        ↓ recheck
+       select_questions → gather_context → enrich → …          compare_progress
+                                                    ↑                   │
+                                                    │        ↓ improving/static   ↓ worsening/new_problem
+                                                    │   revise_roadmap        (rejoin at enrich)
+                                                    │           │
+                                                    └───────────┘
+                                                       both branches → persist → END
+```
+
+Three router functions now do the work `route_after_guard`/`route_after_quality` did
+alone in §1.4:
+
+- **`route_after_quality`** decides whether identification is still needed. A re-check
+  normally skips it — `start_recheck` (§9 will cover the service that calls it) already
+  put the plant's known species into state — but if `state.species is None` even though
+  `state.plant_id` is set, it still routes through `identify_plant`. That branch exists
+  because of a real bug: `start_recheck` used to fill `species` with an `"Unknown"`
+  placeholder that satisfied `identify_plant`'s idempotency guard *and* the router's
+  skip condition, so a plant whose first diagnosis never managed to identify it could
+  never acquire a species no matter how many times it was re-checked. §7.1's
+  `PlantRepository.update_species` fix is the other half of closing that gap — the graph
+  can now produce a fresh species guess on a re-check, but until today nothing wrote it
+  back to the `plants` table.
+- **`route_after_symptoms`** is the actual fork between "new diagnosis" and "re-check":
+  a known plant (`state.plant_id is not None`) skips the clarifying-question interrupt
+  entirely and goes to `compare_progress` instead. The reasoning is in the router's own
+  docstring — roadmap-step completion, already recorded by `RoadmapRepository`, already
+  answers what a clarifying question would otherwise have to ask. This is also why a
+  re-check **never interrupts** (`test_a_recheck_never_interrupts` in
+  `tests/graph/test_recheck_flow.py`): the whole reason the diagnosis graph pauses for
+  human input is absent on this path.
+- **`route_after_verdict`** is the new fork after `compare_progress`: `improving`/`static`
+  go to `revise_roadmap`, which tapers or escalates the *existing* plan without
+  re-running `diagnose`; `worsening`/`new_problem` rejoin the original graph at `enrich`
+  — a full re-diagnosis, on the reasoning that a plan visibly not working is no longer
+  safely revisable, it needs to be replaced.
+
+**`compare_progress` and `revise_roadmap`** (`agent/nodes/recheck.py`) are the only new
+nodes. Both assert `state.plant_id is not None` rather than re-checking it, because
+routing already guarantees it — the same "trust the graph's own guarantees" pattern
+§3b.1 named for idempotency guards. `compare_progress` builds its prompt from three
+things: the prior differential's candidates, the prior roadmap steps *and their
+completion status*, and today's freshly extracted symptoms — then asks for exactly one
+`ProgressVerdict`. Worth noticing what is deliberately **not** a field on that schema:
+
+```python
+class ProgressVerdict(BaseModel):
+    """The result of comparing a re-check photo against the prior diagnosis.
+
+    Compliance is not a field here: roadmap-step completion is already recorded by
+    ``RoadmapRepository``, so the model reads it from the prompt rather than being
+    asked to report it back.
+    """
+
+    verdict: Literal["improving", "static", "worsening", "new_problem"]
+    reasoning: str = Field(min_length=1)
+```
+
+The prompt (`agent/prompts/recheck.py`) asks the model to *weigh* compliance rather than
+report it — "a plant that worsened despite every step being completed is much stronger
+evidence against the prior diagnosis than one that worsened after every step was
+skipped" — and carries the same injection-defense clause §6.1 traced through every
+other vision-facing prompt: image text is data, never an instruction, never allowed to
+change the verdict.
+
+**Both new nodes degrade the same way §3b.2 already described**, with two named
+sentinel verdicts rather than raising:
+
+```python
+_NO_PRIOR_DIAGNOSIS = ProgressVerdict(
+    verdict="new_problem", reasoning="No prior diagnosis is on record for this plant."
+)
+_COMPARISON_FAILED = ProgressVerdict(
+    verdict="new_problem",
+    reasoning="The comparison could not be completed; treating this as a new problem.",
+)
+```
+
+Both default to `new_problem` — the fork that leads to a full re-diagnosis — because
+routing a comparison failure toward "just taper the plan" would be the unsafe direction
+to fail in. `revise_roadmap`'s own failure path is asymmetric for the same reason: on a
+`StructuredOutputFailed`, it returns `roadmap=None` rather than inventing one, carrying
+the *prior* differential forward unchanged (nothing else produced a new one on this
+branch) so `persist` still has something coherent to write.
+
+One test worth reading directly if you want to see the identification bug and its fix
+proven at the graph level, not just the repository level:
+`test_a_recheck_of_a_never_identified_plant_still_identifies_it` in
+`tests/graph/test_recheck_flow.py` scripts two vision calls (identification, then
+symptoms) and asserts both that `identify_plant` actually ran and that the run still
+reached a verdict afterwards without interrupting — proving the graft in §7.2's diagram
+rejoins the original path correctly in both directions.
+
+---
