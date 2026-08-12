@@ -427,6 +427,7 @@ def test_feedback_prompt_renders_a_form():
     at.run()
     assert not at.exception
     assert at.radio
+    assert at.feedback
     assert at.button
 
 
@@ -436,4 +437,31 @@ def test_submitting_feedback_calls_on_submit():
     at.radio[0].set_value("yes")
     at.button[0].click().run()
 
+    # No star touched: rating stays None, which the nullable column accepts.
     assert at.session_state["_feedback_calls"] == [(None, "yes", "")]
+
+
+def test_submitting_feedback_passes_the_star_rating_through():
+    """``rating`` used to be hardcoded to ``None``, so the column's
+    ``CHECK (rating BETWEEN 1 AND 5)`` constraint could never fire on a real value.
+    ``st.feedback`` is 0-based, so the fourth star has to arrive as 4, not 3."""
+    at = AppTest.from_function(_render_feedback_script)
+    at.run()
+    at.feedback[0].set_value(3)
+    at.button[0].click().run()
+
+    rating, _, _ = at.session_state["_feedback_calls"][0]
+    assert rating == 4
+
+
+def test_submitting_feedback_passes_a_non_default_option_and_free_text():
+    at = AppTest.from_function(_render_feedback_script)
+    at.run()
+    at.radio[0].set_value("too_early")
+    at.feedback[0].set_value(0)
+    at.text_area[0].set_value("Only three days in, hard to tell.")
+    at.button[0].click().run()
+
+    assert at.session_state["_feedback_calls"] == [
+        (1, "too_early", "Only three days in, hard to tell.")
+    ]
