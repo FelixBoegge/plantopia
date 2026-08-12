@@ -32,6 +32,15 @@ answers, the way a clinician takes a history.
 - **Builds a dated treatment plan**, least invasive first
 - **Warns about contagion** if the problem can spread to your other plants
 - **Says when it cannot tell**, instead of guessing
+- **Remembers every plant.** The My Plants grid shows a health badge and pending
+  roadmap steps per plant; the Plant detail page shows its full diagnosis history.
+- **Re-checks progress.** Upload a new photo of a known plant and get a verdict —
+  improving, static, worsening, or a new problem — against the prior diagnosis,
+  without repeating the clarifying questions: roadmap-step completion already
+  answers what was tried.
+- **Asks for feedback** once you've actually tried a step, not before.
+- **Answers follow-up questions in a chat scoped to one plant**, and can flag when a
+  described symptom is different enough to warrant a fresh look.
 
 ## Getting started
 
