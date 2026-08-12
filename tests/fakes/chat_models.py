@@ -60,6 +60,35 @@ class ScriptedStructuredModel(BaseChatModel):
         return RunnableLambda(_respond)
 
 
+class ScriptedToolCallingModel(BaseChatModel):
+    """For ReAct-style agents (``langchain.agents.create_agent``).
+
+    ``bind_tools`` is a no-op returning ``self`` — ``BaseChatModel``'s default
+    raises ``NotImplementedError``, which is fatal the moment a tool-calling agent
+    actually runs. Responses are queued ``AIMessage`` objects, which may carry
+    ``tool_calls`` to script a multi-step ReAct loop.
+    """
+
+    responses: list[AIMessage]
+
+    def __init__(self, responses: Sequence[AIMessage], **kwargs: Any) -> None:
+        super().__init__(responses=list(responses), **kwargs)
+
+    @property
+    def _llm_type(self) -> str:
+        return "scripted-tool-calling"
+
+    def bind_tools(
+        self, tools: Any, *, tool_choice: Any = None, **kwargs: Any
+    ) -> "ScriptedToolCallingModel":
+        return self
+
+    def _generate(self, messages: list[BaseMessage], **kwargs: Any) -> ChatResult:
+        assert self.responses, "script exhausted: the model was called more times than scripted"
+        message = self.responses.pop(0)
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+
 class FailingChatModel(BaseChatModel):
     """Raises on every call. For testing degradation paths."""
 
