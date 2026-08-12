@@ -196,10 +196,19 @@ class DiagnosisService:
             location_text=plant.location_text,
             user_notes=user_notes,
             plant_id=plant.id,
-            species=SpeciesGuess(
-                common_name=plant.species or "Unknown",
-                scientific_name=None,
-                confidence=plant.species_confidence or 0.0,
+            # Left unset when the plant was never successfully identified, rather than
+            # filled with an "Unknown" placeholder: the placeholder satisfied both
+            # identify_plant's idempotency guard and the router's skip, so such a plant
+            # could never acquire a species no matter how many re-checks it went
+            # through. Unset routes this run through identify_plant instead.
+            species=(
+                SpeciesGuess(
+                    common_name=plant.species,
+                    scientific_name=None,
+                    confidence=plant.species_confidence or 0.0,
+                )
+                if plant.species is not None
+                else None
             ),
         )
 

@@ -29,11 +29,22 @@ def route_after_guard(state: DiagnosisState) -> str:
 
 
 def route_after_quality(state: DiagnosisState) -> str:
-    """End the run if the photos cannot support a diagnosis. A known plant (a
-    re-check) skips identification — the species is already on record."""
+    """End the run if the photos cannot support a diagnosis, then decide whether the
+    species still has to be identified.
+
+    A re-check normally skips identification — the species is already on record, and
+    ``start_recheck`` puts it in state. But a plant whose first diagnosis never managed
+    to identify it has no species on record, so ``start_recheck`` leaves ``species``
+    unset and the re-check goes through ``identify_plant`` after all; skipping it
+    unconditionally meant such a plant could never acquire a species, however many
+    re-checks it went through. Either way the run rejoins the re-check path at
+    ``route_after_symptoms``, which keys off ``plant_id``.
+    """
     if state.quality is not None and not state.quality.usable:
         return "retake"
-    return "recheck" if state.plant_id is not None else "continue"
+    if state.plant_id is not None and state.species is not None:
+        return "recheck"
+    return "continue"
 
 
 def route_after_symptoms(state: DiagnosisState) -> str:

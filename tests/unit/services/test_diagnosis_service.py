@@ -315,6 +315,122 @@ def test_start_recheck_reports_a_rejection_like_start_does(recheck_service, samp
     assert result.status == "rejected"
 
 
+def test_start_recheck_of_a_never_identified_plant_acquires_a_species(recheck_service, db, now):
+    """``start_recheck`` used to fill ``species`` with an "Unknown" placeholder, which
+    satisfied both ``identify_plant``'s idempotency guard and the router's skip — so a
+    plant whose first diagnosis never identified it could never acquire a species."""
+    from agent.schemas import (
+        ImageQuality,
+        IPMTier,
+        PlantCheck,
+        Roadmap,
+        RoadmapStep,
+        Severity,
+        SpeciesGuess,
+        Symptom,
+        SymptomPosition,
+        SymptomSet,
+    )
+    from data.repositories.plants import PlantRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Mystery plant",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+
+    gate = ScriptedStructuredModel(
+        [
+            PlantCheck(is_plant=True, what_it_is="some kind of herb"),
+            ImageQuality(usable=True, problem=None, guidance=None),
+        ]
+    )
+    vision = ScriptedStructuredModel(
+        [
+            SpeciesGuess(common_name="Sweet basil", scientific_name=None, confidence=0.8),
+            SymptomSet(
+                symptoms=[
+                    Symptom(
+                        description="Fewer yellow leaves",
+                        position=SymptomPosition.LOWER_LEAVES,
+                        severity=Severity.MONITOR,
+                    )
+                ],
+                soil_condition="drier",
+                overall_vigor="good",
+            ),
+        ]
+    )
+    # No prior diagnosis exists, so compare_progress returns new_problem and the run
+    # rejoins the full chain: differential, then roadmap.
+    chat = ScriptedStructuredModel(
+        [
+            _differential_for_recheck(),
+            Roadmap(
+                steps=[
+                    RoadmapStep(
+                        ordinal=1,
+                        action="Move it somewhere brighter.",
+                        rationale="Basil wants full sun.",
+                        success_signal="New leaves are a darker green.",
+                        tier=IPMTier.CULTURAL,
+                        day_offset=0,
+                    )
+                ]
+            ),
+        ]
+    )
+    service = recheck_service(gate=gate, vision=vision, chat=chat)
+
+    result = service.start_recheck(
+        plant_id=plant_id, uploads=[PNG], user_notes=None, thread_id="rc-unidentified"
+    )
+
+    assert isinstance(result, FinalResult)
+    assert vision.call_count == 2, "identify_plant was skipped, so no species was ever acquired"
+    # It still took the re-check path afterwards, and with no prior diagnosis to compare
+    # against the verdict is new_problem, which rejoins the full chain.
+    assert result.verdict == "new_problem"
+    assert result.differential is not None
+    assert result.roadmap is not None
+    assert result.diagnosis_id is not None
+
+
+def _differential_for_recheck():
+    from agent.schemas import Candidate, Differential, Severity
+
+    return Differential(
+        is_healthy=False,
+        reasoning="Pale, stretched growth.",
+        candidates=[
+            Candidate(
+                disorder_id="insufficient-light",
+                name="Insufficient light",
+                probability=0.7,
+                supporting_evidence=["stretched stems"],
+                contradicting_evidence=[],
+                distinguishing_test="Compare growth after two weeks in a brighter spot.",
+                severity=Severity.ACT_THIS_WEEK,
+                transmissible=False,
+            ),
+            Candidate(
+                disorder_id="overwatering",
+                name="Overwatering",
+                probability=0.3,
+                supporting_evidence=["wet soil"],
+                contradicting_evidence=[],
+                distinguishing_test="Feel the soil three days after watering.",
+                severity=Severity.MONITOR,
+                transmissible=False,
+            ),
+        ],
+    )
+
+
 def test_start_recheck_raises_for_an_unknown_plant(recheck_service):
     service = recheck_service(
         gate=ScriptedStructuredModel([]),

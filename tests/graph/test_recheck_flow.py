@@ -17,12 +17,15 @@ from agent.schemas import (
     Roadmap,
     RoadmapStep,
     Severity,
+    SpeciesGuess,
     Symptom,
     SymptomPosition,
     SymptomSet,
 )
 from agent.state import DiagnosisState
 from tests.fakes.chat_models import ScriptedStructuredModel
+
+_IDENTIFIED = SpeciesGuess(common_name="Basil", scientific_name=None, confidence=0.9)
 
 
 @pytest.fixture
@@ -44,9 +47,34 @@ def _symptoms() -> SymptomSet:
     )
 
 
-def _state(images, plant_id) -> DiagnosisState:
+def _revised_roadmap() -> Roadmap:
+    return Roadmap(
+        steps=[
+            RoadmapStep(
+                ordinal=1,
+                action="Continue the current watering schedule.",
+                rationale="It is working.",
+                success_signal="No new yellow leaves in a week.",
+                tier=IPMTier.CULTURAL,
+                day_offset=7,
+            )
+        ]
+    )
+
+
+def _state(images, plant_id, *, species: SpeciesGuess | None = _IDENTIFIED) -> DiagnosisState:
+    """A re-check's starting state, as ``DiagnosisService.start_recheck`` builds it.
+
+    ``species`` is populated by default because ``start_recheck`` populates it from the
+    plant record — pass ``None`` for the plant whose first diagnosis never managed to
+    identify it, which is the case that must still visit ``identify_plant``.
+    """
     return DiagnosisState(
-        images=images, plant_name="Kitchen basil", location_kind="indoor", plant_id=plant_id
+        images=images,
+        plant_name="Kitchen basil",
+        location_kind="indoor",
+        plant_id=plant_id,
+        species=species,
     )
 
 
@@ -69,30 +97,71 @@ class TestRecheckRouting:
         TestOrdering.test_species_is_identified_before_symptoms_are_assessed uses in
         tests/graph/test_diagnosis_graph.py."""
         vision = ScriptedStructuredModel([_symptoms()])
+        # revise_roadmap's Roadmap is scripted too. Without it the script simply ran out
+        # and revise_roadmap degraded to roadmap=None — the assertions below still held,
+        # so this test would not have noticed its happy path breaking.
         chat = ScriptedStructuredModel(
-            [ProgressVerdict(verdict="improving", reasoning="Fewer symptoms.")]
+            [
+                ProgressVerdict(verdict="improving", reasoning="Fewer symptoms."),
+                _revised_roadmap(),
+            ]
         )
-        deps = make_deps(
-            gate_model=_intake(),
-            vision_model=vision,
-            chat_model=chat,
-            care_profile=lambda species: None,
-        )
+        deps = make_deps(gate_model=_intake(), vision_model=vision, chat_model=chat)
         graph = build_diagnosis_graph(deps, MemorySaver())
 
         result = graph.invoke(_state(sample_images, sample_plant), config)
 
         assert result["symptoms"] is not None
         assert vision.call_count == 1
+        assert result["roadmap"] is not None
+        assert not result["errors"]
 
     def test_a_recheck_never_interrupts(self, make_deps, sample_images, sample_plant, config):
         vision = ScriptedStructuredModel([_symptoms()])
-        chat = ScriptedStructuredModel([ProgressVerdict(verdict="static", reasoning="Unchanged.")])
+        chat = ScriptedStructuredModel(
+            [ProgressVerdict(verdict="static", reasoning="Unchanged."), _revised_roadmap()]
+        )
         deps = make_deps(gate_model=_intake(), vision_model=vision, chat_model=chat)
         graph = build_diagnosis_graph(deps, MemorySaver())
 
         result = graph.invoke(_state(sample_images, sample_plant), config)
         assert "__interrupt__" not in result
+        assert result["roadmap"] is not None
+        assert not result["errors"]
+
+    def test_a_recheck_of_a_never_identified_plant_still_identifies_it(
+        self, make_deps, sample_images, sample_plant, config
+    ):
+        """``start_recheck`` used to fill ``species`` with an "Unknown" placeholder,
+        which satisfied both ``identify_plant``'s idempotency guard and the router's
+        skip — so a plant whose first diagnosis never identified it could never acquire
+        a species, however many re-checks it went through.
+
+        Two vision calls are scripted: identification, then symptoms. If routing still
+        skipped ``identify_plant``, ``assess_symptoms`` would consume the SpeciesGuess
+        and the SymptomSet assertion below would fail.
+        """
+        vision = ScriptedStructuredModel(
+            [
+                SpeciesGuess(common_name="Sweet basil", scientific_name=None, confidence=0.8),
+                _symptoms(),
+            ]
+        )
+        chat = ScriptedStructuredModel(
+            [ProgressVerdict(verdict="improving", reasoning="Fewer symptoms."), _revised_roadmap()]
+        )
+        deps = make_deps(gate_model=_intake(), vision_model=vision, chat_model=chat)
+        graph = build_diagnosis_graph(deps, MemorySaver())
+
+        result = graph.invoke(_state(sample_images, sample_plant, species=None), config)
+
+        assert result["species"].common_name == "Sweet basil"
+        assert result["symptoms"] is not None
+        assert vision.call_count == 2
+        # It still took the re-check branch afterwards: no clarifying-question interrupt,
+        # and a verdict was reached.
+        assert "__interrupt__" not in result
+        assert result["verdict"].verdict == "improving"
 
 
 class TestImprovingAndStatic:
