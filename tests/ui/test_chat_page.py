@@ -194,6 +194,154 @@ def test_persisted_tool_calls_render_collapsibly(monkeypatch, make_deps, db, now
     assert any("full sun" in c.value for c in at.caption)
 
 
+def _escalating_chat_service(db, now, make_deps, plant_id):
+    from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from data.repositories.messages import MessageRepository
+    from services.chat_service import ChatService
+    from tests.fakes.chat_models import ScriptedToolCallingModel
+
+    model = ScriptedToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "suggest_new_diagnosis",
+                        "args": {"reason": "new brown spots"},
+                        "id": "call1",
+                    }
+                ],
+            ),
+            AIMessage(content="I've flagged this for a fresh look."),
+        ]
+    )
+    return ChatService(
+        deps=make_deps(chat_model=model),
+        messages=MessageRepository(db),
+        checkpointer=MemorySaver(),
+        now=now,
+    )
+
+
+def test_escalation_offers_a_handoff_button_not_directions(monkeypatch, make_deps, db, now):
+    """A diagnosis cannot start without photographs, so escalation hands the owner into
+    the re-check upload flow instead of telling them to go find the button."""
+    plant_id = _create_plant(db, now, "Basil")
+    service = _escalating_chat_service(db, now, make_deps, plant_id)
+    monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+
+    at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
+    at.session_state["selected_plant_id"] = plant_id
+    at.run()
+    at.chat_input[0].set_value("There are new brown spots now, not yellowing.").run()
+
+    assert not at.exception
+    assert any("upload a new photo" in i.value.lower() for i in at.info)
+    assert any(b.label == "Upload a new photo" for b in at.button)
+
+
+def test_the_handoff_lands_on_plant_detail_with_the_upload_form_open(
+    monkeypatch, make_deps, db, now, sample_plant, tmp_path
+):
+    """The whole point of the handoff: the owner must arrive at the upload form, not at
+    plant_detail's default closed "Re-check this plant" state."""
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.diagnosis_graph import build_diagnosis_graph
+    from services.diagnosis_service import DiagnosisService
+
+    plant_service = _plant_service(db, now)
+    chat_service = _escalating_chat_service(db, now, make_deps, sample_plant)
+    monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: chat_service)
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: plant_service)
+
+    chat = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
+    chat.session_state["selected_plant_id"] = sample_plant
+    chat.run()
+    chat.chat_input[0].set_value("There are new brown spots now, not yellowing.").run()
+    next(b for b in chat.button if b.label == "Upload a new photo").click().run()
+
+    # ``st.switch_page`` cannot resolve a page under AppTest — there is no
+    # ``st.navigation`` registry, only the single script under test — so it raises here
+    # where in the real app it navigates. The session state it primed beforehand is
+    # what carries the handoff, and that is what the Plant detail page reads, so drive
+    # that page with the primed state directly.
+    primed = {
+        key: chat.session_state[key]
+        for key in ("selected_plant_id", "recheck_stage", "_recheck_owner_plant_id")
+    }
+    assert primed["recheck_stage"] == "upload"
+    assert primed["selected_plant_id"] == sample_plant
+
+    deps = make_deps()
+    monkeypatch.setattr(
+        "ui.bootstrap.get_service",
+        lambda: DiagnosisService(
+            deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
+        ),
+    )
+    detail_page = AppTest.from_file(
+        str(Path(__file__).resolve().parent.parent.parent / "ui" / "pages" / "plant_detail.py"),
+        default_timeout=30,
+    )
+    for key, value in primed.items():
+        detail_page.session_state[key] = value
+    detail_page.run()
+
+    assert not detail_page.exception
+    assert detail_page.file_uploader, "landed on the closed state, not the upload form"
+    assert not any(b.label == "Re-check this plant" for b in detail_page.button)
+    # Arriving at the form starts nothing: the owner still has to supply photographs,
+    # which is the whole reason chat can't run a diagnosis by itself.
+    assert deps.chat_model.call_count == 0
+
+
+def test_a_non_escalating_reply_clears_a_previous_handoff_offer(monkeypatch, make_deps, db, now):
+    """The offer reflects the newest answer, not the high-water mark of the session."""
+    from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from data.repositories.messages import MessageRepository
+    from services.chat_service import ChatService
+    from tests.fakes.chat_models import ScriptedToolCallingModel
+
+    plant_id = _create_plant(db, now, "Basil")
+    model = ScriptedToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "suggest_new_diagnosis", "args": {"reason": "spots"}, "id": "c1"}
+                ],
+            ),
+            AIMessage(content="I've flagged this for a fresh look."),
+            AIMessage(content="Watering every other day is fine for a basil."),
+        ]
+    )
+    service = ChatService(
+        deps=make_deps(chat_model=model),
+        messages=MessageRepository(db),
+        checkpointer=MemorySaver(),
+        now=now,
+    )
+    monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+
+    at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
+    at.session_state["selected_plant_id"] = plant_id
+    at.run()
+    at.chat_input[0].set_value("New brown spots.").run()
+    assert any(b.label == "Upload a new photo" for b in at.button)
+
+    at.chat_input[0].set_value("How often should I water it?").run()
+
+    assert not at.exception
+    assert not any(b.label == "Upload a new photo" for b in at.button)
+
+
 def test_a_plant_that_no_longer_exists_is_reported_not_crashed(monkeypatch, make_deps, db, now):
     from langgraph.checkpoint.memory import MemorySaver
 

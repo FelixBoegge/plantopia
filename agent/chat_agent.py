@@ -167,13 +167,13 @@ def _make_tools(deps: Deps, plant_id: int) -> tuple[list, dict]:
     def suggest_new_diagnosis(reason: str) -> str:
         """Call this when the owner describes symptoms materially different from the
         current diagnosis. This does not diagnose anything itself — it flags that a
-        fresh set of photos is needed, which the owner supplies through the
-        re-check flow."""
+        fresh set of photos is needed, and the page then hands the owner straight into
+        the re-check upload form."""
         escalation["reason"] = reason
         return (
-            "I've flagged this for a fresh look — please use the Re-check button on "
-            "this plant's page and upload a current photo, since I can't judge new "
-            "symptoms from a description alone."
+            "I've flagged this for a fresh look — I can't judge new symptoms from a "
+            "description alone, so use the button below to upload a current photo and "
+            "I'll get the pipeline to look at it properly."
         )
 
     tools = [
