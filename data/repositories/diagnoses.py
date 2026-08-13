@@ -22,12 +22,14 @@ class DiagnosisRecord:
     contagion: ContagionAssessment | None
     retrieved: list[Passage]
     model: str
+    token_usage: dict[str, int] | None
     cost_usd: float | None
     created_at: datetime
 
 
 def _to_record(row: sqlite3.Row) -> DiagnosisRecord:
     contagion_raw = row["contagion_json"]
+    token_usage_raw = row["token_usage_json"]
     return DiagnosisRecord(
         id=row["id"],
         observation_id=row["observation_id"],
@@ -36,6 +38,7 @@ def _to_record(row: sqlite3.Row) -> DiagnosisRecord:
         contagion=ContagionAssessment.model_validate_json(contagion_raw) if contagion_raw else None,
         retrieved=[Passage.model_validate(p) for p in json.loads(row["retrieved_refs_json"])],
         model=row["model"],
+        token_usage=json.loads(token_usage_raw) if token_usage_raw else None,
         cost_usd=row["cost_usd"],
         created_at=datetime.fromisoformat(row["created_at"]),
     )

@@ -8,6 +8,62 @@ from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 
 
+def _create_minimal_diagnosis(repo, db, now, **usage) -> int:
+    """A plant, an observation, and one diagnosis. Returns the diagnosis id."""
+    from agent.schemas import Candidate, Differential, Severity
+    from data.repositories.observations import ObservationRepository
+    from data.repositories.plants import PlantRepository
+
+    plant_id = PlantRepository(db).create(
+        name="Test plant",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+    observation_id = ObservationRepository(db).create(
+        plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
+    )
+    differential = Differential(
+        is_healthy=False,
+        reasoning="Test reasoning.",
+        candidates=[
+            Candidate(
+                disorder_id="overwatering",
+                name="Overwatering",
+                probability=0.8,
+                supporting_evidence=["wet soil"],
+                contradicting_evidence=[],
+                distinguishing_test="Feel the soil three days after watering.",
+                severity=Severity.ACT_THIS_WEEK,
+                transmissible=False,
+            ),
+            Candidate(
+                disorder_id="root-rot",
+                name="Root rot",
+                probability=0.2,
+                supporting_evidence=["wet soil"],
+                contradicting_evidence=["stem firm"],
+                distinguishing_test="Unpot the plant and inspect the roots.",
+                severity=Severity.ACT_TODAY,
+                transmissible=False,
+            ),
+        ],
+    )
+    return repo.create(
+        observation_id=observation_id,
+        plant_id=plant_id,
+        differential=differential,
+        contagion=None,
+        retrieved=[],
+        model="test-model",
+        now=now(),
+        **usage,
+    )
+
+
 @pytest.fixture
 def ids(db, now) -> tuple[int, int]:
     plant_id = PlantRepository(db).create(
@@ -224,3 +280,36 @@ def test_list_for_plant_is_empty_for_a_plant_with_no_diagnoses(db, now):
         now=now(),
     )
     assert DiagnosisRepository(db).list_for_plant(plant_id) == []
+
+
+def test_token_usage_round_trips(db, now):
+    """M12: these columns exist and create() already accepts them — nothing wrote them."""
+    from data.repositories.diagnoses import DiagnosisRepository
+
+    repo = DiagnosisRepository(db)
+    diagnosis_id = _create_minimal_diagnosis(
+        repo,
+        db,
+        now,
+        token_usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+        cost_usd=0.0042,
+    )
+
+    record = repo.get(diagnosis_id)
+    assert record.token_usage == {
+        "prompt_tokens": 100,
+        "completion_tokens": 20,
+        "total_tokens": 120,
+    }
+    assert record.cost_usd == 0.0042
+
+
+def test_token_usage_is_none_when_not_written(db, now):
+    from data.repositories.diagnoses import DiagnosisRepository
+
+    repo = DiagnosisRepository(db)
+    diagnosis_id = _create_minimal_diagnosis(repo, db, now)
+
+    record = repo.get(diagnosis_id)
+    assert record.token_usage is None
+    assert record.cost_usd is None

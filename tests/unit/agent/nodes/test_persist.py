@@ -208,3 +208,88 @@ def test_a_failure_mid_write_leaves_no_partial_rows(make_deps, sample_images, db
     assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 0
     assert db.execute("SELECT COUNT(*) AS n FROM observations").fetchone()["n"] == 0
     assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 0
+
+
+def _state_ready_to_persist(sample_images):
+    from agent.schemas import Candidate, Differential, Severity
+    from agent.state import DiagnosisState
+
+    return DiagnosisState(
+        images=sample_images,
+        plant_name="Test plant",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+        differential=Differential(
+            is_healthy=False,
+            reasoning="Wet soil and lower-leaf yellowing.",
+            candidates=[
+                Candidate(
+                    disorder_id="overwatering",
+                    name="Overwatering",
+                    probability=0.8,
+                    supporting_evidence=["wet soil"],
+                    contradicting_evidence=[],
+                    distinguishing_test="Feel the soil three days after watering.",
+                    severity=Severity.ACT_THIS_WEEK,
+                    transmissible=False,
+                ),
+                Candidate(
+                    disorder_id="root-rot",
+                    name="Root rot",
+                    probability=0.2,
+                    supporting_evidence=["wet soil"],
+                    contradicting_evidence=["stem firm"],
+                    distinguishing_test="Unpot the plant and inspect the roots.",
+                    severity=Severity.ACT_TODAY,
+                    transmissible=False,
+                ),
+            ],
+        ),
+    )
+
+
+def test_persist_writes_usage_from_the_collector(make_deps, sample_images, db, now):
+    """The collector is read inside persist's transaction, not by a second write."""
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, LLMResult
+
+    from agent.nodes.persist import make_persist
+    from core.cost import UsageCollector
+    from data.repositories.diagnoses import DiagnosisRepository
+
+    collector = UsageCollector()
+    collector.on_llm_end(
+        LLMResult(
+            generations=[[ChatGeneration(message=AIMessage(content="x"))]],
+            llm_output={
+                "token_usage": {"prompt_tokens": 90, "completion_tokens": 10, "cost": 0.002}
+            },
+        )
+    )
+
+    deps = make_deps()
+    state = _state_ready_to_persist(sample_images)
+    config = {"configurable": {"thread_id": "t", "usage_collector": collector}}
+
+    result = make_persist(deps)(state, config)
+
+    record = DiagnosisRepository(db).get(result["diagnosis_id"])
+    assert record.token_usage == {
+        "prompt_tokens": 90,
+        "completion_tokens": 10,
+        "total_tokens": 100,
+    }
+    assert record.cost_usd == 0.002
+
+
+def test_persist_writes_null_usage_without_a_collector(make_deps, sample_images, db):
+    """Every existing caller and every unit test passes no collector. Must not crash."""
+    from agent.nodes.persist import make_persist
+    from data.repositories.diagnoses import DiagnosisRepository
+
+    result = make_persist(make_deps())(_state_ready_to_persist(sample_images), None)
+
+    record = DiagnosisRepository(db).get(result["diagnosis_id"])
+    assert record.token_usage is None
+    assert record.cost_usd is None
