@@ -19,6 +19,7 @@ rather than fixed.
 4. [Knowledge, tools, and persistence](#4-knowledge-tools-and-persistence) — the corpus, the retriever, the standalone tools, the data layer
 5. [The UI](#5-the-ui-bootstrap-the-service-seam-and-rendering) — bootstrap, `DiagnosisService`, the wizard, rendering
 6. [Prompts, guards, and configuration](#6-prompts-guards-and-configuration) — what every model is actually told, and where every number comes from
+7. [Phase 2: plant profiles, re-check, and chat](#7-phase-2-plant-profiles-re-check-and-chat) — the tables, the second entry path, the chat agent, and the pages that surface them
 
 ---
 
