@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "dries out very quickly, drains fine"
   symptoms:
-    - description: "it's drying out so fast now that I'm watering almost every other day, way more than before"
+    - description: "I've had to start watering it nearly every other day just to keep up, which is way more often than it used to need"
       position: whole_plant
       severity: monitor
-    - description: "roots have started poking out of the drainage holes at the bottom"
+    - description: "there are roots showing through the little holes underneath the pot now"
       position: roots
       severity: monitor
 answers:

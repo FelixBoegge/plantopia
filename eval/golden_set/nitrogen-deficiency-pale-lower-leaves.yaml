@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "evenly moist, watered on a weekly schedule"
   symptoms:
-    - description: "the lowest two leaves have gone pale, washed-out yellow all over"
+    - description: "the two oldest leaves near the bottom have faded to a flat, dull yellow, no green left in them at all"
       position: lower_leaves
       severity: monitor
-    - description: "new leaves coming in look smaller than the ones from a few months ago"
+    - description: "the leaves it's putting out lately are noticeably tinier than what it grew earlier in the year"
       position: new_growth
       severity: monitor
 answers:

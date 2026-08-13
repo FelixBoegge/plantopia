@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "kept constantly damp, never really dries out"
   symptoms:
-    - description: "tiny dark flies keep flying up out of the soil whenever it's watered or bumped"
+    - description: "every time I water it or nudge the pot, a little swarm of tiny dark bugs lifts off from the soil and flits around"
       position: soil_surface
       severity: monitor
-    - description: "growth has slowed a little over the last couple of weeks"
+    - description: "it hasn't put out much new growth in the last couple of weeks"
       position: whole_plant
       severity: monitor
 answers:

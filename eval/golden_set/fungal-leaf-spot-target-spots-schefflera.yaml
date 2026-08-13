@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "round brown spots with a darker ring around them have shown up scattered across several leaves"
+    - description: "there are these roundish tan-brown marks scattered over a bunch of the leaves, each one rimmed with a darker outline"
       position: whole_leaf
       severity: act_this_week
-    - description: "the middle of the older spots looks dry and papery, with a few tiny dark specks in the centre"
+    - description: "on the older ones the centre has gone thin and dry like paper, with a couple of tiny black flecks in the middle"
       position: whole_leaf
       severity: monitor
 answers:

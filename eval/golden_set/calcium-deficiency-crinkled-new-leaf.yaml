@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "watering has been irregular, sometimes forgotten for a week then soaked"
   symptoms:
-    - description: "the newest leaf came in puckered and crinkled instead of lying flat"
+    - description: "the newest leaf unfurled looking twisted and bunched up rather than sitting flat like the others"
       position: new_growth
       severity: monitor
-    - description: "there are a couple of small brown dead patches near the tip of that same new leaf"
+    - description: "near the tip of that same leaf there are a few small spots that look dead and dried out"
       position: new_growth
       severity: monitor
 answers:

@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "there's a pale, bleached patch on a couple of leaves with a really sharp edge where the colour changes"
+    - description: "a couple of leaves have this washed-out, faded patch on them, and the line between that patch and the normal green is really abrupt"
       position: whole_leaf
       severity: act_this_week
-    - description: "it's only on the side facing the window — the other side of the plant looks completely normal"
+    - description: "it's only showing up on the side turned toward the window — everything else on the plant looks completely unaffected"
       position: whole_leaf
       severity: monitor
 answers:

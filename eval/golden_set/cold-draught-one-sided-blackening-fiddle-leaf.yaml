@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: poor
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "leaves on just one side of the plant suddenly went droopy and dark, almost overnight"
+    - description: "out of nowhere, the leaves on just one flank of the plant went limp and turned a dark colour, all within a single day"
       position: whole_leaf
       severity: act_today
-    - description: "a couple of those same leaves have gone on to drop in just the last day or two"
+    - description: "since then a couple of those leaves have fallen off entirely"
       position: whole_leaf
       severity: act_today
 answers:

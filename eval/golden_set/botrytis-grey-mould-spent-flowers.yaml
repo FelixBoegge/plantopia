@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: poor
   soil_condition: "kept fairly moist, drains adequately"
   symptoms:
-    - description: "a fuzzy grey mould has grown over a couple of spent flowers and a damaged stem"
+    - description: "there's a soft, fluffy grey growth covering a couple of the flowers that had already finished blooming, and it's crept onto a spot on the stem that got nicked a while back"
       position: stem
       severity: act_today
-    - description: "it's started spreading onto the healthy leaf right next to it, which has gone soft and brown"
+    - description: "it looks like it's crossed over onto the leaf touching it, which has now turned mushy and discoloured"
       position: whole_leaf
       severity: act_today
 answers:

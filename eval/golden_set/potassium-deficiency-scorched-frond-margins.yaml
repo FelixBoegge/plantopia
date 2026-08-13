@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "the oldest fronds have a scorched brown edge running all the way around, but the middle stays green"
+    - description: "the oldest fronds have a burnt-looking border all the way around the outside, though the centre of each one is still perfectly green"
       position: leaf_margin
       severity: monitor
-    - description: "a few small brown flecks have shown up just inside that brown edge"
+    - description: "a little further in from that border there are a handful of tiny dark dots scattered around"
       position: leaf_margin
       severity: monitor
 answers:

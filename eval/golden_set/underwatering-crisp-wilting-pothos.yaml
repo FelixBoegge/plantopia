@@ -9,13 +9,13 @@ symptoms:
   overall_vigor: declining
   soil_condition: "bone dry, has pulled away from the sides of the pot"
   symptoms:
-    - description: "leaves have gone limp and slightly papery, drooping evenly all over"
+    - description: "the whole plant looks deflated and floppy all over, not just drooping in one spot"
       position: whole_plant
       severity: act_this_week
-    - description: "tips and edges of several leaves have turned crisp and brown"
+    - description: "several leaf edges have gone dry and dark, almost brittle to the touch"
       position: leaf_margin
       severity: monitor
-    - description: "the pot feels almost weightless when picked up"
+    - description: "the pot feels suspiciously empty for its size, hardly any weight to it when picked up"
       position: soil_surface
       severity: monitor
 answers:

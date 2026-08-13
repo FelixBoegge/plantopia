@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains fine"
   symptoms:
-    - description: "the newest stem has grown really long and thin, with the leaves spaced way further apart than the older growth"
+    - description: "the most recent bit of stem has stretched way out, almost stringy, with big gaps between each leaf compared to the older part of the plant"
       position: new_growth
       severity: monitor
-    - description: "those new leaves are smaller and paler than the rest of the plant, and the stem has started leaning hard toward the window"
+    - description: "those newest leaves look washed-out and undersized next to the rest, and the whole stem is straining sideways toward the window"
       position: new_growth
       severity: monitor
 answers:

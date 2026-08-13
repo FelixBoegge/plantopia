@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "the newest little leaves at the tips are pale yellow with the veins standing out bright green"
+    - description: "the smallest leaves right at the growing tips have gone a washed-out yellow, but you can still clearly see a network of green lines running through them"
       position: new_growth
       severity: monitor
-    - description: "growth at the tips has slowed down over the last month"
+    - description: "the plant just isn't pushing out new growth the way it was a month ago"
       position: new_growth
       severity: monitor
 answers:

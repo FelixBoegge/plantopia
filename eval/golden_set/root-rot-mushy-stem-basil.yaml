@@ -9,13 +9,13 @@ symptoms:
   overall_vigor: poor
   soil_condition: "waterlogged, still soggy days after watering"
   symptoms:
-    - description: "leaves are yellowing and drooping even though the soil is still wet"
+    - description: "the leaves have drooped and gone yellow, but the pot is nowhere near dry"
       position: lower_leaves
       severity: act_today
-    - description: "the stem right at the soil line looks darker and feels a bit mushy"
+    - description: "right where the stem meets the soil, it's gone a darker colour and feels squishy when pressed"
       position: stem
       severity: act_today
-    - description: "there's a faint sour smell right at the soil surface"
+    - description: "there's an off, slightly rotten smell coming from around the base"
       position: soil_surface
       severity: act_this_week
 answers:

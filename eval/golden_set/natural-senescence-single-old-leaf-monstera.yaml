@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: good
   soil_condition: "normal, drains well, on a regular watering schedule"
   symptoms:
-    - description: "one of the lowest, oldest leaves has slowly turned yellow then brown over the last couple of weeks and dropped off"
+    - description: "just one of the oldest leaves down near the base has been changing colour gradually over a couple of weeks and eventually let go"
       position: lower_leaves
       severity: monitor
-    - description: "every other leaf, including the new ones unfurling, still looks completely green and firm"
+    - description: "everything else on the plant, even the newest leaf still unrolling, is firm and healthy-looking"
       position: whole_plant
       severity: monitor
 answers:

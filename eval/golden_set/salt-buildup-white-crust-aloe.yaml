@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "a white crusty film has built up on top of the soil and around the rim of the pot"
+    - description: "there's a chalky, pale layer forming where the soil meets the edge of the pot"
       position: soil_surface
       severity: act_this_week
-    - description: "leaf tips have been slowly browning over the last couple of months, even though it's fed regularly"
+    - description: "over the past couple of months the tips of the leaves have been gradually turning brown, and that's despite feeding it on schedule"
       position: leaf_margin
       severity: monitor
 answers:

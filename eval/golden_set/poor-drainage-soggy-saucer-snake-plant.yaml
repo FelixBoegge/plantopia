@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "stays soggy for days; the saucer often has standing water in it"
   symptoms:
-    - description: "water still sits on top of the soil ten minutes after watering"
+    - description: "when I water it, the water just puddles on the surface and takes forever to disappear"
       position: soil_surface
       severity: act_this_week
-    - description: "a couple of leaves have gone yellow without any obvious cause"
+    - description: "a couple of leaves have yellowed and nothing about the care routine explains it"
       position: whole_leaf
       severity: monitor
 answers:

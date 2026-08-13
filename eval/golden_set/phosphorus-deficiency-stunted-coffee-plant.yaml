@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "new leaves are noticeably smaller than older ones and packed close together on the stem"
+    - description: "the newest growth is coming in tiny compared to the rest of the plant, and those leaves are bunched much closer together than normal"
       position: new_growth
       severity: monitor
-    - description: "the undersides of a couple of the older leaves look dull, almost bronze-purple"
+    - description: "flip a couple of the older leaves over and the underside has this dull, purplish-bronze look to it"
       position: lower_leaves
       severity: monitor
 answers:

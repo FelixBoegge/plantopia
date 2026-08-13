@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "small flat brown bumps are stuck along the stems and won't move, almost like tiny shells"
+    - description: "there are these hard little brown bumps stuck fast to the stems, they don't budge at all when brushed past"
       position: stem
       severity: act_this_week
-    - description: "there's a sticky film on the leaves underneath and a bit of black sooty coating starting on it"
+    - description: "the leaves below feel tacky and a dark, dirty-looking film has started forming on them"
       position: whole_leaf
       severity: monitor
 answers:

@@ -10,10 +10,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "evenly moist, drains fine"
   symptoms:
-    - description: "a dusty white coating has spread across several leaves, like they've been dusted with flour"
+    - description: "several leaves look like someone's wiped a chalky, pale film all over the surface of them"
       position: whole_leaf
       severity: act_this_week
-    - description: "the leaves under that coating are starting to curl and look a bit yellow"
+    - description: "underneath that film the leaves are starting to curl at the edges and lose their green colour"
       position: whole_leaf
       severity: monitor
 answers:

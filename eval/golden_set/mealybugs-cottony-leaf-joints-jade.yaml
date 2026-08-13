@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "dry, drains quickly"
   symptoms:
-    - description: "small white fluffy clumps have shown up tucked into the joints where the leaves meet the stem"
+    - description: "there are little tufts of what look like bits of cotton wool wedged into the crooks where leaves attach to the stem"
       position: stem
       severity: act_today
-    - description: "the leaves nearby feel a bit sticky and a couple have started yellowing"
+    - description: "the leaves close by feel tacky to the touch and a couple have started to lose their colour"
       position: whole_leaf
       severity: act_this_week
 answers:

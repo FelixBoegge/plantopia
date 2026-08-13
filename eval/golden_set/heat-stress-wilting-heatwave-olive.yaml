@@ -10,10 +10,10 @@ symptoms:
   overall_vigor: poor
   soil_condition: "moist, watered two days ago, drains fine"
   symptoms:
-    - description: "the whole plant has been wilting in the afternoons even though the soil's still damp"
+    - description: "every afternoon the whole thing droops noticeably, and that's despite the soil not being dry at all"
       position: whole_plant
       severity: act_today
-    - description: "leaf edges on the sunniest side have started to crisp up"
+    - description: "the edges of the leaves on the side that gets the most sun have started to go dry and brittle"
       position: leaf_margin
       severity: monitor
 answers:

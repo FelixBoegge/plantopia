@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "kept moist, drains adequately"
   symptoms:
-    - description: "tips and edges of a lot of fronds have gone brown and crispy"
+    - description: "the ends and outer edges of a lot of the fronds have dried out and gone a crumbly brown"
       position: leaf_margin
       severity: monitor
-    - description: "new fronds are coming in small and not unfurling properly"
+    - description: "the fronds coming in now are undersized and some of them never fully open up"
       position: new_growth
       severity: monitor
 answers:

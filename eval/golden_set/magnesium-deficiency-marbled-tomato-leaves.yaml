@@ -10,10 +10,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "kept evenly moist, container mix"
   symptoms:
-    - description: "older leaves lower down have a blotchy yellow marbling between the veins, but the veins themselves stay green"
+    - description: "the older leaves toward the bottom have gone yellow in uneven patches between the veins, almost like a paint-splatter pattern, while the veins themselves are still green"
       position: lower_leaves
       severity: monitor
-    - description: "a couple of the yellow patches have started to look faintly reddish at the edges"
+    - description: "some of those yellow patches have taken on a faint pinkish-purple tint at the edges"
       position: lower_leaves
       severity: monitor
 answers:

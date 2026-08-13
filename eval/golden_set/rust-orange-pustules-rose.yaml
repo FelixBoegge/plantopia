@@ -10,10 +10,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "outdoor bed soil, drains fine"
   symptoms:
-    - description: "orange, powdery-looking spots have appeared on the underside of a lot of the older leaves"
+    - description: "flip over a lot of the older leaves and there are these small rusty-coloured bumps dotted across the underside"
       position: lower_leaves
       severity: act_this_week
-    - description: "rubbing one of the spots leaves orange dust on my finger"
+    - description: "touch one of those bumps and a bit of bright colour transfers straight onto your fingertip"
       position: lower_leaves
       severity: monitor
 answers:

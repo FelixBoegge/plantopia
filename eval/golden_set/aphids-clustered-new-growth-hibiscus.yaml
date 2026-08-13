@@ -9,10 +9,10 @@ symptoms:
   overall_vigor: declining
   soil_condition: "normal moisture, drains well"
   symptoms:
-    - description: "little clusters of small soft-bodied bugs, mostly green, are packed along the newest stem tips and flower buds"
+    - description: "there's a little crowd of tiny squishy-looking bugs, mostly greenish, bunched up wherever the plant is putting out new shoots and flower buds"
       position: new_growth
       severity: act_today
-    - description: "the leaves just below them are curling and feel a bit sticky"
+    - description: "the leaves right below that spot have started to cup inward and feel tacky if you touch them"
       position: whole_leaf
       severity: act_this_week
 answers:
