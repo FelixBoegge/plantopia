@@ -71,7 +71,9 @@ def test_records_the_differential(make_deps, sample_images):
 def test_high_confidence_is_not_flagged(make_deps, sample_images):
     deps = make_deps(
         chat_model=ScriptedStructuredModel([_differential(0.8)]),
-        settings=Settings(openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35),
+        settings=Settings(
+            openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35, _env_file=None
+        ),
     )
     assert make_diagnose(deps)(_state(sample_images))["low_confidence"] is False
 
@@ -79,7 +81,9 @@ def test_high_confidence_is_not_flagged(make_deps, sample_images):
 def test_low_confidence_is_flagged(make_deps, sample_images):
     deps = make_deps(
         chat_model=ScriptedStructuredModel([_differential(0.2)]),
-        settings=Settings(openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35),
+        settings=Settings(
+            openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35, _env_file=None
+        ),
     )
     assert make_diagnose(deps)(_state(sample_images))["low_confidence"] is True
 
@@ -88,7 +92,9 @@ def test_a_healthy_plant_is_never_flagged_low_confidence(make_deps, sample_image
     healthy = Differential(is_healthy=True, candidates=[], reasoning="This plant looks fine.")
     deps = make_deps(
         chat_model=ScriptedStructuredModel([healthy]),
-        settings=Settings(openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.9),
+        settings=Settings(
+            openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.9, _env_file=None
+        ),
     )
     result = make_diagnose(deps)(_state(sample_images))
     assert result["differential"].is_healthy is True

@@ -9,7 +9,7 @@ from core.tracing import configure_tracing
 
 
 def _settings(**overrides) -> Settings:
-    return Settings(openrouter_api_key="sk-test", **overrides)
+    return Settings(openrouter_api_key="sk-test", _env_file=None, **overrides)
 
 
 @pytest.fixture(autouse=True)

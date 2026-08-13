@@ -14,7 +14,7 @@ def _settings(**overrides) -> Settings:
         "retrieval_score_threshold": 0.35,
         "species_confidence_threshold": 0.50,
     }
-    return Settings(**{**defaults, **overrides})
+    return Settings(**{**defaults, **overrides}, _env_file=None)
 
 
 def _passage(score: float) -> Passage:

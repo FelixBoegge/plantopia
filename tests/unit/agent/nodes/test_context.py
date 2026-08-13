@@ -66,7 +66,7 @@ def test_model_questions_are_included(make_deps, sample_images):
 def test_count_is_capped_at_the_configured_maximum(make_deps, sample_images):
     deps = make_deps(
         chat_model=_model_questions("a", "b", "c", "d", "e", "f"),
-        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=4),
+        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=4, _env_file=None),
     )
     assert len(select_questions(deps, _state(sample_images))) == 4
 
@@ -111,7 +111,7 @@ def test_always_asked_questions_survive_the_cap(make_deps, sample_images):
     """The cap must never evict a question we consider mandatory."""
     deps = make_deps(
         chat_model=_model_questions("a", "b", "c", "d", "e"),
-        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=2),
+        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=2, _env_file=None),
     )
     keys = {q.key for q in select_questions(deps, _state(sample_images))}
     assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300
@@ -120,7 +120,7 @@ def test_always_asked_questions_survive_the_cap(make_deps, sample_images):
 def test_a_cap_below_the_mandatory_count_cannot_evict_them(make_deps, sample_images):
     deps = make_deps(
         chat_model=_model_questions("a", "b"),
-        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=1),
+        settings=Settings(openrouter_api_key="sk-test", max_clarifying_questions=1, _env_file=None),
     )
     keys = {q.key for q in select_questions(deps, _state(sample_images))}
     assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300

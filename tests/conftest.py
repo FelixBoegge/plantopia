@@ -76,7 +76,7 @@ def make_deps(db, now, chroma_retriever):
 
     def _make(**overrides) -> Deps:
         defaults = {
-            "settings": Settings(openrouter_api_key="sk-test"),
+            "settings": Settings(openrouter_api_key="sk-test", _env_file=None),
             "gate_model": ScriptedStructuredModel([]),
             "vision_model": ScriptedStructuredModel([]),
             "chat_model": ScriptedStructuredModel([]),

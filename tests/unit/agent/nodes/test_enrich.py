@@ -120,7 +120,7 @@ class TestImagePath:
             "species_confidence_threshold": 0.5,
             "image_match_threshold": 0.45,
         }
-        return Settings(**{**defaults, **overrides})
+        return Settings(**{**defaults, **overrides}, _env_file=None)
 
     def test_the_photographs_are_embedded_and_searched(self, make_deps, sample_images):
         retriever = _StubRetriever([_passage(0.9)], [_passage(0.8, "spider-mites")])
@@ -269,6 +269,7 @@ class TestWebEscalation:
             openrouter_api_key="sk-test",
             retrieval_score_threshold=0.35,
             species_confidence_threshold=0.5,
+            _env_file=None,
         )
 
     def test_strong_retrieval_does_not_escalate(self, make_deps, sample_images):
