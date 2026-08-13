@@ -22,6 +22,7 @@ from agent.schemas import (
     SpeciesGuess,
 )
 from agent.state import DiagnosisState
+from core.cost import UsageCollector, UsageSnapshot
 from core.images import store_upload
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,8 @@ class FinalResult:
     errors: list[str]
     verdict: str | None = None
     verdict_reasoning: str | None = None
+    token_usage: dict[str, int] | None = None
+    cost_usd: float | None = None
 
 
 class DiagnosisService:
@@ -69,6 +72,12 @@ class DiagnosisService:
         self._deps = deps
         self._graph = graph
         self._upload_dir = upload_dir
+        # Keyed by thread_id because a diagnosis spans two invocations: start()
+        # pauses at the clarifying-question interrupt and answer() resumes it. The
+        # gate and vision calls all happen in the first, so a per-invoke collector
+        # would undercount by roughly half. Evicted by _release() at every terminal
+        # outcome so this cannot grow for the life of the process.
+        self._collectors: dict[str, UsageCollector] = {}
 
     def start(
         self,
@@ -96,10 +105,11 @@ class DiagnosisService:
             user_notes=user_notes,
         )
 
-        result = self._graph.invoke(state, self._config(thread_id))
+        result = self._graph.invoke(state, self._run_config(thread_id))
 
         stopped = self._stopped_at_the_guards(result)
         if stopped is not None:
+            self._release(thread_id)
             return stopped
 
         interrupts = result.get("__interrupt__") or []
@@ -145,8 +155,10 @@ class DiagnosisService:
             self._graph.update_state(config, {"species": corrected})
             logger.info("species corrected by the user to %r", corrected.common_name)
 
-        result = self._graph.invoke(Command(resume=answers), config)
-        return self._final_result(result)
+        result = self._graph.invoke(Command(resume=answers), self._run_config(thread_id))
+        final = self._final_result(result, self._collectors[thread_id].snapshot())
+        self._release(thread_id)
+        return final
 
     def start_recheck(
         self,
@@ -196,13 +208,16 @@ class DiagnosisService:
             ),
         )
 
-        result = self._graph.invoke(state, self._config(thread_id))
+        result = self._graph.invoke(state, self._run_config(thread_id))
 
         stopped = self._stopped_at_the_guards(result)
         if stopped is not None:
+            self._release(thread_id)
             return stopped
 
-        return self._final_result(result)
+        final = self._final_result(result, self._collectors[thread_id].snapshot())
+        self._release(thread_id)
+        return final
 
     def _prepare_images(self, uploads: list[bytes]) -> list[ImageRef]:
         """Validate the upload count and write the files to disk.
@@ -239,7 +254,7 @@ class DiagnosisService:
 
         return None
 
-    def _final_result(self, result: dict) -> FinalResult:
+    def _final_result(self, result: dict, usage: UsageSnapshot | None = None) -> FinalResult:
         # A ProgressVerdict for a re-check, absent for a first-time diagnosis.
         verdict = result.get("verdict")
         return FinalResult(
@@ -255,8 +270,27 @@ class DiagnosisService:
             errors=result.get("errors") or [],
             verdict=verdict.verdict if verdict is not None else None,
             verdict_reasoning=verdict.reasoning if verdict is not None else None,
+            token_usage=usage.as_token_usage() if usage else None,
+            cost_usd=usage.cost_usd if usage else None,
         )
 
     @staticmethod
     def _config(thread_id: str) -> dict:
         return {"configurable": {"thread_id": thread_id}}
+
+    def _run_config(self, thread_id: str) -> dict:
+        """Config for an ``invoke``, carrying this thread's usage collector.
+
+        The collector is passed twice deliberately: as a callback, so it observes
+        every model call without any node knowing it exists, and through
+        ``configurable``, so ``persist`` can read it (spec §2.1).
+        """
+        collector = self._collectors.setdefault(thread_id, UsageCollector())
+        return {
+            "configurable": {"thread_id": thread_id, "usage_collector": collector},
+            "callbacks": [collector],
+        }
+
+    def _release(self, thread_id: str) -> None:
+        """Drop a finished thread's collector."""
+        self._collectors.pop(thread_id, None)

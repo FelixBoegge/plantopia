@@ -1,5 +1,7 @@
 """Tests for the diagnosis service — the only surface the UI calls."""
 
+from pathlib import Path
+
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -10,6 +12,18 @@ from services.diagnosis_service import DiagnosisService, FinalResult, StartResul
 from tests.fakes.chat_models import ScriptedStructuredModel
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+def _service(make_deps, pipeline_models) -> DiagnosisService:
+    """Build a service wired with the happy-path scripted models.
+
+    Mirrors the ``service`` fixture's construction, but as a plain callable so
+    tests that don't need ``tmp_path`` can build one inline.
+    """
+    gate, vision, chat = pipeline_models
+    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
+    graph = build_diagnosis_graph(deps, MemorySaver())
+    return DiagnosisService(deps, graph, upload_dir=Path())
 
 
 @pytest.fixture
@@ -439,3 +453,49 @@ def test_start_recheck_raises_for_an_unknown_plant(recheck_service):
     )
     with pytest.raises(ValueError, match="No plant"):
         service.start_recheck(plant_id=999_999, uploads=[PNG], user_notes=None, thread_id="rc3")
+
+
+def test_one_collector_spans_start_and_answer(make_deps, pipeline_models, sample_images):
+    """The vision calls happen in start(); the persist happens in answer(). One
+    collector must see both, or cost undercounts by roughly half."""
+    service = _service(make_deps, pipeline_models)
+
+    first = service._run_config("thread-a")
+    second = service._run_config("thread-a")
+
+    assert first["configurable"]["usage_collector"] is second["configurable"]["usage_collector"]
+
+
+def test_different_threads_get_different_collectors(make_deps, pipeline_models):
+    service = _service(make_deps, pipeline_models)
+
+    a = service._run_config("thread-a")["configurable"]["usage_collector"]
+    b = service._run_config("thread-b")["configurable"]["usage_collector"]
+
+    assert a is not b
+
+
+def test_the_collector_is_also_a_callback(make_deps, pipeline_models):
+    """Passed twice on purpose: as a callback to observe calls, and through
+    configurable so persist can read it (spec §2.1)."""
+    service = _service(make_deps, pipeline_models)
+
+    config = service._run_config("thread-a")
+
+    assert config["callbacks"] == [config["configurable"]["usage_collector"]]
+
+
+def test_collectors_are_evicted_at_a_terminal_outcome(make_deps, pipeline_models):
+    """Otherwise the dict grows for the life of the process."""
+    service = _service(make_deps, pipeline_models)
+    service._run_config("thread-a")
+
+    service._release("thread-a")
+
+    assert "thread-a" not in service._collectors
+
+
+def test_releasing_an_unknown_thread_is_harmless(make_deps, pipeline_models):
+    service = _service(make_deps, pipeline_models)
+
+    service._release("never-seen")  # must not raise
