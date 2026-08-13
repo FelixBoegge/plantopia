@@ -1,0 +1,126 @@
+"""Run one golden case through the real diagnosis graph.
+
+Only the gate and vision tiers are scripted (``eval/scripted.py``). The reasoning
+model, the retriever, the corpus, the graph, and the interrupt are all real — this
+measures retrieval and differential reasoning, which is exactly what the Ragas
+metrics can see (spec §3.1).
+"""
+
+import logging
+from dataclasses import dataclass
+
+from langgraph.types import Command
+
+from agent.deps import Deps
+from agent.nodes.context import ALWAYS_ASK_KEYS, LOCATION_QUESTION
+from agent.schemas import ImageRef, Question
+from agent.state import DiagnosisState
+from core.cost import UsageCollector, UsageSnapshot
+from eval.cases import GoldenCase
+
+logger = logging.getLogger(__name__)
+
+# ``DiagnosisState.images`` requires at least one entry (spec-enforced by the real
+# schema, not a harness choice), and ``guard_input``/``quality_check`` both build a
+# vision message from ``state.images`` before ever consulting a model. Golden cases
+# are text, so this one-pixel placeholder stands in for a photograph the case never
+# had; the gate and vision tiers are scripted to pass it unconditionally either way.
+_PLACEHOLDER_IMAGE = ImageRef(ref="golden-case", media_type="image/png", data_b64="aGVsbG8=")
+
+# ``select_questions`` always asks watering and drainage, and asks for a location on
+# any outdoor plant with none on record — none of that is model output, so it never
+# varies between runs of the *same* case. Only the model-chosen questions are a
+# variance source distinct from diagnostic instability (spec §3.4), so only those are
+# recorded as "asked". The mandatory set still gets answered (via ``_answers_for``);
+# it just is not counted as drift.
+_DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_QUESTION.key}
+
+
+@dataclass(frozen=True, slots=True)
+class CaseRun:
+    """What one pass over one case produced."""
+
+    case_id: str
+    ground_truth: str
+    category: str
+    candidates: list[str]
+    reasoning: str
+    contexts: list[str]
+    questions_asked: list[str]
+    usage: UsageSnapshot | None
+    error: str | None = None
+
+
+def _answers_for(case: GoldenCase, questions: list[Question]) -> dict[str, str]:
+    """Answer every question asked, falling back for ones the case did not foresee."""
+    return {
+        question.key: case.answers.get(question.key, case.default_answer) for question in questions
+    }
+
+
+def run_case(case: GoldenCase, *, deps: Deps, graph, thread_id: str) -> CaseRun:
+    """Run one case end to end. Never raises — a failure becomes a recorded row.
+
+    A single bad case must not abort a thirty-case run (spec §5), so every
+    exception is caught and reported as data.
+    """
+    collector = UsageCollector()
+    config = {
+        "configurable": {"thread_id": thread_id, "usage_collector": collector},
+        "callbacks": [collector],
+    }
+
+    def _failed(message: str) -> CaseRun:
+        return CaseRun(
+            case_id=case.id,
+            ground_truth=case.ground_truth,
+            category=case.category,
+            candidates=[],
+            reasoning="",
+            contexts=[],
+            questions_asked=[],
+            usage=collector.snapshot(),
+            error=message,
+        )
+
+    try:
+        state = DiagnosisState(
+            images=[_PLACEHOLDER_IMAGE],
+            plant_name=case.plant.name,
+            location_kind=case.plant.location_kind,
+            location_text=case.plant.location_text,
+            user_notes=None,
+        )
+        started = graph.invoke(state, config)
+
+        questions_asked: list[str] = []
+        interrupts = started.get("__interrupt__") or []
+        if interrupts:
+            questions = [Question.model_validate(q) for q in interrupts[0].value["questions"]]
+            questions_asked = [
+                question.key
+                for question in questions
+                if question.key not in _DETERMINISTIC_QUESTION_KEYS
+            ]
+            result = graph.invoke(Command(resume=_answers_for(case, questions)), config)
+        else:
+            result = started
+
+        differential = result.get("differential")
+        if differential is None:
+            return _failed("the run produced no differential")
+
+        return CaseRun(
+            case_id=case.id,
+            ground_truth=case.ground_truth,
+            category=case.category,
+            candidates=[candidate.disorder_id for candidate in differential.candidates],
+            reasoning=differential.reasoning,
+            contexts=[passage.text for passage in result.get("retrieved") or []],
+            questions_asked=questions_asked,
+            usage=collector.snapshot(),
+            error=None,
+        )
+    except Exception as exc:  # noqa: BLE001 — a failed case is data, not a crash
+        logger.warning("case %s failed: %s", case.id, exc)
+        return _failed(f"{type(exc).__name__}: {exc}")
