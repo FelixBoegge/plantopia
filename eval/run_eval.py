@@ -163,7 +163,7 @@ def main() -> None:
 
     accuracy_report = accuracy(runs)
     stability_report = stability(repeats)
-    ragas_scores = evaluate_runs(runs, llm=judge_llm(), embeddings=judge_embeddings())
+    ragas_result = evaluate_runs(runs, llm=judge_llm(), embeddings=judge_embeddings())
 
     results = {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -176,7 +176,11 @@ def main() -> None:
             "golden_set_size": len(cases),
         },
         "accuracy": _as_dict(accuracy_report),
-        "ragas": ragas_scores,
+        "ragas": ragas_result.scores,
+        # Non-NaN cells per metric out of cells submitted to Ragas, so a reader can
+        # audit later whether a mean quietly came from fewer cases than it looks
+        # like (spec §5) — see eval/ragas_metrics.py::RagasScores.
+        "ragas_counts": ragas_result.counts,
         "stability": _as_dict(stability_report),
         "near_misses": _near_misses(runs, {case.id: case for case in cases}),
         "cases": [_case_row(run) for run in runs],

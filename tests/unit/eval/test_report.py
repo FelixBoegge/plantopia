@@ -25,6 +25,12 @@ RESULTS = {
         "faithfulness": 0.9,
         "answer_relevancy": None,
     },
+    "ragas_counts": {
+        "context_precision": {"scored": 28, "total": 28},
+        "context_recall": {"scored": 28, "total": 28},
+        "faithfulness": {"scored": 28, "total": 28},
+        "answer_relevancy": {"scored": 0, "total": 28},
+    },
     "stability": {
         "top1_agreement": 0.6,
         "candidate_churn": 0.42,
@@ -78,3 +84,55 @@ def test_per_category_breakdown_is_rendered():
     report = render_report(RESULTS)
 
     assert "watering" in report
+
+
+def test_a_fully_scored_ragas_metric_has_no_redundant_note():
+    """A metric that scored every submitted case must not be cluttered with a
+    count note — that's the common case and should read as a plain percentage."""
+    report = render_report(RESULTS)
+
+    faithfulness_line = next(line for line in report.splitlines() if "Faithfulness" in line)
+    assert "scored" not in faithfulness_line.lower()
+    assert "90.0%" in faithfulness_line
+
+
+def test_a_fully_nan_ragas_metric_discloses_its_zero_count():
+    """Spec §5: the report must say how many cells failed, not just that the mean
+    is missing. A metric that scored nothing still renders as 'not measured' —
+    never 0.0% — but the count says zero of how many were submitted."""
+    report = render_report(RESULTS)
+
+    relevancy_line = next(line for line in report.splitlines() if "Answer relevancy" in line)
+    assert "not measured" in relevancy_line.lower()
+    assert "0.0%" not in relevancy_line
+    assert "0 of 28" in relevancy_line
+
+
+def test_a_partially_scored_ragas_metric_states_its_count():
+    """The exact scenario the first real run hit: five judge calls failed, Ragas
+    turned those cells into NaN, and the mean silently skipped them. The report
+    must say the mean came from fewer cases than were submitted."""
+    partial = {
+        **RESULTS,
+        "ragas": {**RESULTS["ragas"], "context_precision": 0.82},
+        "ragas_counts": {
+            **RESULTS["ragas_counts"],
+            "context_precision": {"scored": 23, "total": 28},
+        },
+    }
+    report = render_report(partial)
+
+    precision_line = next(line for line in report.splitlines() if "Context precision" in line)
+    assert "82.0%" in precision_line
+    assert "23 of 28" in precision_line
+
+
+def test_missing_ragas_counts_still_renders_a_plain_percentage():
+    """Older results files (or a caller that never populated counts) must not
+    crash the renderer — fall back to a bare percentage."""
+    legacy = {k: v for k, v in RESULTS.items() if k != "ragas_counts"}
+
+    report = render_report(legacy)
+
+    faithfulness_line = next(line for line in report.splitlines() if "Faithfulness" in line)
+    assert "90.0%" in faithfulness_line

@@ -11,6 +11,27 @@ def _pct(value: Any) -> str:
     return f"{float(value) * 100:.1f}%"
 
 
+def _ragas_cell(value: Any, counts: dict[str, Any] | None) -> str:
+    """Render one Ragas metric, disclosing incompleteness where it applies.
+
+    A metric that scored every submitted case renders as a bare percentage — the
+    common case should not be cluttered with a redundant note. One that scored
+    fewer cells than were submitted says so right next to the number, including
+    the case where it scored nothing at all: that still renders as "not measured"
+    rather than 0.0%, but the count makes clear zero of how many were attempted
+    (spec §5 — a report must state how many metrics failed, not quietly average
+    over fewer cases). Missing counts (an older results file, or a caller that
+    never populated them) fall back to the bare percentage.
+    """
+    pct = _pct(value)
+    if not counts:
+        return pct
+    scored, total = counts.get("scored", 0), counts.get("total", 0)
+    if total == 0 or scored == total:
+        return pct
+    return f"{pct} ({scored} of {total} scored)"
+
+
 def render_report(results: dict) -> str:
     """Render ``eval/REPORT.md`` from a results dict.
 
@@ -21,6 +42,7 @@ def render_report(results: dict) -> str:
     provenance = results["provenance"]
     accuracy = results["accuracy"]
     ragas = results["ragas"]
+    ragas_counts = results.get("ragas_counts", {})
     stability = results["stability"]
 
     lines = [
@@ -45,10 +67,14 @@ def render_report(results: dict) -> str:
         "|---|---|",
         f"| Top-1 diagnostic accuracy | {_pct(accuracy['top1'])} |",
         f"| Top-3 diagnostic accuracy | {_pct(accuracy['top3'])} |",
-        f"| Context precision | {_pct(ragas['context_precision'])} |",
-        f"| Context recall | {_pct(ragas['context_recall'])} |",
-        f"| Faithfulness | {_pct(ragas['faithfulness'])} |",
-        f"| Answer relevancy | {_pct(ragas['answer_relevancy'])} |",
+        f"| Context precision | "
+        f"{_ragas_cell(ragas['context_precision'], ragas_counts.get('context_precision'))} |",
+        f"| Context recall | "
+        f"{_ragas_cell(ragas['context_recall'], ragas_counts.get('context_recall'))} |",
+        f"| Faithfulness | "
+        f"{_ragas_cell(ragas['faithfulness'], ragas_counts.get('faithfulness'))} |",
+        f"| Answer relevancy | "
+        f"{_ragas_cell(ragas['answer_relevancy'], ragas_counts.get('answer_relevancy'))} |",
         "",
         f"{accuracy['scored']} cases scored, of which **{accuracy['failed']} failed** "
         "and are counted in the denominator rather than dropped. "
