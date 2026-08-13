@@ -212,6 +212,7 @@ def _timeline_diagnosis(diagnosis_id: int, observation_id: int, name: str, day: 
         contagion=ContagionAssessment(at_risk=False, advice="none"),
         retrieved=[],
         model="m",
+        token_usage=None,
         cost_usd=None,
         created_at=datetime(2026, 1, day, tzinfo=UTC),
     )
