@@ -9,6 +9,7 @@ pages = [
     st.Page("ui/pages/diagnose.py", title="Diagnose", icon="🔍"),
     st.Page("ui/pages/plant_detail.py", title="Plant detail", icon="📋"),
     st.Page("ui/pages/chat.py", title="Chat", icon="💬"),
+    st.Page("ui/pages/evaluation.py", title="Evaluation", icon="📊"),
 ]
 
 st.navigation(pages).run()

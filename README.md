@@ -211,6 +211,27 @@ transport layer with `respx`. Tests assert on structure and control flow, never 
 generated prose — model output is not deterministic enough to assert on, even at
 temperature 0.
 
+### Evaluation
+
+```bash
+uv run python -m eval.run_eval
+```
+
+Runs the golden-set harness against a real model — question selection, differential
+diagnosis and retrieval, scored for top-1/top-3 accuracy and Ragas retrieval metrics,
+with the same case run several times to measure how stable the diagnosis is under
+byte-identical input. It takes several minutes and makes real, billed model calls, so
+it is never invoked by the test suite or by the app itself. It writes a timestamped
+JSON file to `eval/results/` and a human-readable `eval/REPORT.md`.
+
+The **Evaluation** page in the app renders whatever the newest file in `eval/results/`
+contains; it only reads that file and never runs the harness itself. Before the first
+run, the page says so explicitly and names the command above, rather than showing a
+traceback or a blank page.
+
+`ragas` and `pyyaml`, used only by the harness, are `dev`-dependency-group packages —
+the shipped app never imports them.
+
 ## Project structure
 
 | Directory | Responsibility |

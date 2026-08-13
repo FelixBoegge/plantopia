@@ -53,7 +53,7 @@ Not limitations — decisions, recorded in [`PLAN.md`](../PLAN.md) §4.3 and §1
 
 - **No reference-image corpus.** Image-to-image matching would likely beat cross-modal text matching for visually distinctive disorders, but sourcing licensed photographs for 43 disorders is a larger content job than the text corpus, and public plant datasets skew heavily to crop leaf pathology while barely covering the watering, light and nutrient problems that dominate houseplant failures. Revisit once the evaluation harness can measure whether it actually helps.
 - **No authentication, no product recommendations, no notifications, no community features.**
-- **The Ragas evaluation report (Phase 3) and the learned user profile (Phase 4, `PLAN.md` §11.3)** are planned, not missing. Phase 2 (plant profiles UI, the re-check flow, the chat agent, treatment feedback) and the rest of Phase 3 (LangSmith tracing, cost display) are built, not planned.
+- **The learned user profile (Phase 4, `PLAN.md` §11.3)** is planned, not missing. Everything else once listed in this bullet is now built: Phase 2 (plant profiles UI, the re-check flow, the chat agent, treatment feedback) and all of Phase 3, including the Ragas evaluation harness, metrics, report renderer, CLI and the in-app Evaluation page (`ui/pages/evaluation.py`), not just LangSmith tracing and cost display.
 
 ---
 
