@@ -37,6 +37,8 @@ def _shim_legacy_vertexai() -> None:
 _shim_legacy_vertexai()
 
 from ragas import EvaluationDataset, evaluate  # noqa: E402
+from ragas.embeddings import LangchainEmbeddingsWrapper  # noqa: E402
+from ragas.llms import LangchainLLMWrapper  # noqa: E402
 from ragas.metrics import (  # noqa: E402
     answer_relevancy,
     context_precision,
@@ -45,7 +47,31 @@ from ragas.metrics import (  # noqa: E402
 )
 from ragas.run_config import RunConfig  # noqa: E402
 
+from core.llm import build_embeddings, build_reasoning_model  # noqa: E402
+
 METRIC_NAMES = ("context_precision", "context_recall", "faithfulness", "answer_relevancy")
+
+
+def judge_llm() -> LangchainLLMWrapper:
+    """The reasoning model, wrapped for Ragas's judge-LLM metrics.
+
+    Lives here rather than in ``eval/run_eval.py`` because ``ragas.llms`` is only
+    importable once ``_shim_legacy_vertexai`` has run, which happens at this
+    module's import time. A caller importing ``ragas.llms.LangchainLLMWrapper``
+    directly, before this module, hits the same
+    ``ModuleNotFoundError: langchain_community.chat_models.vertexai`` the shim
+    exists to avoid — so nothing outside this module should import from
+    ``ragas`` directly.
+    """
+    return LangchainLLMWrapper(build_reasoning_model())
+
+
+def judge_embeddings() -> LangchainEmbeddingsWrapper:
+    """The embedding model, wrapped for Ragas's embedding-based metrics.
+
+    See ``judge_llm`` for why this factory lives here instead of at the call site.
+    """
+    return LangchainEmbeddingsWrapper(build_embeddings())
 
 
 def to_ragas_rows(runs: list[CaseRun]) -> list[dict[str, Any]]:
