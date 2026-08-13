@@ -85,3 +85,21 @@ def test_failing_chat_model_raises():
     model = FailingChatModel(RuntimeError("boom"))
     with pytest.raises(RuntimeError, match="boom"):
         model.invoke([HumanMessage("x")])
+
+
+def test_models_request_usage_accounting():
+    """OpenRouter only reports the credits it charged when asked (spec §2.3)."""
+    from core.llm import build_chat_model
+
+    model = build_chat_model(model="test/model")
+
+    assert model.extra_body["usage"] == {"include": True}
+
+
+def test_provider_routing_restriction_is_preserved():
+    """The require_parameters guard must survive alongside the usage flag."""
+    from core.llm import build_chat_model
+
+    model = build_chat_model(model="test/model")
+
+    assert model.extra_body["provider"] == {"require_parameters": True}
