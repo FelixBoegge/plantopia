@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from itertools import combinations
 
 from agent.nodes.context import ALWAYS_ASK_KEYS, LOCATION_QUESTION
+from core.cost import UsageSnapshot
+from eval.cases import GoldenCase
 from eval.harness import CaseRun
 
 # ``questions_asked`` records the complete interrupt payload — the mandatory
@@ -23,7 +25,13 @@ _DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_QUESTION.key}
 
 
 def _accepted(run: CaseRun) -> set[str]:
-    """The disorder ids that count as correct for this case."""
+    """The disorder ids that count as correct for this case.
+
+    Deliberately ``ground_truth`` alone, not ``ground_truth | also_acceptable``: a
+    near miss onto a confusable neighbour is still a miss, and it is surfaced
+    separately by ``near_misses`` rather than folded into top-1/top-3, which would
+    make the headline number too lenient to say anything about ranking (spec §3.5).
+    """
     return {run.ground_truth}
 
 
@@ -170,4 +178,47 @@ def stability(runs_by_case: dict[str, list[CaseRun]]) -> StabilityReport:
         question_drift=sum(drifts) / len(drifts),
         cases=len(runs_by_case),
         runs_per_case=total_runs / len(runs_by_case),
+    )
+
+
+def near_misses(runs: list[CaseRun], cases: dict[str, GoldenCase]) -> int:
+    """Top-1 misses that landed on a disorder the case called confusable.
+
+    Reported alongside top-1/top-3 rather than folded into them (see
+    ``_accepted``): a miss onto ``also_acceptable`` is still a miss, but it is a
+    different kind of miss from one onto something unrelated, and the public
+    report says so as a separate number (spec §3.5, §6).
+    """
+    total = 0
+    for run in runs:
+        if top1_hit(run) or not run.candidates:
+            continue
+        if run.candidates[0] in set(cases[run.case_id].also_acceptable):
+            total += 1
+    return total
+
+
+def total_usage(runs: list[CaseRun]) -> UsageSnapshot | None:
+    """Aggregate token usage and cost across every run passed in.
+
+    The caller combines the main set and the stability repeats before calling
+    this, so the total reflects the whole evaluation's spend, not just one part
+    of it (Block A exists to make spend observable; the run that costs the most
+    reported none until now).
+
+    Mirrors ``UsageCollector.snapshot()``'s convention: ``None`` when no run
+    recorded any usage at all, rather than a zeroed snapshot that would read as a
+    free run. Cost is summed only from runs that reported one and is ``None`` if
+    none did — never a fabricated ``$0.00`` (consistent with
+    ``ui/components/cost_badge.py``).
+    """
+    usages = [run.usage for run in runs if run.usage is not None]
+    if not usages:
+        return None
+
+    costs = [usage.cost_usd for usage in usages if usage.cost_usd is not None]
+    return UsageSnapshot(
+        prompt_tokens=sum(usage.prompt_tokens for usage in usages),
+        completion_tokens=sum(usage.completion_tokens for usage in usages),
+        cost_usd=round(sum(costs), 8) if costs else None,
     )

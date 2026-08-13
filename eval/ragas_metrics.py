@@ -12,10 +12,12 @@ both verified reachable on the restricted key (spec §3.5).
 import logging
 import sys
 import types
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from eval.harness import CaseRun
+from knowledge.ingest import Chunk
 
 logger = logging.getLogger(__name__)
 
@@ -132,32 +134,68 @@ def judge_embeddings() -> LangchainEmbeddingsWrapper:
     return LangchainEmbeddingsWrapper(build_embeddings())
 
 
-def to_ragas_rows(runs: list[CaseRun]) -> list[dict[str, Any]]:
+def _corpus_lookup(corpus: Sequence[Chunk]) -> dict[str, dict[str, str]]:
+    """``doc_id -> {"name": ..., "symptoms": ...}``, built once for the whole call.
+
+    Only the pieces ``_reference`` needs: a document's display name, and its
+    ``Symptoms`` section text if it has one. A document without a ``Symptoms``
+    chunk simply has no ``"symptoms"`` key, which ``_reference`` treats the same
+    as the document being entirely absent.
+    """
+    lookup: dict[str, dict[str, str]] = {}
+    for chunk in corpus:
+        entry = lookup.setdefault(chunk.doc_id, {"name": chunk.name})
+        if chunk.section == "Symptoms":
+            entry["symptoms"] = chunk.text
+    return lookup
+
+
+def _reference(ground_truth: str, lookup: dict[str, dict[str, str]]) -> str:
+    """The ground-truth document's name plus its Symptoms text, as a reference answer.
+
+    Falls back to the bare slug — the old behaviour — when the document or its
+    ``Symptoms`` section is missing, rather than raising: a golden case referencing
+    an unindexed corpus document must not crash a run that cost real money.
+    """
+    entry = lookup.get(ground_truth)
+    if not entry or "symptoms" not in entry:
+        return ground_truth
+    return f"{entry['name']}: {entry['symptoms']}"
+
+
+def to_ragas_rows(runs: list[CaseRun], corpus: Sequence[Chunk] = ()) -> list[dict[str, Any]]:
     """Map completed runs to Ragas' evaluation-sample shape.
 
     Runs that failed, or that retrieved nothing, are excluded rather than scored as
     zero: context precision over an empty context list is undefined, and a zero
     would be indistinguishable from genuinely bad retrieval.
+
+    ``user_input`` is the case's actual situation (symptoms plus the answers given),
+    carried on ``CaseRun.situation`` — it varies per case, unlike the placeholder
+    question this replaced. ``reference`` is the ground-truth document's name and
+    Symptoms text, built from ``corpus`` via one lookup for the whole call rather
+    than one load per row.
     """
+    lookup = _corpus_lookup(corpus)
     return [
         {
-            # What the "user" effectively asked: the situation, as the case states it.
-            "user_input": _situation(run),
+            "user_input": run.situation,
             "response": run.reasoning,
             "retrieved_contexts": list(run.contexts),
-            "reference": run.ground_truth,
+            "reference": _reference(run.ground_truth, lookup),
         }
         for run in runs
         if run.error is None and run.reasoning and run.contexts
     ]
 
 
-def _situation(run: CaseRun) -> str:
-    questions = ", ".join(run.questions_asked) or "none"
-    return f"What is wrong with this plant? Clarifying questions asked: {questions}."
-
-
-def evaluate_runs(runs: list[CaseRun], *, llm: Any = None, embeddings: Any = None) -> RagasScores:
+def evaluate_runs(
+    runs: list[CaseRun],
+    *,
+    corpus: Sequence[Chunk] = (),
+    llm: Any = None,
+    embeddings: Any = None,
+) -> RagasScores:
     """Score runs with Ragas, returning ``None`` for any metric that could not run.
 
     A metric failure is recorded rather than raised: one metric erroring must not
@@ -165,7 +203,7 @@ def evaluate_runs(runs: list[CaseRun], *, llm: Any = None, embeddings: Any = Non
     returned counts let a reader tell a complete mean from one that silently
     averaged over fewer cases than were submitted.
     """
-    rows = to_ragas_rows(runs)
+    rows = to_ragas_rows(runs, corpus)
     if not rows:
         logger.warning("no scorable rows: every run failed or retrieved nothing")
         return _empty_scores(total=0)

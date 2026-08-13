@@ -6,6 +6,7 @@ import pytest
 import eval.ragas_metrics as ragas_metrics
 from eval.harness import CaseRun
 from eval.ragas_metrics import METRIC_NAMES, RagasScores, _as_float, evaluate_runs, to_ragas_rows
+from knowledge.ingest import Chunk
 
 
 def _run(**kw) -> CaseRun:
@@ -17,10 +18,24 @@ def _run(**kw) -> CaseRun:
         "reasoning": "Wet soil and lower-leaf yellowing.",
         "contexts": ["Overwatering: soil stays wet for days."],
         "questions_asked": ["drainage"],
+        "situation": "My plant has these symptoms: yellowing lower leaves.",
         "usage": None,
         "error": None,
     }
     return CaseRun(**{**defaults, **kw})
+
+
+def _chunk(**kw) -> Chunk:
+    defaults = {
+        "doc_id": "overwatering",
+        "name": "Overwatering",
+        "section": "Symptoms",
+        "text": "Yellowing leaves, often with soft brown patches. Soil stays wet for days.",
+        "category": "water-and-root",
+        "transmissible": False,
+        "severity": "act_this_week",
+    }
+    return Chunk(**{**defaults, **kw})
 
 
 def test_rows_carry_the_four_fields_ragas_needs():
@@ -28,7 +43,33 @@ def test_rows_carry_the_four_fields_ragas_needs():
 
     assert set(rows[0]) == {"user_input", "response", "retrieved_contexts", "reference"}
     assert rows[0]["retrieved_contexts"] == ["Overwatering: soil stays wet for days."]
-    assert rows[0]["reference"] == "overwatering"
+
+
+def test_user_input_is_the_runs_recorded_situation():
+    """``user_input`` must carry the case's real situation, not a placeholder
+    question — that placeholder was identical across every case (the defect)."""
+    run = _run(situation="My plant has these symptoms: crisp brown leaf edges.")
+
+    rows = to_ragas_rows([run])
+
+    assert rows[0]["user_input"] == "My plant has these symptoms: crisp brown leaf edges."
+
+
+def test_two_different_cases_produce_different_user_input():
+    """The defect this replaces: every case fed Ragas an identical, content-free
+    question. Two cases with different symptoms must now produce different rows."""
+    run_a = _run(
+        case_id="a",
+        situation="My plant has these symptoms: yellowing lower leaves.",
+    )
+    run_b = _run(
+        case_id="b",
+        situation="My plant has these symptoms: crisp brown leaf tips.",
+    )
+
+    rows = to_ragas_rows([run_a, run_b])
+
+    assert rows[0]["user_input"] != rows[1]["user_input"]
 
 
 def test_failed_runs_are_excluded_from_the_rows():
@@ -43,6 +84,56 @@ def test_runs_without_contexts_are_excluded():
     rows = to_ragas_rows([_run(contexts=[])])
 
     assert rows == []
+
+
+def test_reference_is_built_from_the_ground_truth_documents_name_and_symptoms():
+    """``reference`` must read as an answer, not an identifier — the old defect
+    fed Ragas the bare slug ``"overwatering"``."""
+    corpus = [
+        _chunk(section="Symptoms", text="Yellowing leaves and soil that stays wet for days."),
+        _chunk(section="Treatment, least-invasive first", text="Stop watering."),
+    ]
+
+    rows = to_ragas_rows([_run(ground_truth="overwatering")], corpus)
+
+    assert (
+        rows[0]["reference"] == "Overwatering: Yellowing leaves and soil that stays wet for days."
+    )
+
+
+def test_reference_falls_back_to_the_slug_when_the_document_is_missing():
+    corpus = [_chunk(doc_id="overwatering", section="Symptoms", text="Wet soil.")]
+
+    rows = to_ragas_rows([_run(ground_truth="some-unindexed-disorder")], corpus)
+
+    assert rows[0]["reference"] == "some-unindexed-disorder"
+
+
+def test_reference_falls_back_to_the_slug_when_the_symptoms_section_is_missing():
+    corpus = [_chunk(doc_id="overwatering", section="Treatment, least-invasive first")]
+
+    rows = to_ragas_rows([_run(ground_truth="overwatering")], corpus)
+
+    assert rows[0]["reference"] == "overwatering"
+
+
+def test_corpus_lookup_is_built_once_not_per_row(monkeypatch):
+    """A many-row call must build the lookup a single time, not once per row —
+    the defect this replaces would have re-scanned the corpus per case."""
+    calls = []
+    original = ragas_metrics._corpus_lookup
+
+    def _counting_lookup(corpus):
+        calls.append(1)
+        return original(corpus)
+
+    monkeypatch.setattr(ragas_metrics, "_corpus_lookup", _counting_lookup)
+
+    corpus = [_chunk()]
+    rows = to_ragas_rows([_run(case_id="a"), _run(case_id="b")], corpus)
+
+    assert len(rows) == 2
+    assert len(calls) == 1
 
 
 def test_evaluation_of_no_scorable_rows_returns_nulls_not_an_error():

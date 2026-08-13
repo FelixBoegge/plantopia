@@ -32,6 +32,30 @@ def _ragas_cell(value: Any, counts: dict[str, Any] | None) -> str:
     return f"{pct} ({scored} of {total} scored)"
 
 
+def _plural(count: int, singular: str, plural: str) -> str:
+    return singular if count == 1 else plural
+
+
+def _usage_rows(provenance: dict[str, Any]) -> list[str]:
+    """Provenance-table rows for total spend, or none at all if usage was never recorded.
+
+    Renders tokens only when cost is ``None`` — never a fabricated ``$0.00`` —
+    matching ``ui/components/cost_badge.py``'s rule for the same data at the
+    per-diagnosis scale.
+    """
+    usage = provenance.get("total_token_usage")
+    if not usage:
+        return []
+    rows = [
+        f"| Total tokens | {usage['prompt_tokens']:,} in / "
+        f"{usage['completion_tokens']:,} out ({usage['total_tokens']:,} total) |"
+    ]
+    cost = provenance.get("total_cost_usd")
+    if cost is not None:
+        rows.append(f"| Total cost | ${cost:.4f} |")
+    return rows
+
+
 def render_report(results: dict) -> str:
     """Render ``eval/REPORT.md`` from a results dict.
 
@@ -44,6 +68,7 @@ def render_report(results: dict) -> str:
     ragas = results["ragas"]
     ragas_counts = results.get("ragas_counts", {})
     stability = results["stability"]
+    stability_case_ids = results.get("stability_case_ids", [])
 
     lines = [
         "# Evaluation report",
@@ -60,6 +85,7 @@ def render_report(results: dict) -> str:
         f"| Temperature | {provenance['temperature']} |",
         f"| Corpus documents | {provenance['corpus_documents']} |",
         f"| Golden-set size | {provenance['golden_set_size']} |",
+        *_usage_rows(provenance),
         "",
         "## Headline metrics",
         "",
@@ -78,8 +104,9 @@ def render_report(results: dict) -> str:
         "",
         f"{accuracy['scored']} cases scored, of which **{accuracy['failed']} failed** "
         "and are counted in the denominator rather than dropped. "
-        f"{results.get('near_misses', 0)} top-1 misses landed on a disorder the case "
-        "listed as a confusable neighbour.",
+        f"{results.get('near_misses', 0)} top-1 "
+        f"{_plural(results.get('near_misses', 0), 'miss', 'misses')} landed on a disorder "
+        "the case listed as a confusable neighbour.",
         "",
         "## By category",
         "",
@@ -97,7 +124,12 @@ def render_report(results: dict) -> str:
         "## Stability",
         "",
         f"{stability['cases']} cases run {stability['runs_per_case']:.0f} times each, on "
-        "byte-identical input.",
+        "byte-identical input"
+        + (
+            f": {', '.join(f'`{case_id}`' for case_id in stability_case_ids)}."
+            if stability_case_ids
+            else "."
+        ),
         "",
         "| Measure | Value |",
         "|---|---|",

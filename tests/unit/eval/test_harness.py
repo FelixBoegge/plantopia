@@ -72,3 +72,89 @@ def test_the_case_metadata_is_carried_through(make_deps, pipeline_models, golden
     assert run.case_id == golden_case.id
     assert run.ground_truth == "overwatering"
     assert run.category == "watering"
+
+
+def test_the_situation_carries_the_cases_symptoms_and_answers(
+    make_deps, pipeline_models, golden_case
+):
+    """``situation`` is what feeds Ragas' ``user_input`` — it must carry the real
+    case content (symptom descriptions plus the answers given), not a placeholder
+    identical across every case (the defect this replaces)."""
+    gate, vision, chat = pipeline_models
+    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
+
+    run = run_case(golden_case, deps=deps, graph=_build_graph(deps), thread_id="eval-6")
+
+    assert "yellowing lower leaves" in run.situation
+    assert "four hours indirect" in run.situation
+
+
+def test_two_different_cases_produce_different_situations(golden_case):
+    """The defect this replaces: every case fed Ragas an identical sentence. Two
+    cases with different symptoms and answers must now produce different
+    ``situation`` values. Exercised directly against ``_situation`` — the piece
+    that actually builds the string — rather than through a full graph run,
+    which would need two independent scripted-model queues."""
+    from eval.cases import GoldenCase
+    from eval.harness import _situation
+
+    other_case = GoldenCase.model_validate(
+        {
+            "id": "crispy-leaf-tips-test",
+            "category": "watering",
+            "plant": {"name": "Windowsill fern", "species": "Fern"},
+            "species_confidence": 0.9,
+            "symptoms": {
+                "overall_vigor": "declining",
+                "soil_condition": "bone dry",
+                "symptoms": [
+                    {
+                        "description": "crisp brown edges on mature fronds",
+                        "position": "leaf_margin",
+                        "severity": "act_this_week",
+                    }
+                ],
+            },
+            "answers": {"light_hours": "six hours direct"},
+            "ground_truth": "underwatering",
+            "also_acceptable": [],
+        }
+    )
+
+    situation_golden = _situation(golden_case, {"light_hours": "four hours indirect"})
+    situation_other = _situation(other_case, {"light_hours": "six hours direct"})
+
+    assert situation_golden != situation_other
+    assert "yellowing lower leaves" in situation_golden
+    assert "crisp brown edges on mature fronds" in situation_other
+
+
+def test_situation_with_no_answers_still_states_the_symptoms():
+    """A case whose interrupt path was never taken (no questions asked) must still
+    produce a usable, non-empty situation from the symptoms alone."""
+    from eval.cases import GoldenCase
+    from eval.harness import _situation
+
+    case = GoldenCase.model_validate(
+        {
+            "id": "no-answers-test",
+            "category": "watering",
+            "plant": {"name": "Test plant"},
+            "symptoms": {
+                "overall_vigor": "declining",
+                "symptoms": [
+                    {
+                        "description": "wilting despite moist soil",
+                        "position": "whole_leaf",
+                        "severity": "monitor",
+                    }
+                ],
+            },
+            "ground_truth": "overwatering",
+        }
+    )
+
+    situation = _situation(case, {})
+
+    assert "wilting despite moist soil" in situation
+    assert "Additional details" not in situation

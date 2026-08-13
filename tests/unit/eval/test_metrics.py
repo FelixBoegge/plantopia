@@ -1,13 +1,17 @@
 """Unit tests for accuracy and stability scoring. Pure functions, no network."""
 
+import pytest
+
 from agent.nodes.context import (
     ALWAYS_ASK_KEYS,
     DRAINAGE_QUESTION,
     LOCATION_QUESTION,
     WATERING_QUESTION,
 )
+from core.cost import UsageSnapshot
+from eval.cases import GoldenCase
 from eval.harness import CaseRun
-from eval.metrics import accuracy, stability, top1_hit, top3_hit
+from eval.metrics import accuracy, near_misses, stability, top1_hit, top3_hit, total_usage
 
 
 def _run(case_id: str, candidates: list[str], truth: str = "overwatering", **kw) -> CaseRun:
@@ -19,8 +23,27 @@ def _run(case_id: str, candidates: list[str], truth: str = "overwatering", **kw)
         reasoning="because",
         contexts=[],
         questions_asked=kw.pop("questions_asked", []),
-        usage=None,
+        situation=kw.pop("situation", "irrelevant to this metric"),
+        usage=kw.pop("usage", None),
         error=kw.pop("error", None),
+    )
+
+
+def _case(case_id: str, also_acceptable: list[str] | None = None, truth: str = "overwatering"):
+    return GoldenCase.model_validate(
+        {
+            "id": case_id,
+            "category": "watering",
+            "plant": {"name": "Test plant"},
+            "symptoms": {
+                "overall_vigor": "declining",
+                "symptoms": [
+                    {"description": "wilting", "position": "whole_leaf", "severity": "monitor"}
+                ],
+            },
+            "ground_truth": truth,
+            "also_acceptable": also_acceptable or [],
+        }
     )
 
 
@@ -239,3 +262,98 @@ def test_stability_of_a_case_where_every_run_failed_is_zero_not_a_division_error
 
     assert report.top1_agreement == 0.0
     assert report.candidate_churn == 0.0
+
+
+def test_near_misses_counts_a_top1_miss_onto_an_also_acceptable_disorder():
+    """also_acceptable never feeds top1/top3 scoring (spec §3.5) — the code is the
+    better behaviour, a near miss is still a miss — but it is reported separately."""
+    runs = [_run("a", ["root-rot"], truth="overwatering")]
+    cases = {"a": _case("a", also_acceptable=["root-rot"], truth="overwatering")}
+
+    assert near_misses(runs, cases) == 1
+
+
+def test_near_misses_excludes_a_top1_hit():
+    runs = [_run("a", ["overwatering"], truth="overwatering")]
+    cases = {"a": _case("a", also_acceptable=["root-rot"], truth="overwatering")}
+
+    assert near_misses(runs, cases) == 0
+
+
+def test_near_misses_excludes_a_miss_onto_an_unrelated_disorder():
+    runs = [_run("a", ["rust"], truth="overwatering")]
+    cases = {"a": _case("a", also_acceptable=["root-rot"], truth="overwatering")}
+
+    assert near_misses(runs, cases) == 0
+
+
+def test_near_misses_excludes_a_failed_run_with_no_candidates():
+    runs = [_run("a", [], truth="overwatering", error="boom")]
+    cases = {"a": _case("a", also_acceptable=["root-rot"], truth="overwatering")}
+
+    assert near_misses(runs, cases) == 0
+
+
+def test_near_misses_sums_across_multiple_cases():
+    runs = [
+        _run("a", ["root-rot"], truth="overwatering"),
+        _run("b", ["overwatering"], truth="root-rot"),
+        _run("c", ["overwatering"], truth="overwatering"),
+    ]
+    cases = {
+        "a": _case("a", also_acceptable=["root-rot"], truth="overwatering"),
+        "b": _case("b", also_acceptable=["overwatering"], truth="root-rot"),
+        "c": _case("c", also_acceptable=["root-rot"], truth="overwatering"),
+    }
+
+    assert near_misses(runs, cases) == 2
+
+
+def test_total_usage_is_none_when_no_run_recorded_any():
+    """Mirrors ``UsageCollector.snapshot()``: unmeasured, not a zeroed total that
+    would read as a free run."""
+    runs = [_run("a", ["overwatering"]), _run("b", ["overwatering"])]
+
+    assert total_usage(runs) is None
+
+
+def test_total_usage_sums_tokens_and_cost_across_all_runs():
+    runs = [
+        _run("a", ["overwatering"], usage=UsageSnapshot(100, 50, 0.01)),
+        _run("b", ["overwatering"], usage=UsageSnapshot(200, 75, 0.02)),
+    ]
+
+    usage = total_usage(runs)
+
+    assert usage.prompt_tokens == 300
+    assert usage.completion_tokens == 125
+    assert usage.cost_usd == pytest.approx(0.03)
+
+
+def test_total_usage_omits_runs_with_no_usage_from_the_sum():
+    """A run that failed before any model call reported usage has ``usage=None``;
+    it must not zero out the total, and must not raise on a ``None`` attribute
+    access."""
+    runs = [
+        _run("a", ["overwatering"], usage=UsageSnapshot(100, 50, 0.01)),
+        _run("b", [], usage=None, error="boom"),
+    ]
+
+    usage = total_usage(runs)
+
+    assert usage.prompt_tokens == 100
+    assert usage.completion_tokens == 50
+
+
+def test_total_usage_is_none_cost_when_no_run_reported_one():
+    """OpenRouter can omit cost even while reporting tokens. The aggregate must
+    never fabricate a $0.00 — consistent with ``ui/components/cost_badge.py``."""
+    runs = [
+        _run("a", ["overwatering"], usage=UsageSnapshot(100, 50, None)),
+        _run("b", ["overwatering"], usage=UsageSnapshot(200, 75, None)),
+    ]
+
+    usage = total_usage(runs)
+
+    assert usage.prompt_tokens == 300
+    assert usage.cost_usd is None

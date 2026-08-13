@@ -202,8 +202,15 @@ can be told apart.
 | Context precision / recall | Ragas, over `state.retrieved` |
 | Faithfulness | Ragas, over the differential's `reasoning` |
 | Answer relevancy | Ragas |
-| **Top-1 / Top-3 accuracy** | ours — `disorder_id` vs `ground_truth` (+ `also_acceptable`) |
+| **Top-1 / Top-3 accuracy** | ours — `disorder_id` vs `ground_truth` only |
 | **Stability** | ours — 8 cases × 5 runs: top-1 agreement rate, and Jaccard churn across candidate sets |
+
+`also_acceptable` is deliberately **not** folded into top-1/top-3: a miss onto a confusable
+neighbour is still a miss, and loosening the metric to count it as a hit would make the headline
+number too lenient to say anything about ranking quality. Instead it is scored separately —
+`near_misses` counts top-1 misses that land on a disorder the case listed as confusable — so a
+near miss is visible in the report without inflating accuracy (`eval/metrics.py::_accepted`,
+`near_misses`).
 
 Ragas is wired to existing infrastructure via `LangchainLLMWrapper(build_reasoning_model())` and
 `build_embeddings()`, both already verified reachable on the restricted key, so this needs no new
@@ -278,7 +285,7 @@ Following the project's established "degrade, do not stop" pattern (`code-tour.m
 
 | Tier | Coverage |
 |---|---|
-| unit | `UsageCollector` accumulation across tiers and empty-snapshot → `None`; tracing enabled vs no-op; `extra_body` carries the usage flag; `persist` writes usage when the collector is in config and `NULL` when it is not; repository round-trip including `NULL`; schema-dispatch model returns the right object per schema and raises on an unknown one; top-1/top-3 scoring including `also_acceptable`; stability maths on synthetic input; report rendering from a fixture results file |
+| unit | `UsageCollector` accumulation across tiers and empty-snapshot → `None`; tracing enabled vs no-op; `extra_body` carries the usage flag; `persist` writes usage when the collector is in config and `NULL` when it is not; repository round-trip including `NULL`; schema-dispatch model returns the right object per schema and raises on an unknown one; top-1/top-3 scoring against `ground_truth` only (`also_acceptable` deliberately excluded, see §3.5); `near_misses` counting a top-1 miss onto an `also_acceptable` disorder, and excluding a hit, an unrelated miss, and a failed run; stability maths on synthetic input; report rendering from a fixture results file |
 | unit (structural) | **Every `ground_truth` and `also_acceptable` slug resolves to a corpus document**, and every `category` comes from a fixed vocabulary. This is the golden-set analogue of `test_corpus_coverage.py`: a case referencing a disorder that does not exist fails the suite rather than scoring zero at runtime. |
 | graph | A full run with a collector wired persists non-null usage. |
 | ui | `evaluation.py` renders a fixture results file and its empty state; `cost_badge` renders tokens+cost, tokens-only, and nothing. |

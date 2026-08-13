@@ -52,6 +52,7 @@ class CaseRun:
     reasoning: str
     contexts: list[str]
     questions_asked: list[str]
+    situation: str
     usage: UsageSnapshot | None
     error: str | None = None
 
@@ -61,6 +62,22 @@ def _answers_for(case: GoldenCase, questions: list[Question]) -> dict[str, str]:
     return {
         question.key: case.answers.get(question.key, case.default_answer) for question in questions
     }
+
+
+def _situation(case: GoldenCase, answers: dict[str, str]) -> str:
+    """The situation as the plant owner actually presented it: symptoms plus answers.
+
+    Feeds ``eval.ragas_metrics.to_ragas_rows`` as ``user_input``. It must vary
+    between cases — the defect this replaces was a single sentence identical for
+    every one of the 28 golden cases, which made ``answer_relevancy`` measure the
+    harness's placeholder question rather than the agent's response.
+    """
+    descriptions = "; ".join(symptom.description for symptom in case.symptoms.symptoms)
+    situation = f"My plant has these symptoms: {descriptions}."
+    if answers:
+        details = "; ".join(f"{key}: {value}" for key, value in answers.items())
+        situation += f" Additional details: {details}."
+    return situation
 
 
 def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_id: str) -> CaseRun:
@@ -75,7 +92,7 @@ def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_
         "callbacks": [collector],
     }
 
-    def _failed(message: str) -> CaseRun:
+    def _failed(message: str, situation: str) -> CaseRun:
         return CaseRun(
             case_id=case.id,
             ground_truth=case.ground_truth,
@@ -84,6 +101,7 @@ def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_
             reasoning="",
             contexts=[],
             questions_asked=[],
+            situation=situation,
             usage=collector.snapshot(),
             error=message,
         )
@@ -99,17 +117,21 @@ def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_
         started = graph.invoke(state, config)
 
         questions_asked: list[str] = []
+        answers_given: dict[str, str] = {}
         interrupts = started.get("__interrupt__") or []
         if interrupts:
             questions = [Question.model_validate(q) for q in interrupts[0].value["questions"]]
             questions_asked = [question.key for question in questions]
-            result = graph.invoke(Command(resume=_answers_for(case, questions)), config)
+            answers_given = _answers_for(case, questions)
+            result = graph.invoke(Command(resume=answers_given), config)
         else:
             result = started
 
+        situation = _situation(case, answers_given)
+
         differential = result.get("differential")
         if differential is None:
-            return _failed("the run produced no differential")
+            return _failed("the run produced no differential", situation)
 
         return CaseRun(
             case_id=case.id,
@@ -119,9 +141,10 @@ def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_
             reasoning=differential.reasoning,
             contexts=[passage.text for passage in result.get("retrieved") or []],
             questions_asked=questions_asked,
+            situation=situation,
             usage=collector.snapshot(),
             error=None,
         )
     except Exception as exc:  # noqa: BLE001 — a failed case is data, not a crash
         logger.warning("case %s failed: %s", case.id, exc)
-        return _failed(f"{type(exc).__name__}: {exc}")
+        return _failed(f"{type(exc).__name__}: {exc}", _situation(case, {}))

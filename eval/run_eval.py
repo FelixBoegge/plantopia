@@ -30,7 +30,7 @@ from core.llm import build_embeddings, build_reasoning_model
 from core.tracing import configure_tracing
 from eval.cases import GoldenCase, load_cases
 from eval.harness import CaseRun, run_case
-from eval.metrics import accuracy, stability, top1_hit
+from eval.metrics import accuracy, near_misses, stability, total_usage
 from eval.ragas_metrics import evaluate_runs, judge_embeddings, judge_llm
 from eval.report import render_report
 
@@ -55,17 +55,6 @@ def _case_row(run: CaseRun) -> dict:
         "questions_asked": run.questions_asked,
         "error": run.error,
     }
-
-
-def _near_misses(runs: list[CaseRun], cases: dict[str, GoldenCase]) -> int:
-    """Top-1 misses that landed on a disorder the case called confusable."""
-    total = 0
-    for run in runs:
-        if top1_hit(run) or not run.candidates:
-            continue
-        if run.candidates[0] in set(cases[run.case_id].also_acceptable):
-            total += 1
-    return total
 
 
 def _run_one(case: GoldenCase, suffix: object) -> CaseRun:
@@ -119,14 +108,26 @@ def _run_one(case: GoldenCase, suffix: object) -> CaseRun:
 
 
 @lru_cache(maxsize=1)
+def _corpus():
+    """The parsed corpus, loaded once for the whole run.
+
+    Shared by ``_retriever`` (which embeds it) and ``main`` (which passes it to
+    ``evaluate_runs`` to build Ragas' ``reference`` field), so it is parsed from
+    disk exactly once rather than once per consumer.
+    """
+    from knowledge.ingest import load_corpus
+
+    return load_corpus(get_settings().corpus_path)
+
+
+@lru_cache(maxsize=1)
 def _retriever():
     """The real corpus retriever, built once for the whole run."""
-    from knowledge.ingest import load_corpus
     from knowledge.retriever import ChromaRetriever, build_vectorstore
 
     settings = get_settings()
     vectorstore = build_vectorstore(
-        chunks=load_corpus(settings.corpus_path),
+        chunks=_corpus(),
         embeddings=build_embeddings(),
         persist_directory=settings.chroma_path,
     )
@@ -154,6 +155,7 @@ def main() -> None:
     runs = [_run_one(case, index) for index, case in enumerate(cases)]
 
     subset = cases[: args.stability_cases]
+    stability_case_ids = [case.id for case in subset]
     repeats: dict[str, list[CaseRun]] = {
         case.id: [
             _run_one(case, f"stability-{index}-{repeat}") for repeat in range(args.stability_runs)
@@ -161,9 +163,14 @@ def main() -> None:
         for index, case in enumerate(subset)
     }
 
+    all_runs = runs + [run for case_runs in repeats.values() for run in case_runs]
+    usage_report = total_usage(all_runs)
+
     accuracy_report = accuracy(runs)
     stability_report = stability(repeats)
-    ragas_result = evaluate_runs(runs, llm=judge_llm(), embeddings=judge_embeddings())
+    ragas_result = evaluate_runs(
+        runs, corpus=_corpus(), llm=judge_llm(), embeddings=judge_embeddings()
+    )
 
     results = {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -174,6 +181,12 @@ def main() -> None:
             "temperature": settings.default_temperature,
             "corpus_documents": len(list(settings.corpus_path.glob("*.md"))),
             "golden_set_size": len(cases),
+            # Sum of every model call in the run — the main set plus the stability
+            # repeats — so the most expensive thing in the project finally reports
+            # its own spend. ``None`` when no run reported cost, never a fabricated
+            # $0.00 (consistent with ui/components/cost_badge.py).
+            "total_token_usage": usage_report.as_token_usage() if usage_report else None,
+            "total_cost_usd": usage_report.cost_usd if usage_report else None,
         },
         "accuracy": _as_dict(accuracy_report),
         "ragas": ragas_result.scores,
@@ -182,7 +195,11 @@ def main() -> None:
         # like (spec §5) — see eval/ragas_metrics.py::RagasScores.
         "ragas_counts": ragas_result.counts,
         "stability": _as_dict(stability_report),
-        "near_misses": _near_misses(runs, {case.id: case for case in cases}),
+        # Which cases the stability subset actually ran, not just how many — the
+        # ids are whichever sort first among the golden set, so naming them lets a
+        # reader see which categories the repeated cases did (and did not) cover.
+        "stability_case_ids": stability_case_ids,
+        "near_misses": near_misses(runs, {case.id: case for case in cases}),
         "cases": [_case_row(run) for run in runs],
     }
 

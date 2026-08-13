@@ -11,6 +11,12 @@ RESULTS = {
         "temperature": 0.2,
         "corpus_documents": 43,
         "golden_set_size": 28,
+        "total_token_usage": {
+            "prompt_tokens": 120_000,
+            "completion_tokens": 45_000,
+            "total_tokens": 165_000,
+        },
+        "total_cost_usd": 3.1416,
     },
     "accuracy": {
         "top1": 0.75,
@@ -38,6 +44,7 @@ RESULTS = {
         "cases": 8,
         "runs_per_case": 5.0,
     },
+    "stability_case_ids": ["nitrogen-deficiency-a", "overwatering-b"],
     "near_misses": 3,
 }
 
@@ -136,3 +143,92 @@ def test_missing_ragas_counts_still_renders_a_plain_percentage():
 
     faithfulness_line = next(line for line in report.splitlines() if "Faithfulness" in line)
     assert "90.0%" in faithfulness_line
+
+
+def test_the_stability_case_ids_are_named():
+    """The subset is alphabetical and undisclosed today — the report must at
+    least say which cases it measured, not just how many."""
+    report = render_report(RESULTS)
+
+    stability_section = report.split("## Stability")[1]
+    assert "nitrogen-deficiency-a" in stability_section
+    assert "overwatering-b" in stability_section
+
+
+def test_missing_stability_case_ids_does_not_crash():
+    """Older results files predate this field — must render, just without names."""
+    legacy = {k: v for k, v in RESULTS.items() if k != "stability_case_ids"}
+
+    report = render_report(legacy)
+
+    assert "8 cases run 5 times each" in report
+
+
+def test_total_usage_is_rendered_in_provenance():
+    report = render_report(RESULTS)
+
+    provenance_section = report.split("## Headline metrics")[0]
+    assert "120,000" in provenance_section
+    assert "45,000" in provenance_section
+    assert "$3.1416" in provenance_section
+
+
+def test_total_usage_renders_tokens_only_when_cost_is_none():
+    """OpenRouter can omit cost while still reporting tokens. Never a fabricated
+    $0.00 — consistent with ``ui/components/cost_badge.py``."""
+    no_cost = {
+        **RESULTS,
+        "provenance": {**RESULTS["provenance"], "total_cost_usd": None},
+    }
+
+    report = render_report(no_cost)
+
+    provenance_section = report.split("## Headline metrics")[0]
+    assert "120,000" in provenance_section
+    assert "$" not in provenance_section
+
+
+def test_total_usage_is_absent_when_never_recorded():
+    """An older results file with no usage at all must render cleanly, with no
+    usage rows — not a crash and not a fabricated zero."""
+    no_usage = {
+        **RESULTS,
+        "provenance": {
+            k: v
+            for k, v in RESULTS["provenance"].items()
+            if k not in {"total_token_usage", "total_cost_usd"}
+        },
+    }
+
+    report = render_report(no_usage)
+
+    provenance_section = report.split("## Headline metrics")[0]
+    assert "Total tokens" not in provenance_section
+    assert "Total cost" not in provenance_section
+
+
+def test_a_single_near_miss_is_singular():
+    """The public artefact's pluralisation defect: ``"1 top-1 misses"`` reads as
+    grammatically wrong. A single near miss must render as singular."""
+    one_miss = {**RESULTS, "near_misses": 1}
+
+    report = render_report(one_miss)
+
+    assert "1 top-1 miss landed" in report
+    assert "1 top-1 misses" not in report
+
+
+def test_multiple_near_misses_are_plural():
+    report = render_report(RESULTS)
+
+    assert "3 top-1 misses landed" in report
+
+
+def test_zero_near_misses_is_plural():
+    """Zero takes the plural in English ("0 misses"), same as the pre-existing
+    default when the key is absent."""
+    zero_misses = {**RESULTS, "near_misses": 0}
+
+    report = render_report(zero_misses)
+
+    assert "0 top-1 misses landed" in report
