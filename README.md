@@ -120,6 +120,9 @@ given, and the UI credited a search that could not have happened.
 A Tavily key is optional. Without it, web-search escalation is skipped and diagnosis
 relies on the curated corpus alone.
 
+A LangSmith key is optional too. Without it, tracing is skipped and the app runs
+unchanged; with it, every graph run is traced under the configured project.
+
 ## Example
 
 > **You upload** three photos of a basil plant with yellowing lower leaves.

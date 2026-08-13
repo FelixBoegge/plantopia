@@ -6,6 +6,7 @@ import streamlit as st
 
 from core.guards import UploadRejected
 from ui import bootstrap
+from ui.components.cost_badge import render_cost_badge
 from ui.components.differential import render_differential
 from ui.components.roadmap import render_roadmap
 
@@ -174,5 +175,7 @@ elif st.session_state.stage == "result":
             st.write(", ".join(result.tools_used) or "no tools were called")
             if result.errors:
                 st.caption("Non-fatal issues: " + "; ".join(result.errors))
+
+        render_cost_badge(result.token_usage, result.cost_usd)
 
     st.button("Diagnose another plant", on_click=_reset)

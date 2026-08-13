@@ -3,6 +3,7 @@
 import streamlit as st
 
 from services.plant_service import PlantDetail
+from ui.components.cost_badge import render_cost_badge
 
 _RECHECK_MARKER = "🔁 Re-check"
 
@@ -33,3 +34,4 @@ def render_timeline(detail: PlantDetail) -> None:
                 primary = diagnosis.differential.primary
                 st.markdown(f"**{when} — {primary.name}** ({primary.probability:.0%})")
             st.caption(diagnosis.differential.reasoning)
+            render_cost_badge(diagnosis.token_usage, diagnosis.cost_usd)
