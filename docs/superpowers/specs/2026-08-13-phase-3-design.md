@@ -65,6 +65,13 @@ automatically — including calls from nodes nobody remembered to instrument —
 `configurable` so `persist` can read it. `persist` is a graph node, so it cannot see a callback
 object any other way, and by the time it runs every model call in the run has completed.
 
+**This carries one assumption that must be verified before it is depended on:** that LangGraph
+passes a non-JSON-serialisable object through `configurable` to a node *and* that checkpointing does
+not try to serialise it. The implementation plan opens with a spike that proves both against the
+real `SqliteSaver`. If it fails, the documented fallback is a `contextvars.ContextVar` set by the
+service for the duration of the run — run-scoped, invisible to the checkpointer, and read by
+`persist` through a `current_collector()` accessor in `core/cost.py`.
+
 ### 2.2 Why not the alternatives
 
 Two rejected designs, recorded because both are tempting:
@@ -108,7 +115,7 @@ every graph node, tool call, retrieval and model call appears automatically, whi
 | `core/config.py` | `langsmith_api_key: str \| None`, `langsmith_project` |
 | `services/diagnosis_service.py` | build a collector per run; extend the existing `_config()` |
 | `agent/nodes/persist.py` | `persist(state, config)` — snapshot, pass to `diagnoses.create()` |
-| `data/repositories/diagnoses.py` | `create()` takes `token_usage`/`cost_usd`; `DiagnosisRecord` gains both fields |
+| `data/repositories/diagnoses.py` | `create()` **already accepts** `token_usage`/`cost_usd` and writes both columns — nothing ever passes them. Only `DiagnosisRecord` changes, gaining `token_usage`; `cost_usd` is already on it. |
 | `ui/components/cost_badge.py` | **new** — renders tokens and cost |
 
 The re-check graph reuses `persist`, so re-checks get cost capture with no second wiring point.
@@ -227,8 +234,13 @@ justify keeping it out of the UI.
 
 ### 3.8 Files
 
-`eval/{__init__,cases,scripted,harness,metrics,report,run_eval}.py`, `eval/golden_set/*.yaml`,
-`eval/results/`, `eval/REPORT.md`.
+`eval/{__init__,cases,scripted,harness,metrics,ragas_metrics,report,run_eval}.py`,
+`eval/golden_set/*.yaml`, `eval/results/`, `eval/REPORT.md`.
+
+`metrics.py` and `ragas_metrics.py` are separate on purpose: accuracy and stability are pure
+functions over completed runs and stay fully unit-tested offline, while every Ragas metric needs a
+judge model and an embedder. Merging them would put a network dependency into the one module that
+has no reason to have one.
 
 ---
 
