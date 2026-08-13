@@ -1,0 +1,26 @@
+id: spider-mites-stippling-webbing
+category: pest
+plant:
+  name: "Living room calathea"
+  species: "Calathea orbifolia"
+  location_kind: indoor
+species_confidence: 0.75
+symptoms:
+  overall_vigor: declining
+  soil_condition: "evenly moist, drains freely"
+  symptoms:
+    - description: "fine pale stippling across the upper leaf surface"
+      position: whole_leaf
+      severity: act_this_week
+    - description: "faint webbing in the leaf axils"
+      position: stem
+      severity: act_today
+answers:
+  drainage: "the pot drains freely"
+  recent_changes: "nothing new, but the radiator has been on"
+  humidity: "dry, the room is heated"
+default_answer: "not observed"
+ground_truth: spider-mites
+also_acceptable:
+  - thrips
+  - low-humidity

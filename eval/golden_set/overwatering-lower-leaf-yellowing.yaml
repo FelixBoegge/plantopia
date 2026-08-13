@@ -1,0 +1,26 @@
+id: overwatering-lower-leaf-yellowing
+category: watering
+plant:
+  name: "Kitchen ficus"
+  species: "Ficus elastica"
+  location_kind: indoor
+species_confidence: 0.82
+symptoms:
+  overall_vigor: declining
+  soil_condition: "wet and dense, still damp a week after watering"
+  symptoms:
+    - description: "uniform yellowing of the oldest leaves"
+      position: lower_leaves
+      severity: act_this_week
+    - description: "soft brown patches spreading from the leaf base"
+      position: whole_leaf
+      severity: act_this_week
+answers:
+  drainage: "the pot has no drainage holes"
+  watering_frequency: "twice a week, on a schedule"
+  light_hours: "about four hours of indirect light"
+default_answer: "not observed"
+ground_truth: overwatering
+also_acceptable:
+  - poor-drainage
+  - root-rot

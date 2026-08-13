@@ -26,6 +26,8 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-mock>=3.15.1",
+    "pyyaml>=6.0.3",
+    "ragas>=0.4.3",
     "respx>=0.23.1",
     "ruff>=0.16.1",
     "syrupy>=5.5.3",
@@ -44,7 +46,7 @@ markers = [
 filterwarnings = ["error::DeprecationWarning:plantopia.*"]
 
 [tool.coverage.run]
-source = ["core", "agent", "tools", "data", "knowledge", "services", "ui"]
+source = ["core", "agent", "tools", "data", "knowledge", "services", "ui", "eval"]
 omit = [
     "*/__init__.py",
     # Real-infrastructure wiring only: opens a live SQLite connection, builds a Chroma
@@ -62,6 +64,10 @@ omit = [
     # ui/pages/my_plants.py, and would identically for every later page/component).
     "ui/pages/*",
     "ui/components/*",
+    # The evaluation CLI: argument parsing, real model construction and file writing,
+    # on ui/bootstrap.py's precedent. Everything beneath it — case loading, the
+    # scripted model, scoring, stability, report rendering — is unit-tested.
+    "eval/run_eval.py",
 ]
 
 [tool.coverage.report]
