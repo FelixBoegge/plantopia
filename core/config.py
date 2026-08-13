@@ -54,6 +54,13 @@ class Settings(BaseSettings):
 
     tavily_api_key: str | None = None
 
+    # LangSmith tracing. Optional in exactly the way tavily_api_key is: absent, the
+    # application runs unchanged and tracing is simply off (spec §2.4). Because
+    # LangChain's tracer is itself a callback, a key is all the wiring there is —
+    # every node, tool call, retrieval and model call is traced automatically.
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "plantopia"
+
     db_path: Path = Path("data/plantopia.db")
     chroma_path: Path = Path("data/chroma")
     corpus_path: Path = Path("knowledge/corpus")
