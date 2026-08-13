@@ -93,7 +93,11 @@ def accuracy(runs: list[CaseRun]) -> AccuracyReport:
 class StabilityReport:
     """How much the same input moves the answer.
 
-    ``top1_agreement`` is the share of repeats landing on the modal top candidate.
+    ``top1_agreement`` is the share of repeats landing on the modal top candidate,
+    counting every run in the denominator — a failed run has no top candidate, so
+    it can never agree with anything, but it still counts as a run that did not
+    agree; it does not vanish from the average the way it would if filtered out
+    before scoring.
     ``candidate_churn`` is mean pairwise Jaccard *distance* between candidate sets:
     0.0 is identical, 1.0 disjoint. ``question_drift`` is the same distance over the
     clarifying questions asked, after subtracting the deterministic mandatory ones
@@ -125,10 +129,22 @@ def _mean_pairwise_distance(sets: list[set[str]]) -> float:
     return sum(_jaccard_distance(a, b) for a, b in pairs) / len(pairs)
 
 
-def _modal_agreement(tops: list[str]) -> float:
+def _modal_agreement(tops: list[str | None]) -> float:
+    """Share of runs landing on the modal top candidate.
+
+    ``tops`` holds one entry per run, ``None`` where the run had no candidates (a
+    failed run, per ``eval/harness.py``). The denominator is always ``len(tops)`` —
+    every run, failed or not. A failed run can never agree with anything, so it
+    contributes to the denominator but never to the modal count; it must not
+    disappear from both, which would let a failure vanish from the very number
+    meant to measure instability (spec §5, applied here as it is in ``accuracy()``).
+    """
     if not tops:
         return 0.0
-    return max(tops.count(value) for value in set(tops)) / len(tops)
+    hits = [value for value in tops if value is not None]
+    if not hits:
+        return 0.0
+    return max(hits.count(value) for value in set(hits)) / len(tops)
 
 
 def stability(runs_by_case: dict[str, list[CaseRun]]) -> StabilityReport:
@@ -138,7 +154,8 @@ def stability(runs_by_case: dict[str, list[CaseRun]]) -> StabilityReport:
 
     agreements, churns, drifts = [], [], []
     for runs in runs_by_case.values():
-        agreements.append(_modal_agreement([r.candidates[0] for r in runs if r.candidates]))
+        tops = [r.candidates[0] if r.candidates else None for r in runs]
+        agreements.append(_modal_agreement(tops))
         churns.append(_mean_pairwise_distance([set(r.candidates) for r in runs]))
         drifts.append(
             _mean_pairwise_distance(

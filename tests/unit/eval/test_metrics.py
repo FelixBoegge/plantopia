@@ -1,6 +1,11 @@
 """Unit tests for accuracy and stability scoring. Pure functions, no network."""
 
-from agent.nodes.context import ALWAYS_ASK_KEYS, LOCATION_QUESTION
+from agent.nodes.context import (
+    ALWAYS_ASK_KEYS,
+    DRAINAGE_QUESTION,
+    LOCATION_QUESTION,
+    WATERING_QUESTION,
+)
 from eval.harness import CaseRun
 from eval.metrics import accuracy, stability, top1_hit, top3_hit
 
@@ -115,8 +120,16 @@ def test_question_drift_is_reported_separately_from_variance():
     of the same mandatory pair, still register drift."""
     runs = {
         "a": [
-            _run("a", ["overwatering"], questions_asked=["watering", "drainage", "light_hours"]),
-            _run("a", ["overwatering"], questions_asked=["watering", "drainage", "humidity"]),
+            _run(
+                "a",
+                ["overwatering"],
+                questions_asked=[WATERING_QUESTION.key, DRAINAGE_QUESTION.key, "light_hours"],
+            ),
+            _run(
+                "a",
+                ["overwatering"],
+                questions_asked=[WATERING_QUESTION.key, DRAINAGE_QUESTION.key, "humidity"],
+            ),
         ]
     }
 
@@ -137,12 +150,22 @@ def test_question_drift_excludes_deterministic_mandatory_questions():
             _run(
                 "a",
                 ["overwatering"],
-                questions_asked=["watering", "drainage", LOCATION_QUESTION.key, "light_hours"],
+                questions_asked=[
+                    WATERING_QUESTION.key,
+                    DRAINAGE_QUESTION.key,
+                    LOCATION_QUESTION.key,
+                    "light_hours",
+                ],
             ),
             _run(
                 "a",
                 ["overwatering"],
-                questions_asked=["watering", "drainage", LOCATION_QUESTION.key, "humidity"],
+                questions_asked=[
+                    WATERING_QUESTION.key,
+                    DRAINAGE_QUESTION.key,
+                    LOCATION_QUESTION.key,
+                    "humidity",
+                ],
             ),
         ]
     }
@@ -158,11 +181,19 @@ def test_question_drift_is_zero_when_only_deterministic_questions_differ():
     toward drift: after exclusion, both runs reduce to the same (empty) set."""
     runs = {
         "a": [
-            _run("a", ["overwatering"], questions_asked=["watering", "drainage"]),
             _run(
                 "a",
                 ["overwatering"],
-                questions_asked=["watering", "drainage", LOCATION_QUESTION.key],
+                questions_asked=[WATERING_QUESTION.key, DRAINAGE_QUESTION.key],
+            ),
+            _run(
+                "a",
+                ["overwatering"],
+                questions_asked=[
+                    WATERING_QUESTION.key,
+                    DRAINAGE_QUESTION.key,
+                    LOCATION_QUESTION.key,
+                ],
             ),
         ]
     }
@@ -179,3 +210,32 @@ def test_stability_of_no_cases_is_zero_not_a_division_error():
     assert report.candidate_churn == 0.0
     assert report.question_drift == 0.0
     assert report.cases == 0
+
+
+def test_a_failed_run_counts_against_agreement_not_out_of_it():
+    """Reviewer scenario: two runs agree on `overwatering`, one fails outright.
+    `candidate_churn` already reflects the disagreement via the failed run's empty
+    set; `top1_agreement` must count the same failed run in its denominator rather
+    than silently excluding it, which would report 2/2 == 1.0 "perfect stability"
+    for a case that actually disagreed one time in three."""
+    runs = {
+        "a": [
+            _run("a", ["overwatering"]),
+            _run("a", ["overwatering"]),
+            _run("a", [], error="boom"),
+        ]
+    }
+
+    report = stability(runs)
+
+    assert report.top1_agreement == 2 / 3
+    assert report.candidate_churn > 0.0
+
+
+def test_stability_of_a_case_where_every_run_failed_is_zero_not_a_division_error():
+    runs = {"a": [_run("a", [], error="boom"), _run("a", [], error="boom")]}
+
+    report = stability(runs)
+
+    assert report.top1_agreement == 0.0
+    assert report.candidate_churn == 0.0
