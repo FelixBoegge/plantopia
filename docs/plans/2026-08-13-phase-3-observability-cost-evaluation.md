@@ -2404,10 +2404,23 @@ def _mean_pairwise_distance(sets: list[set[str]]) -> float:
     return sum(_jaccard_distance(a, b) for a, b in pairs) / len(pairs)
 
 
-def _modal_agreement(tops: list[str]) -> float:
+def _modal_agreement(tops: list[str | None]) -> float:
+    """Share of runs landing on the modal top candidate.
+
+    ``tops`` holds one entry per run, ``None`` where the run had no candidates (a
+    failed run). The denominator is always ``len(tops)`` — every run, failed or
+    not. A failed run can never agree with anything, so it contributes to the
+    denominator but never to the modal count. Dropping it from both instead would
+    let a failure vanish from the very number meant to measure instability: three
+    runs where two agree and one fails would report 1.0, not 2/3. That is the same
+    "average over the survivors" mistake this plan forbids for ``accuracy()``.
+    """
     if not tops:
         return 0.0
-    return max(tops.count(value) for value in set(tops)) / len(tops)
+    hits = [value for value in tops if value is not None]
+    if not hits:
+        return 0.0
+    return max(hits.count(value) for value in set(hits)) / len(tops)
 
 
 def stability(runs_by_case: dict[str, list[CaseRun]]) -> StabilityReport:
@@ -2417,7 +2430,9 @@ def stability(runs_by_case: dict[str, list[CaseRun]]) -> StabilityReport:
 
     agreements, churns, drifts = [], [], []
     for runs in runs_by_case.values():
-        agreements.append(_modal_agreement([r.candidates[0] for r in runs if r.candidates]))
+        agreements.append(
+            _modal_agreement([r.candidates[0] if r.candidates else None for r in runs])
+        )
         churns.append(_mean_pairwise_distance([set(r.candidates) for r in runs]))
         drifts.append(_mean_pairwise_distance([set(r.questions_asked) for r in runs]))
 
