@@ -9,10 +9,10 @@ metrics can see (spec §3.1).
 import logging
 from dataclasses import dataclass
 
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from agent.deps import Deps
-from agent.nodes.context import ALWAYS_ASK_KEYS, LOCATION_QUESTION
 from agent.schemas import ImageRef, Question
 from agent.state import DiagnosisState
 from core.cost import UsageCollector, UsageSnapshot
@@ -27,13 +27,18 @@ logger = logging.getLogger(__name__)
 # had; the gate and vision tiers are scripted to pass it unconditionally either way.
 _PLACEHOLDER_IMAGE = ImageRef(ref="golden-case", media_type="image/png", data_b64="aGVsbG8=")
 
-# ``select_questions`` always asks watering and drainage, and asks for a location on
-# any outdoor plant with none on record — none of that is model output, so it never
-# varies between runs of the *same* case. Only the model-chosen questions are a
-# variance source distinct from diagnostic instability (spec §3.4), so only those are
-# recorded as "asked". The mandatory set still gets answered (via ``_answers_for``);
-# it just is not counted as drift.
-_DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_QUESTION.key}
+# ``questions_asked`` records the *complete* interrupt payload — watering and
+# drainage (``agent.nodes.context.ALWAYS_ASK_KEYS``), the conditional location
+# question, and whatever the model chose. It deliberately does not filter out the
+# deterministic ones here: this list is written verbatim into a committed,
+# human-auditable results JSON, and filtering at capture time would permanently
+# lose the fact that the owner was asked (and answered) watering and drainage —
+# nothing downstream could recover that from the file. The deterministic keys still
+# do not count as drift, because they never vary between runs of the *same* case
+# and only the model-chosen questions are a variance source distinct from
+# diagnostic instability (spec §3.4) — but that subtraction belongs in the drift
+# metric, computed from the same stable, importable production constants, not
+# baked into the record.
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +63,7 @@ def _answers_for(case: GoldenCase, questions: list[Question]) -> dict[str, str]:
     }
 
 
-def run_case(case: GoldenCase, *, deps: Deps, graph, thread_id: str) -> CaseRun:
+def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_id: str) -> CaseRun:
     """Run one case end to end. Never raises — a failure becomes a recorded row.
 
     A single bad case must not abort a thirty-case run (spec §5), so every
@@ -97,11 +102,7 @@ def run_case(case: GoldenCase, *, deps: Deps, graph, thread_id: str) -> CaseRun:
         interrupts = started.get("__interrupt__") or []
         if interrupts:
             questions = [Question.model_validate(q) for q in interrupts[0].value["questions"]]
-            questions_asked = [
-                question.key
-                for question in questions
-                if question.key not in _DETERMINISTIC_QUESTION_KEYS
-            ]
+            questions_asked = [question.key for question in questions]
             result = graph.invoke(Command(resume=_answers_for(case, questions)), config)
         else:
             result = started
