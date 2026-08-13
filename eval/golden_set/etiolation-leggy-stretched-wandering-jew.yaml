@@ -1,0 +1,25 @@
+id: etiolation-leggy-stretched-wandering-jew
+category: light
+plant:
+  name: "Hallway wandering jew"
+  species: "Tradescantia zebrina"
+  location_kind: indoor
+species_confidence: 0.74
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains fine"
+  symptoms:
+    - description: "the newest stem has grown really long and thin, with the leaves spaced way further apart than the older growth"
+      position: new_growth
+      severity: monitor
+    - description: "those new leaves are smaller and paler than the rest of the plant, and the stem has started leaning hard toward the window"
+      position: new_growth
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  light_hours: "it's in a hallway, maybe an hour of indirect light passing by each day"
+  watering_frequency: "every ten days or so"
+default_answer: "not observed"
+ground_truth: etiolation
+also_acceptable:
+  - insufficient-light

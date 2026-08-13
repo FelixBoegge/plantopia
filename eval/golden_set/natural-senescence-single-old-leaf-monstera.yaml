@@ -1,0 +1,26 @@
+id: natural-senescence-single-old-leaf-monstera
+category: other
+plant:
+  name: "Living room monstera"
+  species: "Monstera deliciosa"
+  location_kind: indoor
+species_confidence: 0.9
+symptoms:
+  overall_vigor: good
+  soil_condition: "normal, drains well, on a regular watering schedule"
+  symptoms:
+    - description: "one of the lowest, oldest leaves has slowly turned yellow then brown over the last couple of weeks and dropped off"
+      position: lower_leaves
+      severity: monitor
+    - description: "every other leaf, including the new ones unfurling, still looks completely green and firm"
+      position: whole_plant
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  watering_frequency: "once a week, consistent"
+  light_hours: "bright indirect light most of the day"
+  recent_changes: "nothing changed, just noticed this one leaf"
+default_answer: "not observed"
+ground_truth: natural-senescence
+also_acceptable:
+  - nitrogen-deficiency

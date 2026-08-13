@@ -1,0 +1,24 @@
+id: botrytis-grey-mould-spent-flowers
+category: fungal
+plant:
+  name: "Bathroom African violet"
+  species: "Saintpaulia ionantha"
+  location_kind: indoor
+species_confidence: 0.73
+symptoms:
+  overall_vigor: poor
+  soil_condition: "kept fairly moist, drains adequately"
+  symptoms:
+    - description: "a fuzzy grey mould has grown over a couple of spent flowers and a damaged stem"
+      position: stem
+      severity: act_today
+    - description: "it's started spreading onto the healthy leaf right next to it, which has gone soft and brown"
+      position: whole_leaf
+      severity: act_today
+answers:
+  drainage: "drains okay, not sitting in water"
+  humidity: "quite humid — it's on the bathroom windowsill"
+  recent_changes: "hasn't been deadheaded in a while, old flowers left on the plant"
+default_answer: "not observed"
+ground_truth: botrytis
+also_acceptable: []

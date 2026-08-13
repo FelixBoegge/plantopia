@@ -1,0 +1,25 @@
+id: sunscald-bleached-patch-zz-plant
+category: light
+plant:
+  name: "Indoor ZZ plant"
+  species: "Zamioculcas zamiifolia"
+  location_kind: indoor
+species_confidence: 0.81
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "there's a pale, bleached patch on a couple of leaves with a really sharp edge where the colour changes"
+      position: whole_leaf
+      severity: act_this_week
+    - description: "it's only on the side facing the window — the other side of the plant looks completely normal"
+      position: whole_leaf
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  recent_changes: "moved it to a much brighter south-facing windowsill about ten days ago"
+  light_hours: "several hours of direct sun now"
+default_answer: "not observed"
+ground_truth: sunscald
+also_acceptable:
+  - fertiliser-burn

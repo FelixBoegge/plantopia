@@ -1,0 +1,25 @@
+id: phosphorus-deficiency-stunted-coffee-plant
+category: nutrient
+plant:
+  name: "Kitchen coffee plant"
+  species: "Coffea arabica"
+  location_kind: indoor
+species_confidence: 0.65
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "new leaves are noticeably smaller than older ones and packed close together on the stem"
+      position: new_growth
+      severity: monitor
+    - description: "the undersides of a couple of the older leaves look dull, almost bronze-purple"
+      position: lower_leaves
+      severity: monitor
+answers:
+  drainage: "drains fine, no standing water"
+  light_hours: "bright indirect, several hours a day"
+  fertiliser: "fed occasionally but not on a strict schedule"
+default_answer: "not observed"
+ground_truth: phosphorus-deficiency
+also_acceptable:
+  - nitrogen-deficiency

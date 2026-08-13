@@ -1,0 +1,25 @@
+id: fungus-gnats-flies-over-damp-soil
+category: pest
+plant:
+  name: "Windowsill mint"
+  species: "Mentha spicata"
+  location_kind: indoor
+species_confidence: 0.77
+symptoms:
+  overall_vigor: declining
+  soil_condition: "kept constantly damp, never really dries out"
+  symptoms:
+    - description: "tiny dark flies keep flying up out of the soil whenever it's watered or bumped"
+      position: soil_surface
+      severity: monitor
+    - description: "growth has slowed a little over the last couple of weeks"
+      position: whole_plant
+      severity: monitor
+answers:
+  drainage: "drains okay, but I water little and often so it stays damp"
+  watering_frequency: "small amounts every day or two"
+  recent_changes: "none"
+default_answer: "not observed"
+ground_truth: fungus-gnats
+also_acceptable:
+  - overwatering

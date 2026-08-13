@@ -1,0 +1,25 @@
+id: mealybugs-cottony-leaf-joints-jade
+category: pest
+plant:
+  name: "Indoor jade plant"
+  species: "Crassula ovata"
+  location_kind: indoor
+species_confidence: 0.8
+symptoms:
+  overall_vigor: declining
+  soil_condition: "dry, drains quickly"
+  symptoms:
+    - description: "small white fluffy clumps have shown up tucked into the joints where the leaves meet the stem"
+      position: stem
+      severity: act_today
+    - description: "the leaves nearby feel a bit sticky and a couple have started yellowing"
+      position: whole_leaf
+      severity: act_this_week
+answers:
+  drainage: "drains freely"
+  recent_changes: "no new plants, but it spent the summer outside on the balcony"
+  pest_evidence: "white cottony bits in the leaf joints, yes"
+default_answer: "not observed"
+ground_truth: mealybugs
+also_acceptable:
+  - scale-insects

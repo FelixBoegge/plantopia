@@ -1,0 +1,26 @@
+id: heat-stress-wilting-heatwave-olive
+category: environmental
+plant:
+  name: "Terrace olive tree"
+  species: "Olea europaea"
+  location_kind: outdoor
+  location_text: "Berlin"
+species_confidence: 0.84
+symptoms:
+  overall_vigor: poor
+  soil_condition: "moist, watered two days ago, drains fine"
+  symptoms:
+    - description: "the whole plant has been wilting in the afternoons even though the soil's still damp"
+      position: whole_plant
+      severity: act_today
+    - description: "leaf edges on the sunniest side have started to crisp up"
+      position: leaf_margin
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  recent_changes: "it's been a real heatwave this week, over 35 degrees"
+  watering_frequency: "watered two days ago, soil's still moist"
+default_answer: "not observed"
+ground_truth: heat-stress
+also_acceptable:
+  - underwatering

@@ -1,0 +1,26 @@
+id: powdery-mildew-dusty-coating-courgette
+category: fungal
+plant:
+  name: "Balcony courgette plant"
+  species: "Cucurbita pepo"
+  location_kind: outdoor
+  location_text: "Berlin"
+species_confidence: 0.86
+symptoms:
+  overall_vigor: declining
+  soil_condition: "evenly moist, drains fine"
+  symptoms:
+    - description: "a dusty white coating has spread across several leaves, like they've been dusted with flour"
+      position: whole_leaf
+      severity: act_this_week
+    - description: "the leaves under that coating are starting to curl and look a bit yellow"
+      position: whole_leaf
+      severity: monitor
+answers:
+  drainage: "drains fine"
+  recent_changes: "the plants are packed close together on the balcony"
+  humidity: "it's been a humid, still couple of weeks"
+default_answer: "not observed"
+ground_truth: powdery-mildew
+also_acceptable:
+  - mealybugs

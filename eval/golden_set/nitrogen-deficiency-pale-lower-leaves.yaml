@@ -1,0 +1,25 @@
+id: nitrogen-deficiency-pale-lower-leaves
+category: nutrient
+plant:
+  name: "Living room philodendron"
+  species: "Philodendron hederaceum"
+  location_kind: indoor
+species_confidence: 0.8
+symptoms:
+  overall_vigor: declining
+  soil_condition: "evenly moist, watered on a weekly schedule"
+  symptoms:
+    - description: "the lowest two leaves have gone pale, washed-out yellow all over"
+      position: lower_leaves
+      severity: monitor
+    - description: "new leaves coming in look smaller than the ones from a few months ago"
+      position: new_growth
+      severity: monitor
+answers:
+  drainage: "drains fine, no standing water in the saucer"
+  fertiliser: "can't remember the last time it was fed"
+  light_hours: "bright indirect, a few feet from an east window"
+default_answer: "not observed"
+ground_truth: nitrogen-deficiency
+also_acceptable:
+  - magnesium-deficiency

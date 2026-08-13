@@ -1,0 +1,25 @@
+id: calcium-deficiency-crinkled-new-leaf
+category: nutrient
+plant:
+  name: "Indoor peace lily"
+  species: "Spathiphyllum wallisii"
+  location_kind: indoor
+species_confidence: 0.83
+symptoms:
+  overall_vigor: declining
+  soil_condition: "watering has been irregular, sometimes forgotten for a week then soaked"
+  symptoms:
+    - description: "the newest leaf came in puckered and crinkled instead of lying flat"
+      position: new_growth
+      severity: monitor
+    - description: "there are a couple of small brown dead patches near the tip of that same new leaf"
+      position: new_growth
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  watering_frequency: "irregular, honestly — sometimes I forget for a week and then really soak it"
+  light_hours: "medium indirect light"
+default_answer: "not observed"
+ground_truth: calcium-deficiency
+also_acceptable:
+  - underwatering

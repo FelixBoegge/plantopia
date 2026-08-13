@@ -1,0 +1,27 @@
+id: root-rot-mushy-stem-basil
+category: watering
+plant:
+  name: "Windowsill basil"
+  species: "Ocimum basilicum"
+  location_kind: indoor
+species_confidence: 0.78
+symptoms:
+  overall_vigor: poor
+  soil_condition: "waterlogged, still soggy days after watering"
+  symptoms:
+    - description: "leaves are yellowing and drooping even though the soil is still wet"
+      position: lower_leaves
+      severity: act_today
+    - description: "the stem right at the soil line looks darker and feels a bit mushy"
+      position: stem
+      severity: act_today
+    - description: "there's a faint sour smell right at the soil surface"
+      position: soil_surface
+      severity: act_this_week
+answers:
+  drainage: "the saucer holds water most of the week"
+  watering_frequency: "every day, just a splash to keep it going"
+default_answer: "not observed"
+ground_truth: root-rot
+also_acceptable:
+  - overwatering

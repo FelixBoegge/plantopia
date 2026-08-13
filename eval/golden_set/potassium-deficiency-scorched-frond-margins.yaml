@@ -1,0 +1,25 @@
+id: potassium-deficiency-scorched-frond-margins
+category: nutrient
+plant:
+  name: "Indoor areca palm"
+  species: "Dypsis lutescens"
+  location_kind: indoor
+species_confidence: 0.7
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "the oldest fronds have a scorched brown edge running all the way around, but the middle stays green"
+      position: leaf_margin
+      severity: monitor
+    - description: "a few small brown flecks have shown up just inside that brown edge"
+      position: leaf_margin
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  fertiliser: "hasn't been fed in a long while, maybe over a year"
+  recent_changes: "nothing recent, no repotting or feeding"
+default_answer: "not observed"
+ground_truth: potassium-deficiency
+also_acceptable:
+  - low-humidity

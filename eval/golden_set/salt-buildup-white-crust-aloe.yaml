@@ -1,0 +1,25 @@
+id: salt-buildup-white-crust-aloe
+category: environmental
+plant:
+  name: "Indoor aloe vera"
+  species: "Aloe vera"
+  location_kind: indoor
+species_confidence: 0.87
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "a white crusty film has built up on top of the soil and around the rim of the pot"
+      position: soil_surface
+      severity: act_this_week
+    - description: "leaf tips have been slowly browning over the last couple of months, even though it's fed regularly"
+      position: leaf_margin
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  fertiliser: "fed every couple of weeks, pretty consistently"
+  recent_changes: "none recently — this has built up gradually over time"
+default_answer: "not observed"
+ground_truth: salt-buildup
+also_acceptable:
+  - fertiliser-burn

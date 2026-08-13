@@ -1,0 +1,24 @@
+id: poor-drainage-soggy-saucer-snake-plant
+category: watering
+plant:
+  name: "Office snake plant"
+  species: "Dracaena trifasciata"
+  location_kind: indoor
+species_confidence: 0.85
+symptoms:
+  overall_vigor: declining
+  soil_condition: "stays soggy for days; the saucer often has standing water in it"
+  symptoms:
+    - description: "water still sits on top of the soil ten minutes after watering"
+      position: soil_surface
+      severity: act_this_week
+    - description: "a couple of leaves have gone yellow without any obvious cause"
+      position: whole_leaf
+      severity: monitor
+answers:
+  drainage: "not sure — it's in a plastic grow pot sitting inside a sealed ceramic cover pot"
+  watering_frequency: "once a week"
+default_answer: "not observed"
+ground_truth: poor-drainage
+also_acceptable:
+  - overwatering

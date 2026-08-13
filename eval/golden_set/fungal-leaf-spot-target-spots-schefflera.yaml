@@ -1,0 +1,25 @@
+id: fungal-leaf-spot-target-spots-schefflera
+category: fungal
+plant:
+  name: "Indoor umbrella tree"
+  species: "Schefflera arboricola"
+  location_kind: indoor
+species_confidence: 0.69
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "round brown spots with a darker ring around them have shown up scattered across several leaves"
+      position: whole_leaf
+      severity: act_this_week
+    - description: "the middle of the older spots looks dry and papery, with a few tiny dark specks in the centre"
+      position: whole_leaf
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  recent_changes: "leaves get splashed sometimes when watering from above"
+  humidity: "kept close to other plants, not much airflow between them"
+default_answer: "not observed"
+ground_truth: fungal-leaf-spot
+also_acceptable:
+  - bacterial-leaf-spot

@@ -1,0 +1,25 @@
+id: scale-insects-shell-bumps-bay-tree
+category: pest
+plant:
+  name: "Indoor bay tree"
+  species: "Laurus nobilis"
+  location_kind: indoor
+species_confidence: 0.7
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "small flat brown bumps are stuck along the stems and won't move, almost like tiny shells"
+      position: stem
+      severity: act_this_week
+    - description: "there's a sticky film on the leaves underneath and a bit of black sooty coating starting on it"
+      position: whole_leaf
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  recent_changes: "moved indoors for winter about a month ago"
+  pest_evidence: "tried to flick one of the bumps off with a nail and it came away in one piece"
+default_answer: "not observed"
+ground_truth: scale-insects
+also_acceptable:
+  - mealybugs

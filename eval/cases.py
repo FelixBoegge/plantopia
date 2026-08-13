@@ -16,7 +16,7 @@ from typing import Literal
 
 import frontmatter
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent.schemas import SymptomSet
 
@@ -28,6 +28,8 @@ CATEGORIES: frozenset[str] = frozenset(
 class CasePlant(BaseModel):
     """The plant record a case implies, standing in for one the user would have."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1)
     species: str | None = None
     location_kind: Literal["indoor", "outdoor"] = "indoor"
@@ -36,6 +38,8 @@ class CasePlant(BaseModel):
 
 class GoldenCase(BaseModel):
     """One evaluation case: a situation, its pre-written answers, and the truth."""
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str = Field(min_length=1)
     category: str

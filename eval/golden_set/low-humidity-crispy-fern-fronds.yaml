@@ -1,0 +1,25 @@
+id: low-humidity-crispy-fern-fronds
+category: environmental
+plant:
+  name: "Indoor Boston fern"
+  species: "Nephrolepis exaltata"
+  location_kind: indoor
+species_confidence: 0.79
+symptoms:
+  overall_vigor: declining
+  soil_condition: "kept moist, drains adequately"
+  symptoms:
+    - description: "tips and edges of a lot of fronds have gone brown and crispy"
+      position: leaf_margin
+      severity: monitor
+    - description: "new fronds are coming in small and not unfurling properly"
+      position: new_growth
+      severity: monitor
+answers:
+  drainage: "drains fine"
+  recent_changes: "moved it closer to the radiator for winter"
+  humidity: "the room's pretty dry, heating's been on constantly"
+default_answer: "not observed"
+ground_truth: low-humidity
+also_acceptable:
+  - potassium-deficiency

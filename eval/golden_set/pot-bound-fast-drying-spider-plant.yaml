@@ -1,0 +1,25 @@
+id: pot-bound-fast-drying-spider-plant
+category: other
+plant:
+  name: "Indoor spider plant"
+  species: "Chlorophytum comosum"
+  location_kind: indoor
+species_confidence: 0.82
+symptoms:
+  overall_vigor: declining
+  soil_condition: "dries out very quickly, drains fine"
+  symptoms:
+    - description: "it's drying out so fast now that I'm watering almost every other day, way more than before"
+      position: whole_plant
+      severity: monitor
+    - description: "roots have started poking out of the drainage holes at the bottom"
+      position: roots
+      severity: monitor
+answers:
+  drainage: "drains freely, maybe too well now"
+  watering_frequency: "every day or two — it used to be once a week"
+  recent_changes: "hasn't been repotted in at least three years"
+default_answer: "not observed"
+ground_truth: pot-bound
+also_acceptable:
+  - underwatering

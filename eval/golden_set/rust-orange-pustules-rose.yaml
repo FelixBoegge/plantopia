@@ -1,0 +1,26 @@
+id: rust-orange-pustules-rose
+category: fungal
+plant:
+  name: "Garden rose"
+  species: "Rosa sp."
+  location_kind: outdoor
+  location_text: "Berlin"
+species_confidence: 0.9
+symptoms:
+  overall_vigor: declining
+  soil_condition: "outdoor bed soil, drains fine"
+  symptoms:
+    - description: "orange, powdery-looking spots have appeared on the underside of a lot of the older leaves"
+      position: lower_leaves
+      severity: act_this_week
+    - description: "rubbing one of the spots leaves orange dust on my finger"
+      position: lower_leaves
+      severity: monitor
+answers:
+  drainage: "drains fine, it's planted in the ground"
+  recent_changes: "nothing, just a lot of rain this month"
+  humidity: "it's outside so it varies a lot"
+default_answer: "not observed"
+ground_truth: rust
+also_acceptable:
+  - fungal-leaf-spot

@@ -1,0 +1,25 @@
+id: aphids-clustered-new-growth-hibiscus
+category: pest
+plant:
+  name: "Indoor hibiscus"
+  species: "Hibiscus rosa-sinensis"
+  location_kind: indoor
+species_confidence: 0.75
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "little clusters of small soft-bodied bugs, mostly green, are packed along the newest stem tips and flower buds"
+      position: new_growth
+      severity: act_today
+    - description: "the leaves just below them are curling and feel a bit sticky"
+      position: whole_leaf
+      severity: act_this_week
+answers:
+  drainage: "drains freely"
+  recent_changes: "brought a new plant home from the garden centre last week"
+  pest_evidence: "yes, saw the bugs directly on the stem tips"
+default_answer: "not observed"
+ground_truth: aphids
+also_acceptable:
+  - mealybugs

@@ -1,0 +1,25 @@
+id: iron-deficiency-pale-new-growth-citrus
+category: nutrient
+plant:
+  name: "Sunroom calamondin orange"
+  species: "Citrofortunella microcarpa"
+  location_kind: indoor
+species_confidence: 0.72
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "the newest little leaves at the tips are pale yellow with the veins standing out bright green"
+      position: new_growth
+      severity: monitor
+    - description: "growth at the tips has slowed down over the last month"
+      position: new_growth
+      severity: monitor
+answers:
+  drainage: "drains freely"
+  light_hours: "full sun most of the day near a south window"
+  recent_changes: "switched to plain tap water instead of filtered a couple of months ago"
+default_answer: "not observed"
+ground_truth: iron-deficiency
+also_acceptable:
+  - magnesium-deficiency

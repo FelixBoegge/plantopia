@@ -1,0 +1,25 @@
+id: cold-draught-one-sided-blackening-fiddle-leaf
+category: environmental
+plant:
+  name: "Hallway fiddle-leaf fig"
+  species: "Ficus lyrata"
+  location_kind: indoor
+species_confidence: 0.76
+symptoms:
+  overall_vigor: poor
+  soil_condition: "normal moisture, drains well"
+  symptoms:
+    - description: "leaves on just one side of the plant suddenly went droopy and dark, almost overnight"
+      position: whole_leaf
+      severity: act_today
+    - description: "a couple of those same leaves have gone on to drop in just the last day or two"
+      position: whole_leaf
+      severity: act_today
+answers:
+  drainage: "drains freely"
+  recent_changes: "that side of the plant is right next to the front door, which has been opened a lot lately"
+  watering_frequency: "normal, once a week"
+default_answer: "not observed"
+ground_truth: cold-draught
+also_acceptable:
+  - frost-damage

@@ -1,0 +1,26 @@
+id: magnesium-deficiency-marbled-tomato-leaves
+category: nutrient
+plant:
+  name: "Balcony tomato plant"
+  species: "Solanum lycopersicum"
+  location_kind: outdoor
+  location_text: "Berlin"
+species_confidence: 0.88
+symptoms:
+  overall_vigor: declining
+  soil_condition: "kept evenly moist, container mix"
+  symptoms:
+    - description: "older leaves lower down have a blotchy yellow marbling between the veins, but the veins themselves stay green"
+      position: lower_leaves
+      severity: monitor
+    - description: "a couple of the yellow patches have started to look faintly reddish at the edges"
+      position: lower_leaves
+      severity: monitor
+answers:
+  drainage: "the container has holes and drains fine"
+  fertiliser: "fed with a general tomato feed every couple of weeks"
+  recent_changes: "nothing changed except it's been fruiting heavily the last few weeks"
+default_answer: "not observed"
+ground_truth: magnesium-deficiency
+also_acceptable:
+  - iron-deficiency

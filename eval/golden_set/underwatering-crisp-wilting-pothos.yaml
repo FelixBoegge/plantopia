@@ -1,0 +1,28 @@
+id: underwatering-crisp-wilting-pothos
+category: watering
+plant:
+  name: "Away-for-two-weeks pothos"
+  species: "Epipremnum aureum"
+  location_kind: indoor
+species_confidence: 0.8
+symptoms:
+  overall_vigor: declining
+  soil_condition: "bone dry, has pulled away from the sides of the pot"
+  symptoms:
+    - description: "leaves have gone limp and slightly papery, drooping evenly all over"
+      position: whole_plant
+      severity: act_this_week
+    - description: "tips and edges of several leaves have turned crisp and brown"
+      position: leaf_margin
+      severity: monitor
+    - description: "the pot feels almost weightless when picked up"
+      position: soil_surface
+      severity: monitor
+answers:
+  drainage: "drains freely, holes in the base"
+  watering_frequency: "hard to say, honestly — I was away and it's been over two weeks"
+  recent_changes: "nothing changed except being left alone longer than usual"
+default_answer: "not observed"
+ground_truth: underwatering
+also_acceptable:
+  - low-humidity
