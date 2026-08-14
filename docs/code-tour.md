@@ -20,6 +20,7 @@ rather than fixed.
 5. [The UI](#5-the-ui-bootstrap-the-service-seam-and-rendering) — bootstrap, `DiagnosisService`, the wizard, rendering
 6. [Prompts, guards, and configuration](#6-prompts-guards-and-configuration) — what every model is actually told, and where every number comes from
 7. [Phase 2: plant profiles, re-check, and chat](#7-phase-2-plant-profiles-re-check-and-chat) — the tables, the second entry path, the chat agent, and the pages that surface them
+8. [Phase 3: observability, cost, and evaluation](#8-phase-3-observability-cost-and-evaluation) — one callback seam, and a harness that measures the pipeline against a golden set
 
 ---
 
@@ -1941,5 +1942,102 @@ chat agent, the two orchestration services, and the UI surface that makes all of
 visible — along with three real bugs the review process caught (chat memory, message
 durability, roadmap-checklist scoping) and the tests written specifically to keep each
 one from coming back.
+
+---
+
+## 8. Phase 3: observability, cost, and evaluation
+
+Two features that look unrelated on a file listing and turn out to share one idea.
+Phase 3 makes the system **measurable**: what a diagnosis costs, and whether it is any
+good. The first half is a callback; the second is a harness that drives the real graph
+against 28 written-down cases.
+
+The phase is worth reading with one fact in view: it is the first phase whose output is
+itself a committed artefact (`eval/REPORT.md`) rather than only code. That changes what
+"correct" means in places, and §8.5 is mostly about the times it did.
+
+### 8.1 One callback seam, two consumers
+
+`PLAN.md` §15 asks for two things — LangSmith tracing, and a per-diagnosis cost figure —
+and describes them as separate work. They are not. In LangChain both are **callbacks**,
+so both attach at the same point, and the entire observability half of this phase is a
+question of getting one object to the right place.
+
+`core/cost.py` holds that object. `UsageCollector` is a `BaseCallbackHandler` whose
+`on_llm_end` accumulates prompt tokens, completion tokens and cost across every model
+call in a run. Two details in it are load-bearing:
+
+```python
+    usage = (response.llm_output or {}).get("token_usage") or {}
+    if usage:
+        return (...)
+    for generations in response.generations:
+        for generation in generations:
+            metadata = getattr(getattr(generation, "message", None), "usage_metadata", None)
+```
+
+LangChain reports usage in two different places depending on the path taken, and reading
+only one of them would have produced a collector that silently measured nothing on half
+the calls. And `snapshot()` returns `UsageSnapshot | None` rather than a zeroed snapshot:
+
+```python
+        with self._lock:
+            if self._calls == 0:
+                return None
+```
+
+`None` because every unit test in this repository runs on scripted models that report no
+usage at all. A zeroed snapshot would write `0 tokens, $0.00` into the database and make
+an **unmeasured** diagnosis indistinguishable from a **free** one. The same principle
+governs `cost_usd`, which stays `None` unless a provider actually reported a cost — the
+`_saw_cost` flag exists for exactly that distinction, and the cost badge (§8.2) honours
+it by rendering tokens alone rather than a fabricated `$0.00`.
+
+**Where the number comes from is a departure from the plan.** `PLAN.md` §15 specified a
+configured price table. `core/llm.py` instead asks OpenRouter to report what it charged:
+
+```python
+        extra_body={
+            "provider": {"require_parameters": True},
+            "usage": {"include": True},
+        },
+```
+
+One line, in the one factory every model in the application is built through, so all
+three tiers are covered at once. Reading the biller's own number means the figure cannot
+drift when a price changes or a model is swapped through `.env` — a price table would
+have gone stale silently, which is the failure mode this codebase least tolerates.
+
+`core/tracing.py` is the other consumer, and it is thirty-five lines because LangChain's
+tracer reads process environment variables:
+
+```python
+    key = (settings.langsmith_api_key or "").strip()
+    if not key:
+        logger.info("LangSmith tracing disabled: no API key configured")
+        return False
+```
+
+The `.strip()` is not decoration. An empty `PLANTOPIA_LANGSMITH_API_KEY=` line in a
+`.env` file is the realistic way this breaks, and it must count as absent — the whole
+point is that a fresh clone runs unchanged without a LangSmith account, the same
+precedent `PLANTOPIA_TAVILY_API_KEY` set in Phase 1.
+
+**Where `configure_tracing` is called moved during review, for a reason worth recording.**
+It began inside `ui/bootstrap.py`'s `get_service()`. But `ui/pages/chat.py` reaches
+`get_chat_service()` and never touches `get_service()` at all, so a session that only
+ever chatted ran **entirely untraced** — including every chat model call, which is
+precisely the traffic someone enabling tracing wants to see. It now lives in `app.py`:
+
+```python
+@st.cache_resource
+def _configure_tracing_once() -> bool:
+```
+
+The decorator is doing real work. `app.py` re-executes top to bottom on *every*
+Streamlit rerun — every widget interaction on every page, not just navigation — so an
+undecorated call would fire and log on each one. `st.cache_resource` is what turns
+"called constantly" into "runs once", the same mechanism `ui/bootstrap.py`'s factories
+already rely on.
 
 ---
