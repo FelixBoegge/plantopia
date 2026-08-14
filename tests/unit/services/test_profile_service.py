@@ -226,6 +226,97 @@ def test_a_diagnosis_with_no_answers_makes_no_model_call(db, now):
     assert model.call_count == 0
 
 
+def _say(messages, db, plant_id, now, *texts):
+    from data.db import transaction
+
+    with transaction(db):
+        for text in texts:
+            messages.create(
+                plant_id=plant_id, role="user", content=text, tool_calls=None, now=now()
+            )
+
+
+def test_extraction_waits_until_enough_new_turns(db, now, sample_plant):
+    from data.repositories.messages import MessageRepository
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    messages = MessageRepository(db)
+    model = ScriptedStructuredModel([])
+    service = ProfileService(repo=ProfileRepository(db), gate_model=model, now=now)
+
+    _say(messages, db, sample_plant, now, "one", "two", "three")
+    service.learn_from_chat(sample_plant, messages)
+
+    assert model.call_count == 0
+
+
+def test_extraction_fires_on_the_fourth_new_turn(db, now, sample_plant):
+    from data.repositories.messages import MessageRepository
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    messages = MessageRepository(db)
+    model = ScriptedStructuredModel([ProfileUpdate()])
+    service = ProfileService(repo=ProfileRepository(db), gate_model=model, now=now)
+
+    _say(messages, db, sample_plant, now, "one", "two", "three", "four")
+    service.learn_from_chat(sample_plant, messages)
+
+    assert model.call_count == 1
+
+
+def test_only_new_turns_are_sent(db, now, sample_plant):
+    from data.repositories.messages import MessageRepository
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    messages = MessageRepository(db)
+    model = ScriptedStructuredModel([ProfileUpdate(), ProfileUpdate()])
+    service = ProfileService(repo=ProfileRepository(db), gate_model=model, now=now)
+
+    _say(messages, db, sample_plant, now, "first batch a", "b", "c", "d")
+    service.learn_from_chat(sample_plant, messages)
+    _say(messages, db, sample_plant, now, "second batch e", "f", "g", "h")
+    service.learn_from_chat(sample_plant, messages)
+
+    second_call = str(model.prompts[1])
+    assert "second batch e" in second_call
+    assert "first batch a" not in second_call
+
+
+def test_the_cursor_does_not_advance_when_extraction_fails(db, now, sample_plant):
+    """Otherwise those turns are lost — nothing re-reads them."""
+    from data.repositories.messages import MessageRepository
+    from tests.fakes.chat_models import FailingChatModel
+
+    messages = MessageRepository(db)
+    repo = ProfileRepository(db)
+    service = ProfileService(repo=repo, gate_model=FailingChatModel(RuntimeError("boom")), now=now)
+
+    _say(messages, db, sample_plant, now, "one", "two", "three", "four")
+    service.learn_from_chat(sample_plant, messages)
+
+    assert repo.cursor_for(sample_plant) is None
+
+
+def test_assistant_turns_do_not_count_toward_the_threshold(db, now, sample_plant):
+    """The agent's own words are not evidence about the owner."""
+    from data.db import transaction
+    from data.repositories.messages import MessageRepository
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    messages = MessageRepository(db)
+    model = ScriptedStructuredModel([])
+    service = ProfileService(repo=ProfileRepository(db), gate_model=model, now=now)
+
+    with transaction(db):
+        for _ in range(6):
+            messages.create(
+                plant_id=sample_plant, role="assistant", content="hello", tool_calls=None, now=now()
+            )
+    service.learn_from_chat(sample_plant, messages)
+
+    assert model.call_count == 0
+
+
 class _UpsertFailingRepository(ProfileRepository):
     """A repository whose write half breaks, independent of the model."""
 

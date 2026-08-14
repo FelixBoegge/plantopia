@@ -19,6 +19,7 @@ from agent.prompts.profile import EXTRACT_PROFILE
 from agent.schemas import ProfileUpdate
 from agent.structured import StructuredOutputFailed, invoke_structured
 from data.db import transaction
+from data.repositories.messages import MessageRepository
 from data.repositories.profile import ProfileFact, ProfileRepository
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ MIN_INJECTED_CONFIDENCE = 0.5
 CONFIDENCE_CAP = 0.95
 CONFIRM_STEP = 0.1
 INITIAL_CONFIDENCE = {"stated": 0.8, "inferred": 0.5}
+CHAT_TURNS_PER_EXTRACTION = 4
 
 _HEADER = """What we believe about this owner — background only, possibly outdated.
 The photograph, the symptoms and the owner's answers about THIS plant always
@@ -122,6 +124,28 @@ class ProfileService:
             material = f"Stated location: {location_text}\n{material}"
 
         self._learn(material)
+
+    def learn_from_chat(self, plant_id: int, messages: MessageRepository) -> None:
+        """Extract from this plant's chat thread, reading only what is new.
+
+        Chat has no natural session boundary, so extraction fires every
+        ``CHAT_TURNS_PER_EXTRACTION`` owner turns over just the turns since the
+        cursor. Cost per turn stays flat instead of growing with thread length —
+        the failure mode ``M16`` records for chat context itself.
+        """
+        cursor = self._repo.cursor_for(plant_id) or 0
+        new = [m for m in messages.list_for_plant(plant_id) if m.id > cursor and m.role == "user"]
+        if len(new) < CHAT_TURNS_PER_EXTRACTION:
+            return
+
+        material = "\n".join(f"- {m.content}" for m in new)
+        if not self._learn(material):
+            # Extraction failed. Leaving the cursor where it is means these turns are
+            # read again next time rather than silently lost.
+            return
+
+        with transaction(self._repo.connection):
+            self._repo.set_cursor(plant_id=plant_id, last_message_id=new[-1].id)
 
     def _learn(self, material: str) -> bool:
         """Run one extraction/reconciliation round over new material.
