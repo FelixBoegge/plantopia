@@ -1,0 +1,10 @@
+# Deliberately lopsided. The point is to measure whether a plausible but
+# irrelevant prior drags unrelated categories down — see spec §4.3.
+name: overwaterer
+facts:
+  - fact: "tends to overwater, watering on a schedule rather than by feel"
+    source: inferred
+    confidence: 0.7
+  - fact: "has lost plants to overwatering and soggy soil before"
+    source: stated
+    confidence: 0.8

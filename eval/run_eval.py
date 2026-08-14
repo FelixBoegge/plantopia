@@ -31,6 +31,7 @@ from core.tracing import configure_tracing
 from eval.cases import GoldenCase, load_cases
 from eval.harness import CaseRun, run_case
 from eval.metrics import accuracy, near_misses, stability, total_usage
+from eval.profiles import load_profile
 from eval.ragas_metrics import evaluate_runs, judge_embeddings, judge_llm
 from eval.report import render_report
 
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 GOLDEN_SET = Path("eval/golden_set")
 RESULTS_DIR = Path("eval/results")
 REPORT_PATH = Path("eval/REPORT.md")
+PROFILES_DIR = Path("eval/profiles")
 
 
 def _as_dict(report) -> dict:
@@ -57,7 +59,7 @@ def _case_row(run: CaseRun) -> dict:
     }
 
 
-def _run_one(case: GoldenCase, suffix: object) -> CaseRun:
+def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
     """One pass over one case, against a throwaway database.
 
     A fresh in-memory SQLite per case: ``persist`` writes a plant, an observation
@@ -65,6 +67,10 @@ def _run_one(case: GoldenCase, suffix: object) -> CaseRun:
     otherwise pour ~180 junk plants into ``data/plantopia.db``. Chroma is built
     once at module import (``_retriever()``) because re-embedding the corpus per
     case would dominate both runtime and cost.
+
+    ``profile_block`` is the same rendered block for every case in a run — a
+    profile describes the owner, not any one case (spec §4.3) — bound into a
+    callable because ``Deps.profile_facts`` is read per run.
     """
     from langgraph.checkpoint.memory import MemorySaver
 
@@ -97,6 +103,7 @@ def _run_one(case: GoldenCase, suffix: object) -> CaseRun:
         weather=get_local_weather,
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
         care_profile=lookup_plant_care_profile,
+        profile_facts=lambda: profile_block,
         now=lambda: datetime.now(tz=UTC),
     )
 
@@ -141,6 +148,12 @@ def main() -> None:
     parser.add_argument("--stability-cases", type=int, default=8)
     parser.add_argument("--stability-runs", type=int, default=5)
     parser.add_argument("--golden-set", type=Path, default=GOLDEN_SET)
+    parser.add_argument(
+        "--profile",
+        default="empty",
+        help="Name of a fixture under eval/profiles/ to inject as a run-level prior "
+        "(spec §4.3). Defaults to 'empty', which renders as no block at all.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
@@ -150,15 +163,20 @@ def main() -> None:
     cases = load_cases(args.golden_set)
     logger.info("loaded %d golden cases", len(cases))
 
+    # One block for the whole run: a profile describes the owner, not any one
+    # case, so every case and every stability repeat shares it (spec §4.3).
+    profile_block = load_profile(args.profile, PROFILES_DIR)
+
     # Build one Deps and one graph per case: the gate and vision tiers are scripted
     # from the case itself (eval/scripted.py), so they cannot be shared.
-    runs = [_run_one(case, index) for index, case in enumerate(cases)]
+    runs = [_run_one(case, index, profile_block) for index, case in enumerate(cases)]
 
     subset = cases[: args.stability_cases]
     stability_case_ids = [case.id for case in subset]
     repeats: dict[str, list[CaseRun]] = {
         case.id: [
-            _run_one(case, f"stability-{index}-{repeat}") for repeat in range(args.stability_runs)
+            _run_one(case, f"stability-{index}-{repeat}", profile_block)
+            for repeat in range(args.stability_runs)
         ]
         for index, case in enumerate(subset)
     }
@@ -181,6 +199,7 @@ def main() -> None:
             "temperature": settings.default_temperature,
             "corpus_documents": len(list(settings.corpus_path.glob("*.md"))),
             "golden_set_size": len(cases),
+            "profile": args.profile,
             # Sum of every model call in the run — the main set plus the stability
             # repeats — so the most expensive thing in the project finally reports
             # its own spend. ``None`` when no run reported cost, never a fabricated

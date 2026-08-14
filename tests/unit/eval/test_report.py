@@ -11,6 +11,7 @@ RESULTS = {
         "temperature": 0.2,
         "corpus_documents": 43,
         "golden_set_size": 28,
+        "profile": "empty",
         "total_token_usage": {
             "prompt_tokens": 120_000,
             "completion_tokens": 45_000,
@@ -186,6 +187,28 @@ def test_total_usage_renders_tokens_only_when_cost_is_none():
     provenance_section = report.split("## Headline metrics")[0]
     assert "120,000" in provenance_section
     assert "$" not in provenance_section
+
+
+def test_the_profile_is_recorded_in_provenance():
+    """A profile is a run-level input (spec §4.3) — the report must say which
+    fixture produced the numbers, same as the model or the corpus size."""
+    report = render_report(RESULTS)
+
+    provenance_section = report.split("## Headline metrics")[0]
+    assert "empty" in provenance_section
+
+
+def test_a_missing_profile_key_does_not_crash():
+    """Older results files predate the --profile flag — must render, just
+    without a profile row."""
+    legacy = {
+        **RESULTS,
+        "provenance": {k: v for k, v in RESULTS["provenance"].items() if k != "profile"},
+    }
+
+    report = render_report(legacy)
+
+    assert "Golden-set size" in report
 
 
 def test_total_usage_is_absent_when_never_recorded():

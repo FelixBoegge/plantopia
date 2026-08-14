@@ -85,6 +85,11 @@ def render_report(results: dict) -> str:
         f"| Temperature | {provenance['temperature']} |",
         f"| Corpus documents | {provenance['corpus_documents']} |",
         f"| Golden-set size | {provenance['golden_set_size']} |",
+        *(
+            [f"| Profile | `{provenance['profile']}` |"]
+            if provenance.get("profile") is not None
+            else []
+        ),
         *_usage_rows(provenance),
         "",
         "## Headline metrics",
