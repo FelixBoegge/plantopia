@@ -169,3 +169,33 @@ def test_suggest_new_diagnosis_populates_the_escalation_dict(make_deps, db, now)
     escalate_tool = next(t for t in tools if t.name == "suggest_new_diagnosis")
     escalate_tool.invoke({"reason": "new brown spots, not yellowing"})
     assert escalation == {"reason": "new brown spots, not yellowing"}
+
+
+def test_the_chat_system_prompt_carries_the_profile(make_deps, sample_plant):
+    from agent.chat_agent import build_chat_system_prompt
+
+    deps = make_deps(profile_facts=lambda: "- tends to overwater (confidence 0.7)")
+    prompt = build_chat_system_prompt(deps, sample_plant)
+
+    assert "tends to overwater" in prompt
+
+
+def test_the_chat_system_prompt_is_unchanged_when_the_profile_is_empty(make_deps, sample_plant):
+    from agent.chat_agent import build_chat_system_prompt
+
+    with_empty = build_chat_system_prompt(make_deps(profile_facts=lambda: ""), sample_plant)
+    with_facts = build_chat_system_prompt(
+        make_deps(profile_facts=lambda: "- lives in Berlin (confidence 0.9)"), sample_plant
+    )
+
+    assert "lives in Berlin" in with_facts
+    assert with_facts.startswith(with_empty), "the profile block must be appended, not interleaved"
+
+
+def test_an_unknown_plant_still_raises(make_deps):
+    import pytest
+
+    from agent.chat_agent import build_chat_system_prompt
+
+    with pytest.raises(ValueError, match="No plant"):
+        build_chat_system_prompt(make_deps(profile_facts=lambda: ""), 9999)
