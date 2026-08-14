@@ -69,6 +69,16 @@ class ProfileService:
         facts = [f for f in self._repo.list_all() if f.confidence >= MIN_INJECTED_CONFIDENCE]
         return render_facts(facts[:MAX_INJECTED_FACTS])
 
+    def all_facts(self) -> list[ProfileFact]:
+        """Every fact, unfiltered — the view shows low-confidence ones too."""
+        return self._repo.list_all()
+
+    def forget(self, fact: str) -> None:
+        """Delete a fact the owner says is wrong. The only correction mechanism
+        besides the reconciliation loop superseding a fact on its own."""
+        with transaction(self._repo.connection):
+            self._repo.supersede(fact)
+
     def apply_update(self, update: ProfileUpdate) -> None:
         """Apply a reconciliation, dropping anything that does not match stored text.
 

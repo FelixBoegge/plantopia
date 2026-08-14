@@ -3,6 +3,7 @@
 import streamlit as st
 
 from ui import bootstrap
+from ui.components.profile_panel import render_profile_panel
 
 st.title("🌿 My Plants")
 
@@ -39,3 +40,7 @@ else:
 
     if st.button("Add a plant"):
         st.switch_page("ui/pages/diagnose.py")
+
+with st.expander("What Plantopia has learned about you"):
+    profile = bootstrap.get_profile_service()
+    render_profile_panel(profile.all_facts(), profile.forget)
