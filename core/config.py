@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     langsmith_api_key: str | None = None
     langsmith_project: str = "plantopia"
 
+    # LangSmith API keys are region-scoped: a key from an EU workspace 403s against
+    # the default US host. `None` means "let the SDK use its own default" rather than
+    # hardcoding the US URL, so a future SDK default change is inherited for free —
+    # only set this when the workspace is actually on a non-default region/host.
+    langsmith_endpoint: str | None = None
+
     db_path: Path = Path("data/plantopia.db")
     chroma_path: Path = Path("data/chroma")
     corpus_path: Path = Path("knowledge/corpus")

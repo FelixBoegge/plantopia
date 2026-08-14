@@ -31,5 +31,10 @@ def configure_tracing(settings: Settings) -> bool:
     os.environ["LANGSMITH_TRACING"] = "true"
     os.environ["LANGSMITH_API_KEY"] = key
     os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
+
+    endpoint = (settings.langsmith_endpoint or "").strip()
+    if endpoint:
+        os.environ["LANGSMITH_ENDPOINT"] = endpoint
+
     logger.info("LangSmith tracing enabled, project %r", settings.langsmith_project)
     return True

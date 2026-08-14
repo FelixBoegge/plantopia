@@ -2023,6 +2023,22 @@ The `.strip()` is not decoration. An empty `PLANTOPIA_LANGSMITH_API_KEY=` line i
 point is that a fresh clone runs unchanged without a LangSmith account, the same
 precedent `PLANTOPIA_TAVILY_API_KEY` set in Phase 1.
 
+**The endpoint is not optional polish, and shipping it as a bare key export was the
+bug.** LangSmith API keys are region-scoped: a key created in an EU workspace returns
+`403 Forbidden` against the default US host, `https://api.smith.langchain.com`. Nothing
+in that failure looks unhealthy from inside the app — `configure_tracing` still returns
+`True`, every graph node still runs, and the upload failure surfaces only as a
+`WARNING` from LangChain's background tracing thread. The owner sees a working
+application and an empty LangSmith project, with nothing connecting the two.
+`langsmith_endpoint` on `Settings` defaults to `None` rather than to the US URL, on
+purpose: `None` means "let the SDK use its own default," so a future SDK default change
+is inherited rather than overridden by a value pinned here. `configure_tracing` only
+exports `LANGSMITH_ENDPOINT` when a key is present *and* an endpoint is configured; a
+blank or whitespace-only value is treated as absent, exactly like the key. Anyone whose
+workspace lives on the EU instance (or a self-hosted deployment) sets
+`PLANTOPIA_LANGSMITH_ENDPOINT` to that host; everyone else leaves it unset and gets the
+SDK's default.
+
 **Where `configure_tracing` is called moved during review, for a reason worth recording.**
 It began inside `ui/bootstrap.py`'s `get_service()`. But `ui/pages/chat.py` reaches
 `get_chat_service()` and never touches `get_service()` at all, so a session that only

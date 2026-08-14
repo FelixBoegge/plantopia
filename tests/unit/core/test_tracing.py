@@ -24,7 +24,12 @@ def _clean_langsmith_env(monkeypatch):
     teardown restores (or deletes) them regardless of what ``configure_tracing``
     wrote directly.
     """
-    for key in ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_PROJECT"):
+    for key in (
+        "LANGSMITH_TRACING",
+        "LANGSMITH_API_KEY",
+        "LANGSMITH_PROJECT",
+        "LANGSMITH_ENDPOINT",
+    ):
         monkeypatch.delenv(key, raising=False)
 
 
@@ -53,3 +58,41 @@ def test_a_blank_key_counts_as_absent():
     """An empty PLANTOPIA_LANGSMITH_API_KEY= line in .env must not enable tracing."""
     assert configure_tracing(_settings(langsmith_api_key="   ")) is False
     assert "LANGSMITH_TRACING" not in os.environ
+
+
+def test_endpoint_is_exported_when_key_and_endpoint_are_both_configured():
+    """A region-scoped key (e.g. an EU workspace) needs the matching host, or every
+    upload 403s against the US default while the app reports tracing as enabled."""
+    configure_tracing(
+        _settings(
+            langsmith_api_key="ls-test",
+            langsmith_endpoint="https://eu.api.smith.langchain.com",
+        )
+    )
+
+    assert os.environ["LANGSMITH_ENDPOINT"] == "https://eu.api.smith.langchain.com"
+
+
+def test_endpoint_is_left_unset_when_not_configured():
+    """No configured endpoint must mean the SDK's own default applies, not a
+    hardcoded US host — so a future SDK default change is inherited for free."""
+    configure_tracing(_settings(langsmith_api_key="ls-test"))
+
+    assert "LANGSMITH_ENDPOINT" not in os.environ
+
+
+def test_a_blank_endpoint_counts_as_absent():
+    """An empty PLANTOPIA_LANGSMITH_ENDPOINT= line in .env must not set the variable,
+    exactly like a blank API key."""
+    configure_tracing(_settings(langsmith_api_key="ls-test", langsmith_endpoint="   "))
+
+    assert "LANGSMITH_ENDPOINT" not in os.environ
+
+
+def test_endpoint_is_not_exported_without_a_key():
+    """No key at all disables tracing entirely — the endpoint must not leak out on
+    its own, and configure_tracing must still report tracing as off."""
+    enabled = configure_tracing(_settings(langsmith_endpoint="https://eu.api.smith.langchain.com"))
+
+    assert enabled is False
+    assert "LANGSMITH_ENDPOINT" not in os.environ
