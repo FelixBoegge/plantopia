@@ -2350,4 +2350,107 @@ failures internally and only the NaN cells reveal them. `eval/report.py` renders
 `63.3% (16 of 28 scored)`; a metric that scored nothing renders as "not measured", never
 `0.0%`. §8.5 is why this exists.
 
+### 8.5 The CLI, the page, and what running it actually found
+
+`eval/run_eval.py` is the only thing in `eval/` that touches the network, and it is the
+only module in the package excluded from coverage — the same precedent `ui/bootstrap.py`
+set for real-infrastructure wiring, with everything beneath it unit-tested.
+
+Two details in it are cost decisions rather than style. `_run_one` opens
+`connect(":memory:")` per case, because `persist` writes a plant, an observation and a
+diagnosis on every run and 68 runs would otherwise pour junk into `data/plantopia.db`.
+And `_retriever()`/`_corpus()` are `lru_cache`d, because re-embedding a 43-document
+corpus per case would dominate both runtime and spend.
+
+`ui/pages/evaluation.py` renders and never runs. A full evaluation is ~100 minutes of
+paid model calls, and Streamlit's rerun model makes long jobs awkward to hold — so the
+page reads the newest committed results file and stops:
+
+```python
+if results is None:
+    st.info(
+        "No evaluation has been run yet. Run `uv run python -m eval.run_eval` to "
+        "generate a report — it takes several minutes and makes real model calls."
+    )
+    st.stop()
+```
+
+The empty state is not hypothetical; it is what the page showed for most of this phase's
+development, and it is tested as its own case.
+
+#### What two real runs established
+
+The harness ran twice: once with the synthetic Ragas inputs described in §8.4, once after
+they were fixed. The second run's report is committed at `eval/REPORT.md`.
+
+**Accuracy is reproducible, and failure is concentrated exactly where `PLAN.md` §16
+guessed it would be.** Top-1 75.0% and top-3 82.1% came out *identical* across two
+independent runs at temperature 0.2, with an identical per-category breakdown:
+
+| Category | Top-1 | Top-3 |
+|---|---|---|
+| pest / fungal / watering | 100% | 100% |
+| environmental | 75.0% | 100% |
+| light | 66.7% | 100% |
+| other | 50.0% | 50.0% |
+| **nutrient** | **33.3%** | **33.3%** |
+
+Nutrient is worse than the number suggests. Every other category recovers to 100% at
+top-3; nutrient does not move, meaning that when it misses, the correct cause is **absent
+from the differential entirely** rather than mis-ranked.
+
+**A retrieval probe located the fault, and it is not where the corpus or the embeddings
+are.** For `calcium-deficiency` the ground-truth document was retrieved at rank 1 and the
+model still omitted the cause; for `nitrogen-deficiency`, rank 2. The correct evidence was
+in front of it. This is a reasoning and ranking weakness — which also means neither a
+larger corpus nor the reference-image set `PLAN.md` §10.5 contemplates would address it.
+`natural-senescence` appears in the top four retrieved documents for five of the six
+nutrient cases, and an old leaf yellowing is exactly what a deficiency looks like.
+
+The probe is also a caution about probes. A first attempt appeared to show catastrophic,
+query-insensitive retrieval — every query returning the same low-scoring documents. It
+was passing a bare string to `ChromaRetriever.search`, whose parameter is
+`queries: Sequence[str]`, so Python iterated the string and embedded each *character*.
+Feeding a document's own text back and requiring it to rank first is the sanity check
+that caught it, and retrieval is in fact healthy (self-query scores 0.76–0.87 with
+semantically sensible neighbours).
+
+**The stability question `known-limitations.md` left open since Phase 1 now has an
+answer, and it relocates the suspicion rather than dissolving it.** That note recorded the
+same two photographs producing Root Rot 60% on one run and Rust 60% on the next. On
+byte-identical *text* input, top-1 agreement is 92.5%. Meanwhile clarifying-question
+drift is 57.1% — the questions the model chooses vary enormously and the diagnosis barely
+moves. That rules out the explanation the original note floated, that differently-worded
+questions caused it, and leaves the vision layer as the difference between the two
+observations. Symptom extraction is now the prime suspect, and it is the one layer this
+harness structurally cannot see (`M19`). Reporting drift separately from churn is what
+made that inference available at all.
+
+**And the evaluation reports its own cost**, which is the two halves of this phase meeting:
+$1.0168 across 246,437 tokens, measured by the same `UsageCollector` from §8.1.
+
+#### The finding the disclosure produced
+
+The completeness counts added in §8.4 exist because of what they immediately revealed:
+**51 of 112 judge jobs failed** on the final run — 39 `APIConnectionError`, 12
+`TimeoutError` — already at `RunConfig(timeout=300, max_workers=4)` rather than Ragas's
+16-worker, 180-second defaults. The four RAG metrics are therefore means over 13–18 of 28
+cases, and the first report had presented the same situation as though every case had
+scored.
+
+This is recorded as `M20`, with one consequence worth carrying: cross-run comparison of
+the RAG metrics is unsafe, because two runs score overlapping but *different* subsets.
+Faithfulness moved 56.8% → 47.5% between the two runs with nothing in the agent changing.
+Top-1, top-3 and stability are unaffected — they come from `eval/metrics.py` over the
+pipeline runs, which had a 0% failure rate across both runs.
+
+This closes the Phase 3 tour. Between §8.1 and §8.5 the phase's whole surface has been
+walked — the callback seam, the transaction it had to reach without splitting, the golden
+set and the harness that drives the real graph, the two scoring modules and the line
+between them, and the artefact all of it exists to produce. The recurring theme is worth
+naming: nearly every defect this phase corrected was a number that would have been
+*believed*. A cost that undercounted by half, a metric averaging over cases it silently
+dropped, a stability figure reporting perfection for a run that failed, cases scoring well
+because they echoed the corpus's own words. None of them would have crashed anything.
+
 ---
