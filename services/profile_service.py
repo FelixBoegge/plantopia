@@ -129,9 +129,18 @@ class ProfileService:
         Returns:
             ``True`` when a round completed and any update was applied — including
             an empty one, because material that genuinely held no durable fact has
-            been dealt with and must not be re-read forever. ``False`` only when
-            extraction failed, which is what tells ``learn_from_chat`` to leave its
+            been dealt with and must not be re-read forever. ``False`` when extraction
+            failed *or* when applying its result failed — either way nothing was
+            durably written, which is what tells ``learn_from_chat`` to leave its
             cursor alone so those turns are retried.
+
+        ``apply_update`` runs inside the same guarded region as the model call, not
+        after it: it is the half that touches the database (a transaction, a run of
+        ``upsert``/``supersede`` calls), and a locked file or constraint violation
+        there is exactly the kind of failure this method exists to swallow. Letting
+        it through the exception guard would have this "best-effort" extraction
+        break its caller anyway — after the diagnosis it is learning from has
+        already been committed and shown to the owner.
         """
         current = self._repo.list_all()
         profile_block = (
@@ -144,12 +153,14 @@ class ProfileService:
 
         try:
             update = invoke_structured(self._gate_model, ProfileUpdate, messages)
+            self.apply_update(update)
         except StructuredOutputFailed as exc:
             logger.warning("profile extraction failed: %s", exc)
             return False
-        except Exception as exc:  # noqa: BLE001 — extraction must never break its caller
-            logger.warning("profile extraction raised: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — the update round must never break its caller
+            logger.warning(
+                "profile update failed to apply (database or reconciliation error): %s", exc
+            )
             return False
 
-        self.apply_update(update)
         return True

@@ -1,5 +1,6 @@
 """Unit tests for profile rendering and reconciliation. No model calls."""
 
+import sqlite3
 from datetime import UTC, datetime
 
 from agent.schemas import ExtractedFact, ProfileUpdate
@@ -223,3 +224,30 @@ def test_a_diagnosis_with_no_answers_makes_no_model_call(db, now):
     service.learn_from_diagnosis(answers={}, location_text=None)
 
     assert model.call_count == 0
+
+
+class _UpsertFailingRepository(ProfileRepository):
+    """A repository whose write half breaks, independent of the model."""
+
+    def upsert(self, **kwargs) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+
+def test_a_failing_apply_also_reports_failure_and_touches_nothing(db, now):
+    """The failure need not originate in the model: applying a well-formed update
+    can itself fail (a locked file, a constraint violation). That must be caught
+    too, not just a failure from ``invoke_structured`` — otherwise a database error
+    escapes a method whose whole contract is to never break its caller."""
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    model = ScriptedStructuredModel(
+        [
+            ProfileUpdate(
+                added=[ExtractedFact(fact="lives in Berlin", source="stated", confidence=0.9)]
+            )
+        ]
+    )
+    service = ProfileService(repo=_UpsertFailingRepository(db), gate_model=model, now=now)
+
+    assert service._learn("some material") is False
+    assert ProfileRepository(db).list_all() == []
