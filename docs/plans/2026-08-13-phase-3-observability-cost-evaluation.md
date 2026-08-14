@@ -2301,7 +2301,10 @@ precisely so that this module stays offline and deterministic.
 from dataclasses import dataclass, field
 from itertools import combinations
 
+from agent.nodes.context import ALWAYS_ASK_KEYS, LOCATION_QUESTION
 from eval.harness import CaseRun
+
+_DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_QUESTION.key}
 
 
 def _accepted(run: CaseRun) -> set[str]:
@@ -2377,10 +2380,13 @@ class StabilityReport:
 
     ``top1_agreement`` is the share of repeats landing on the modal top candidate.
     ``candidate_churn`` is mean pairwise Jaccard *distance* between candidate sets:
-    0.0 is identical, 1.0 disjoint. ``question_drift`` is the same distance over
-    the clarifying questions asked, reported separately because questions are
-    model-generated and their variance would otherwise be read as diagnostic
-    instability (spec §3.4).
+    0.0 is identical, 1.0 disjoint. ``question_drift`` is the same distance over the
+    clarifying questions asked, after subtracting the deterministic mandatory ones
+    (``_DETERMINISTIC_QUESTION_KEYS``) — those are asked on every run regardless of
+    the model, so including them would dampen the score and hide how much the
+    model's own question choice actually varies. Reported separately from
+    ``candidate_churn`` because question variance and diagnostic instability are
+    different failure modes (spec §3.4).
     """
 
     top1_agreement: float
@@ -2434,7 +2440,11 @@ def stability(runs_by_case: dict[str, list[CaseRun]]) -> StabilityReport:
             _modal_agreement([r.candidates[0] if r.candidates else None for r in runs])
         )
         churns.append(_mean_pairwise_distance([set(r.candidates) for r in runs]))
-        drifts.append(_mean_pairwise_distance([set(r.questions_asked) for r in runs]))
+        drifts.append(
+            _mean_pairwise_distance(
+                [set(r.questions_asked) - _DETERMINISTIC_QUESTION_KEYS for r in runs]
+            )
+        )
 
     total_runs = sum(len(runs) for runs in runs_by_case.values())
     return StabilityReport(

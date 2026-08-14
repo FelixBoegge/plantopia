@@ -87,3 +87,55 @@ def test_the_vision_caveat_is_shown(tmp_path, monkeypatch):
 
     body = " ".join(m.value for m in app.markdown)
     assert "vision" in body.lower()
+
+
+def test_partial_ragas_scoring_is_disclosed(tmp_path, monkeypatch):
+    """``eval/report.py`` already renders "(n of m scored)" for a metric whose cells
+    partly failed; the in-app view must disclose the same thing rather than showing
+    a bare percentage that reads as complete."""
+    from streamlit.testing.v1 import AppTest
+
+    payload = _payload()
+    payload["ragas_counts"] = {"faithfulness": {"scored": 5, "total": 8}}
+    results_dir = tmp_path / "results"
+    _write_results(results_dir, payload)
+    monkeypatch.setenv("PLANTOPIA_EVAL_RESULTS_DIR", str(results_dir))
+
+    app = AppTest.from_file(str(_EVALUATION_PAGE), default_timeout=30).run()
+
+    assert not app.exception
+    faithfulness = next(m for m in app.metric if m.label == "Faithfulness")
+    assert "5 of 8 scored" in faithfulness.value
+
+
+def test_a_fully_scored_ragas_metric_has_no_disclosure(tmp_path, monkeypatch):
+    """A metric that scored every submitted case should not carry a redundant
+    "(n of n scored)" note, matching ``eval/report.py``'s ``_ragas_cell``."""
+    from streamlit.testing.v1 import AppTest
+
+    payload = _payload()
+    payload["ragas_counts"] = {"faithfulness": {"scored": 8, "total": 8}}
+    results_dir = tmp_path / "results"
+    _write_results(results_dir, payload)
+    monkeypatch.setenv("PLANTOPIA_EVAL_RESULTS_DIR", str(results_dir))
+
+    app = AppTest.from_file(str(_EVALUATION_PAGE), default_timeout=30).run()
+
+    faithfulness = next(m for m in app.metric if m.label == "Faithfulness")
+    assert faithfulness.value == "90.0%"
+
+
+def test_results_without_ragas_counts_render_the_bare_percentage(tmp_path, monkeypatch):
+    """Backward compatible with results files written before ``ragas_counts``
+    existed: no ``KeyError``, and no disclosure text appears out of nowhere."""
+    from streamlit.testing.v1 import AppTest
+
+    results_dir = tmp_path / "results"
+    _write_results(results_dir, _payload())  # no "ragas_counts" key at all
+    monkeypatch.setenv("PLANTOPIA_EVAL_RESULTS_DIR", str(results_dir))
+
+    app = AppTest.from_file(str(_EVALUATION_PAGE), default_timeout=30).run()
+
+    assert not app.exception
+    faithfulness = next(m for m in app.metric if m.label == "Faithfulness")
+    assert faithfulness.value == "90.0%"

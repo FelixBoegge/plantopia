@@ -16,7 +16,6 @@ from core.llm import (
     build_reasoning_model,
     build_vision_model,
 )
-from core.tracing import configure_tracing
 from data.db import apply_schema, connect
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.feedback import FeedbackRepository
@@ -79,8 +78,6 @@ def get_service() -> DiagnosisService:
             "cross-modal image retrieval disabled (multimodal_embeddings=False); "
             "diagnosis will use the text retrieval path only"
         )
-
-    configure_tracing(settings)
 
     deps = Deps(
         settings=settings,

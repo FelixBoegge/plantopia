@@ -44,6 +44,8 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | M14 | **The corpus parser is permissive in two ways:** an empty section body reports as *missing* rather than *empty*, and duplicate headings in one document silently overwrite. | Neither can pass the coverage test, so a malformed document fails loudly at the suite rather than at runtime. | Distinguish the two error cases if corpus authoring is ever delegated. |
 | M16 | **Chat context and its checkpoint file both grow without bound.** Giving the chat agent a real checkpointer (`a62944f`) means every `send` replays the *entire* conversation history to the model — token cost per turn grows linearly with thread length, and a long enough thread eventually exceeds the model's context window. The checkpointer's own SQLite file (`{db_path}.chat-checkpoints`, wired in `ui/bootstrap.py`'s `get_chat_service`) is never pruned, the same shape of issue as M15 but for chat threads instead of diagnosis runs. | Conversation memory was the point of the fix; no thread in testing has come close to either limit. | Summarise or drop older turns before they reach the model (e.g. keep only the last *N* exchanges, or periodically compact with a summarisation call), and delete or archive old chat threads' checkpoint rows the way M15 proposes for diagnosis threads. |
 | M17 | **Chat token usage and cost are not tracked.** The `messages` table has no usage columns, and adding them would require the project's first schema migration — against the property Phase 2 deliberately preserved by building the whole schema up front. Diagnosis runs *are* tracked (`M12`). | Chat spend is small next to a vision-plus-reasoning diagnosis, and the Medium 1 claim is satisfied by diagnosis cost. Recorded rather than left silent. | Add `token_usage_json`/`cost_usd` to `messages` together with an `ALTER TABLE` migration path in `data/db.py`, and give `ChatService` the same thread-scoped collector `DiagnosisService` uses. |
+| M18 | **A run that spends tokens but produces no differential records nothing at all.** `agent/nodes/persist.py` returns early when `state.differential is None`, so a diagnosis that burned gate, vision and reasoning calls and then failed to produce a differential writes no row — and therefore no `token_usage_json` or `cost_usd` either. `M12` is fixed for diagnoses that *succeed*. The cost badge not rendering on that path (`ui/pages/diagnose.py`) is the visible half of the same gap, not a separate issue. | The early return is correct as persistence — there is no diagnosis to store, and inventing a row with a null differential would put a broken record in the timeline that the owner cannot act on. Spend on failed runs is the smaller loss. | Either write an observation-only row for a failed run, or record the run's usage somewhere that is not the `diagnoses` table. The collector already has the numbers (`config["configurable"]["usage_collector"]`); only the destination is missing. |
+| M19 | **The evaluation measures reasoning and retrieval only — the vision layer is structurally invisible to it.** Golden cases supply symptoms as text and are injected past `identify_plant` and `assess_symptoms`, so no metric in `eval/REPORT.md` says anything about species identification or symptom extraction from a photograph. An image-based golden set was considered and deliberately deferred. | The metrics Ragas provides are retrieval-and-generation metrics that cannot see vision regardless, and licence-checked, *reliably labelled* photographs are hardest to source exactly where the agent is weakest (nutrient deficiencies, whose visual diagnosis is genuinely ambiguous even for an expert). A mislabelled golden image yields a confidently wrong metric, which is worse than an absent one. | Build an image-based golden set as its own spec. The stability evidence below makes vision the prime suspect for the instability recorded in [First live run](#first-live-run), so this is the measurement most worth buying next — but note it would not address the nutrient weakness, which occurs with perfect symptom input. |
 
 ---
 
@@ -107,6 +109,54 @@ quantify. Recorded here so that work starts from evidence rather than from scrat
 Note also that the contagion advice read "Move this plant away from Monstera today" for a
 plant the owner had *named* Monstera — advice to move it away from itself. The prompt
 gives the model `plant_name` and it used it to mean the other plants in the house.
+
+### What the evaluation harness answered (2026-08-13)
+
+The Phase 3 harness ran, and the question above now has a number. See
+[`eval/REPORT.md`](../eval/REPORT.md) for the full table; the two findings worth carrying
+here are these.
+
+**Stability, on byte-identical input, is high — which relocates the suspicion rather than
+dissolving it.** Repeating eight cases five times each gave **97.5% top-1 agreement** and
+19.2% candidate-set churn. Clarifying-question drift over the same runs was **62.1%**: the
+questions the model chooses vary enormously between runs, and the diagnosis barely moves.
+That rules out the explanation floated above — that the earlier instability came from
+"slightly differently-worded pest questions" — because question variance demonstrably does
+not move the differential. What differs between the unstable observation and this stable
+one is the *vision layer*, which the golden set injects past (`M19`). Symptom extraction is
+now the prime suspect, and it is the one layer this harness structurally cannot see.
+
+**Nutrient deficiencies fail, and they fail for a reason retrieval cannot explain.** Every
+category recovers to 100% at top-3 except nutrient, which scored **33.3% top-1 and 33.3%
+top-3** across six cases — when it is wrong, the correct cause is absent from the
+differential entirely, not merely mis-ranked. `PLAN.md` §16 predicted the concentration
+("nutrient deficiencies are notoriously confusable with each other") but not the mechanism,
+and the mechanism is not confusion between nutrients: the misses reach for
+`low-humidity`, `underwatering`, `insufficient-light` and `salt-buildup`.
+
+A retrieval probe over the six cases settles where the fault is not:
+
+| Case | Ground-truth doc retrieved at | Diagnosed |
+|---|---|---|
+| `calcium-deficiency` | **rank 1** | wrong |
+| `nitrogen-deficiency` | **rank 2** | wrong |
+| `potassium-deficiency` | rank 4 | wrong |
+| `phosphorus-deficiency` | rank 6 | wrong |
+| `iron-deficiency` | rank 1 | correct |
+| `magnesium-deficiency` | rank 1 | correct |
+
+For two of the four failures the correct document was in front of the model at rank 1–2 and
+it still omitted the cause. So this is a **reasoning and ranking weakness, not a retrieval
+or corpus-content gap** — which also means neither a larger corpus nor a reference-image set
+(`M19`) would address it. One recurring distractor is visible in the probe:
+`natural-senescence` appears in the top four retrieved documents for five of the six
+nutrient cases, and an old leaf yellowing is exactly what a deficiency looks like.
+
+The probe itself is worth a caution. A first attempt appeared to show catastrophic,
+query-insensitive retrieval; it was passing a bare string to `ChromaRetriever.search`, whose
+parameter is `queries: Sequence[str]`, so Python iterated the string and embedded each
+*character* as a query. Self-query sanity-checking (feed a document's own text back and
+require it to rank first) is what caught it.
 
 ## Two plan defects caught during implementation
 

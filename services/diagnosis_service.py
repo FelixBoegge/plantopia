@@ -76,7 +76,12 @@ class DiagnosisService:
         # pauses at the clarifying-question interrupt and answer() resumes it. The
         # gate and vision calls all happen in the first, so a per-invoke collector
         # would undercount by roughly half. Evicted by _release() at every terminal
-        # outcome so this cannot grow for the life of the process.
+        # outcome, including an exception out of _graph.invoke, so a completed or
+        # crashed run cannot leak. One case still leaks a single entry on purpose: a
+        # session that paused for clarifying questions and was then abandoned before
+        # answer() ever arrived. That entry is kept deliberately, not forgotten —
+        # answer() may still resume the run at any time, and there is no
+        # session-end signal here that would tell us it never will.
         self._collectors: dict[str, UsageCollector] = {}
 
     def start(
@@ -105,22 +110,30 @@ class DiagnosisService:
             user_notes=user_notes,
         )
 
-        result = self._graph.invoke(state, self._run_config(thread_id))
+        # Wrapped rather than a blanket try/finally: the "questions" branch below is
+        # a legitimate paused return that must keep its collector for answer() to
+        # reuse, so only the exceptional exits release it — including the
+        # RuntimeError raised when the graph finishes without interrupting.
+        try:
+            result = self._graph.invoke(state, self._run_config(thread_id))
 
-        stopped = self._stopped_at_the_guards(result)
-        if stopped is not None:
+            stopped = self._stopped_at_the_guards(result)
+            if stopped is not None:
+                self._release(thread_id)
+                return stopped
+
+            interrupts = result.get("__interrupt__") or []
+            if not interrupts:
+                logger.error("graph finished without interrupting and without rejecting")
+                raise RuntimeError("The diagnosis could not be started. Please try again.")
+
+            payload = interrupts[0].value
+            questions = [Question.model_validate(q) for q in payload["questions"]]
+            species = self._graph.get_state(self._config(thread_id)).values.get("species")
+            return StartResult(status="questions", questions=questions, species=species)
+        except Exception:
             self._release(thread_id)
-            return stopped
-
-        interrupts = result.get("__interrupt__") or []
-        if not interrupts:
-            logger.error("graph finished without interrupting and without rejecting")
-            raise RuntimeError("The diagnosis could not be started. Please try again.")
-
-        payload = interrupts[0].value
-        questions = [Question.model_validate(q) for q in payload["questions"]]
-        species = self._graph.get_state(self._config(thread_id)).values.get("species")
-        return StartResult(status="questions", questions=questions, species=species)
+            raise
 
     def answer(
         self,
@@ -155,10 +168,14 @@ class DiagnosisService:
             self._graph.update_state(config, {"species": corrected})
             logger.info("species corrected by the user to %r", corrected.common_name)
 
-        result = self._graph.invoke(Command(resume=answers), self._run_config(thread_id))
-        final = self._final_result(result, self._collectors[thread_id].snapshot())
-        self._release(thread_id)
-        return final
+        # Every exit from here is terminal for this thread — unlike start(), there
+        # is no paused branch to preserve the collector for — so a plain
+        # try/finally covers both the success path and any exception out of invoke.
+        try:
+            result = self._graph.invoke(Command(resume=answers), self._run_config(thread_id))
+            return self._final_result(result, self._collectors[thread_id].snapshot())
+        finally:
+            self._release(thread_id)
 
     def start_recheck(
         self,
@@ -208,16 +225,18 @@ class DiagnosisService:
             ),
         )
 
-        result = self._graph.invoke(state, self._run_config(thread_id))
+        # Every exit here is terminal (a re-check never pauses for questions), so the
+        # only thing to preserve against is an exception leaving the collector behind.
+        try:
+            result = self._graph.invoke(state, self._run_config(thread_id))
 
-        stopped = self._stopped_at_the_guards(result)
-        if stopped is not None:
+            stopped = self._stopped_at_the_guards(result)
+            if stopped is not None:
+                return stopped
+
+            return self._final_result(result, self._collectors[thread_id].snapshot())
+        finally:
             self._release(thread_id)
-            return stopped
-
-        final = self._final_result(result, self._collectors[thread_id].snapshot())
-        self._release(thread_id)
-        return final
 
     def _prepare_images(self, uploads: list[bytes]) -> list[ImageRef]:
         """Validate the upload count and write the files to disk.

@@ -14,16 +14,22 @@ from tests.fakes.chat_models import ScriptedStructuredModel
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 
 
-def _service(make_deps, pipeline_models) -> DiagnosisService:
+def _service(make_deps, pipeline_models, upload_dir: Path) -> DiagnosisService:
     """Build a service wired with the happy-path scripted models.
 
-    Mirrors the ``service`` fixture's construction, but as a plain callable so
-    tests that don't need ``tmp_path`` can build one inline.
+    Mirrors the ``service`` fixture's construction, but as a plain callable so a
+    test can build several in one body.
+
+    ``upload_dir`` is required rather than defaulted: it used to default to
+    ``Path()`` — the *current working directory* — which was harmless only while
+    no caller reached the upload path. The moment one called ``start()``,
+    ``store_upload`` began writing real files into the repository root. Pass
+    ``tmp_path``.
     """
     gate, vision, chat = pipeline_models
     deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
     graph = build_diagnosis_graph(deps, MemorySaver())
-    return DiagnosisService(deps, graph, upload_dir=Path())
+    return DiagnosisService(deps, graph, upload_dir=upload_dir)
 
 
 @pytest.fixture
@@ -455,10 +461,10 @@ def test_start_recheck_raises_for_an_unknown_plant(recheck_service):
         service.start_recheck(plant_id=999_999, uploads=[PNG], user_notes=None, thread_id="rc3")
 
 
-def test_one_collector_spans_start_and_answer(make_deps, pipeline_models, sample_images):
+def test_one_collector_spans_start_and_answer(make_deps, pipeline_models, sample_images, tmp_path):
     """The vision calls happen in start(); the persist happens in answer(). One
     collector must see both, or cost undercounts by roughly half."""
-    service = _service(make_deps, pipeline_models)
+    service = _service(make_deps, pipeline_models, tmp_path)
 
     first = service._run_config("thread-a")
     second = service._run_config("thread-a")
@@ -466,8 +472,8 @@ def test_one_collector_spans_start_and_answer(make_deps, pipeline_models, sample
     assert first["configurable"]["usage_collector"] is second["configurable"]["usage_collector"]
 
 
-def test_different_threads_get_different_collectors(make_deps, pipeline_models):
-    service = _service(make_deps, pipeline_models)
+def test_different_threads_get_different_collectors(make_deps, pipeline_models, tmp_path):
+    service = _service(make_deps, pipeline_models, tmp_path)
 
     a = service._run_config("thread-a")["configurable"]["usage_collector"]
     b = service._run_config("thread-b")["configurable"]["usage_collector"]
@@ -475,19 +481,19 @@ def test_different_threads_get_different_collectors(make_deps, pipeline_models):
     assert a is not b
 
 
-def test_the_collector_is_also_a_callback(make_deps, pipeline_models):
+def test_the_collector_is_also_a_callback(make_deps, pipeline_models, tmp_path):
     """Passed twice on purpose: as a callback to observe calls, and through
     configurable so persist can read it (spec §2.1)."""
-    service = _service(make_deps, pipeline_models)
+    service = _service(make_deps, pipeline_models, tmp_path)
 
     config = service._run_config("thread-a")
 
     assert config["callbacks"] == [config["configurable"]["usage_collector"]]
 
 
-def test_collectors_are_evicted_at_a_terminal_outcome(make_deps, pipeline_models):
+def test_collectors_are_evicted_at_a_terminal_outcome(make_deps, pipeline_models, tmp_path):
     """Otherwise the dict grows for the life of the process."""
-    service = _service(make_deps, pipeline_models)
+    service = _service(make_deps, pipeline_models, tmp_path)
     service._run_config("thread-a")
 
     service._release("thread-a")
@@ -495,7 +501,90 @@ def test_collectors_are_evicted_at_a_terminal_outcome(make_deps, pipeline_models
     assert "thread-a" not in service._collectors
 
 
-def test_releasing_an_unknown_thread_is_harmless(make_deps, pipeline_models):
-    service = _service(make_deps, pipeline_models)
+def test_releasing_an_unknown_thread_is_harmless(make_deps, pipeline_models, tmp_path):
+    service = _service(make_deps, pipeline_models, tmp_path)
 
     service._release("never-seen")  # must not raise
+
+
+def test_an_exception_out_of_invoke_releases_the_collector_in_start(
+    make_deps, pipeline_models, tmp_path
+):
+    """A model call raising mid-graph must not leave that thread's collector behind
+    forever — the same leak the ``RuntimeError`` "finished without interrupting"
+    branch already guarded against, but for any exception, not just that one."""
+    service = _service(make_deps, pipeline_models, tmp_path)
+    service._graph.invoke = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        service.start(
+            uploads=[PNG],
+            plant_name="Basil",
+            location_kind="indoor",
+            location_text=None,
+            user_notes=None,
+            thread_id="t-boom",
+        )
+
+    assert "t-boom" not in service._collectors
+
+
+def test_an_exception_out_of_invoke_releases_the_collector_in_answer(
+    make_deps, pipeline_models, tmp_path
+):
+    service = _service(make_deps, pipeline_models, tmp_path)
+    service.start(
+        uploads=[PNG],
+        plant_name="Basil",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+        thread_id="t-boom-2",
+    )
+    assert "t-boom-2" in service._collectors  # start() left the collector for answer()
+
+    service._graph.invoke = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        service.answer({"watering": "daily"}, thread_id="t-boom-2")
+
+    assert "t-boom-2" not in service._collectors
+
+
+def test_an_exception_out_of_invoke_releases_the_collector_in_start_recheck(
+    recheck_service, sample_plant
+):
+    service = recheck_service(
+        gate=ScriptedStructuredModel([]),
+        vision=ScriptedStructuredModel([]),
+        chat=ScriptedStructuredModel([]),
+    )
+    service._graph.invoke = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        service.start_recheck(
+            plant_id=sample_plant, uploads=[PNG], user_notes=None, thread_id="rc-boom"
+        )
+
+    assert "rc-boom" not in service._collectors
+
+
+def test_a_pending_clarifying_question_session_still_keeps_its_collector(
+    make_deps, pipeline_models, tmp_path
+):
+    """The one thread that legitimately survives ``start()`` without exception: it
+    paused at the clarifying-question interrupt, and ``answer()`` needs the same
+    collector to keep counting the gate/vision calls already made."""
+    service = _service(make_deps, pipeline_models, tmp_path)
+
+    result = service.start(
+        uploads=[PNG],
+        plant_name="Basil",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+        thread_id="t-pending",
+    )
+
+    assert result.status == "questions"
+    assert "t-pending" in service._collectors

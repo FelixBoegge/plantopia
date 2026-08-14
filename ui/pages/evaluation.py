@@ -44,25 +44,48 @@ st.caption(
 
 accuracy = results["accuracy"]
 ragas = results["ragas"]
+# Absent entirely in results files written before this counts field existed — an
+# empty dict falls through _ragas_metric's "no counts" branch below, so those
+# older files keep rendering the bare percentage they always did.
+ragas_counts = results.get("ragas_counts", {})
 
 
 def _pct(value: float | None) -> str:
     return "—" if value is None else f"{float(value) * 100:.1f}%"
 
 
+def _ragas_metric(value: float | None, counts: dict | None) -> str:
+    """One Ragas metric's display string, disclosing partial scoring the same way
+    ``eval/report.py``'s ``_ragas_cell`` does for the markdown report — a metric
+    that failed on some cases must not read as a complete mean in the app just
+    because it does in the terminal (spec §5).
+
+    Falls back to the bare percentage when ``counts`` is missing or empty, which
+    covers both a metric that scored everything and a results file that predates
+    ``ragas_counts`` altogether.
+    """
+    pct = _pct(value)
+    if not counts:
+        return pct
+    scored, total = counts.get("scored", 0), counts.get("total", 0)
+    if total == 0 or scored == total:
+        return pct
+    return f"{pct} ({scored} of {total} scored)"
+
+
 left, middle, right = st.columns(3)
 left.metric("Top-1 accuracy", _pct(accuracy["top1"]))
 middle.metric("Top-3 accuracy", _pct(accuracy["top3"]))
-right.metric("Faithfulness", _pct(ragas["faithfulness"]))
+right.metric("Faithfulness", _ragas_metric(ragas["faithfulness"], ragas_counts.get("faithfulness")))
 
 st.subheader("Retrieval quality")
 st.dataframe(
     {
         "Metric": ["Context precision", "Context recall", "Answer relevancy"],
         "Score": [
-            _pct(ragas["context_precision"]),
-            _pct(ragas["context_recall"]),
-            _pct(ragas["answer_relevancy"]),
+            _ragas_metric(ragas["context_precision"], ragas_counts.get("context_precision")),
+            _ragas_metric(ragas["context_recall"], ragas_counts.get("context_recall")),
+            _ragas_metric(ragas["answer_relevancy"], ragas_counts.get("answer_relevancy")),
         ],
     },
     hide_index=True,
