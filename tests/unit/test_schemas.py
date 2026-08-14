@@ -186,3 +186,31 @@ class TestProgressVerdict:
 
         with pytest.raises(ValidationError):
             ProgressVerdict(verdict="improving", reasoning="")
+
+
+def test_an_extracted_fact_rejects_an_empty_string():
+    from pydantic import ValidationError
+
+    from agent.schemas import ExtractedFact
+
+    with pytest.raises(ValidationError):
+        ExtractedFact(fact="", source="stated", confidence=0.8)
+
+
+def test_an_extracted_fact_rejects_an_essay():
+    """A 'durable fact' that runs to a paragraph is a summary, not a fact."""
+    from pydantic import ValidationError
+
+    from agent.schemas import ExtractedFact
+
+    with pytest.raises(ValidationError):
+        ExtractedFact(fact="x" * 201, source="inferred", confidence=0.5)
+
+
+def test_a_profile_update_defaults_to_three_empty_buckets():
+    from agent.schemas import ProfileUpdate
+
+    update = ProfileUpdate()
+    assert update.confirmed == []
+    assert update.added == []
+    assert update.superseded == []

@@ -228,3 +228,29 @@ class Roadmap(BaseModel):
                 "steps must escalate: a more invasive tier cannot precede a less invasive one"
             )
         return self
+
+
+class ExtractedFact(BaseModel):
+    """One durable fact about the owner, as the extraction model reports it.
+
+    Distinct from ``data.repositories.profile.ProfileFact``, which is the stored
+    row: this one has no timestamps because the service assigns them.
+    """
+
+    fact: str = Field(min_length=3, max_length=200)
+    source: Literal["inferred", "stated"]
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ProfileUpdate(BaseModel):
+    """The reconciliation the model returns against the current profile.
+
+    ``confirmed`` and ``superseded`` hold existing facts echoed *verbatim*, not
+    paraphrased: ``user_profile.fact`` is UNIQUE over free text, so exact echoes
+    are what let the constraint deduplicate instead of accumulating five
+    phrasings of one habit.
+    """
+
+    confirmed: list[str] = Field(default_factory=list)
+    added: list[ExtractedFact] = Field(default_factory=list)
+    superseded: list[str] = Field(default_factory=list)
