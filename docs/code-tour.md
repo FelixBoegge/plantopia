@@ -2040,4 +2040,98 @@ undecorated call would fire and log on each one. `st.cache_resource` is what tur
 "called constantly" into "runs once", the same mechanism `ui/bootstrap.py`'s factories
 already rely on.
 
+### 8.2 Getting the collector into `persist` without splitting the write
+
+`M12` recorded that `diagnoses.token_usage_json` and `cost_usd` "are never written at
+all". The interesting half of that limitation is what was *already* there:
+`DiagnosisRepository.create()` had accepted `token_usage` and `cost_usd` since Phase 1
+and written both columns. Nothing had ever passed a value. So the fix is not a schema
+change or a repository change — it is getting a number to a call site that was already
+waiting for it. Only `DiagnosisRecord` grew a field, `token_usage`, on the read side.
+
+The call site is `persist`, and that constrains everything. `code-tour.md` §3c.6 explains
+why `persist` writes plant, observation, diagnosis and roadmap inside a single
+transaction: a half-written diagnosis shows up in the UI as a broken record the owner
+cannot fix. The obvious implementation — let the run finish, then `UPDATE` the row with
+its cost — splits that one write into two, and a crash between them leaves a diagnosis
+with `NULL` cost. Which is precisely the state `M12` describes. The smallest diff would
+have re-created the bug it was fixing.
+
+So the collector has to be readable *from inside the node*. It is passed twice:
+
+```python
+    def _run_config(self, thread_id: str) -> dict:
+        collector = self._collectors.setdefault(thread_id, UsageCollector())
+        return {
+            "configurable": {"thread_id": thread_id, "usage_collector": collector},
+            "callbacks": [collector],
+        }
+```
+
+As a **callback**, so it observes every model call without any node knowing it exists —
+including nodes nobody remembered to instrument. And through **`configurable`**, because
+that is the only channel a graph node can read. `persist` then snapshots it inside the
+block it already owns:
+
+```python
+            usage = _usage_from(config)
+            diagnosis_id = deps.diagnoses.create(
+                ...,
+                token_usage=usage.as_token_usage() if usage else None,
+                cost_usd=usage.cost_usd if usage else None,
+            )
+```
+
+**This rested on an assumption nobody had checked**, so the implementation opened with a
+spike rather than a feature: does LangGraph carry a non-JSON-serialisable object through
+`configurable` into a node, and does the SQLite checkpointer choke when it writes
+checkpoint metadata? It does not, and the reason is worth knowing —
+`SqliteSaver.put()` copies only `str`/`int`/`bool`/`float` values out of `configurable`
+into its JSON metadata and silently skips the rest. The collector is never serialised,
+and never persisted either. The documented fallback, a `contextvars.ContextVar`, was
+never needed.
+
+Because it is not persisted, it must be **re-supplied on every invoke** — which is where
+the design's real subtlety lives.
+
+**A diagnosis spans two graph invocations, not one.** `start()` runs the guards, species
+identification and symptom extraction, then pauses at the clarifying-question interrupt.
+`answer()` resumes and runs the rest through `persist`. The gate and vision calls — the
+expensive ones — all happen in the *first*. A collector created per-`invoke` would have
+undercounted by roughly half, and the number would have looked entirely plausible while
+being wrong. That is why `_collectors` is a dict keyed by `thread_id` and why
+`setdefault` (not assignment) is what makes both invocations share one object.
+
+Lifetime is the price of that decision. Collectors are released at every terminal
+outcome — rejection and retake in both entry points, and completion — with the snapshot
+taken *before* eviction, or the numbers are gone:
+
+```python
+        final = self._final_result(result, self._collectors[thread_id].snapshot())
+        self._release(thread_id)
+```
+
+The releases sit in `try/finally` so an exception escaping `invoke` cannot leak an entry.
+One entry does legitimately survive: a session paused at the interrupt and then
+abandoned, because `answer()` may still arrive. The comment says so rather than claiming
+the dict cannot grow — an earlier draft claimed exactly that, and it was not true.
+
+`ui/components/cost_badge.py` is the visible end, and it is nine lines that mostly decide
+when *not* to render:
+
+```python
+    if not token_usage:
+        return
+```
+
+Every diagnosis written before this phase has `NULL` in both columns. A "0 tokens" badge
+would report those as free rather than as unmeasured — the same distinction `snapshot()`
+protects at the other end of the pipe. The badge appears in two places, on the Diagnose
+result view and per-diagnosis on the Plant detail timeline, and because the re-check
+graph reuses `persist`, re-checks acquired cost capture with no second wiring point.
+
+One gap survives, recorded as `M18`: `persist` returns early when there is no
+differential, so a run that burned vision and reasoning tokens and then failed to produce
+one writes no row — and therefore no usage. `M12` is fixed for diagnoses that *succeed*.
+
 ---
