@@ -125,3 +125,101 @@ def test_superseding_an_unknown_fact_cannot_delete_a_near_miss(db, now):
     _service(db, now).apply_update(ProfileUpdate(superseded=["tends to over-water"]))
 
     assert [f.fact for f in repo.list_all()] == ["tends to overwater"]
+
+
+def test_learning_from_a_diagnosis_stores_what_the_model_returns(db, now):
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    model = ScriptedStructuredModel(
+        [
+            ProfileUpdate(
+                added=[ExtractedFact(fact="lives in Berlin", source="stated", confidence=0.9)]
+            )
+        ]
+    )
+    service = ProfileService(repo=ProfileRepository(db), gate_model=model, now=now)
+
+    service.learn_from_diagnosis(
+        answers={"watering": "twice a week on a schedule"}, location_text="Berlin"
+    )
+
+    assert [f.fact for f in ProfileRepository(db).list_all()] == ["lives in Berlin"]
+
+
+def test_the_owners_answers_reach_the_model(db, now):
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    model = ScriptedStructuredModel([ProfileUpdate()])
+    service = ProfileService(repo=ProfileRepository(db), gate_model=model, now=now)
+
+    service.learn_from_diagnosis(
+        answers={"watering": "twice a week on a schedule"}, location_text=None
+    )
+
+    sent = str(model.prompts[0])
+    assert "twice a week on a schedule" in sent
+
+
+def test_the_current_profile_is_sent_so_the_model_can_echo_it_verbatim(db, now):
+    """Reconciliation only deduplicates if the model sees the existing wording."""
+    from data.db import transaction
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    repo = ProfileRepository(db)
+    with transaction(db):
+        repo.upsert(fact="tends to overwater", source="inferred", confidence=0.6, now=now())
+
+    model = ScriptedStructuredModel([ProfileUpdate()])
+    ProfileService(repo=repo, gate_model=model, now=now).learn_from_diagnosis(
+        answers={"watering": "daily"}, location_text=None
+    )
+
+    assert "tends to overwater" in str(model.prompts[0])
+
+
+def test_a_failing_extraction_leaves_the_profile_untouched(db, now):
+    """Extraction is best-effort: the diagnosis is already committed by now."""
+    from tests.fakes.chat_models import FailingChatModel
+
+    service = ProfileService(
+        repo=ProfileRepository(db), gate_model=FailingChatModel(RuntimeError("boom")), now=now
+    )
+
+    # must not raise
+    service.learn_from_diagnosis(answers={"watering": "daily"}, location_text=None)
+
+    assert ProfileRepository(db).list_all() == []
+
+
+def test_a_failing_extraction_reports_failure_to_its_caller(db, now):
+    """`_learn` returns False so `learn_from_chat` knows not to advance its cursor."""
+    from tests.fakes.chat_models import FailingChatModel
+
+    service = ProfileService(
+        repo=ProfileRepository(db), gate_model=FailingChatModel(RuntimeError("boom")), now=now
+    )
+
+    assert service._learn("some material") is False
+
+
+def test_an_empty_update_still_counts_as_a_successful_round(db, now):
+    """Material genuinely containing no fact must not be re-read forever."""
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    service = ProfileService(
+        repo=ProfileRepository(db), gate_model=ScriptedStructuredModel([ProfileUpdate()]), now=now
+    )
+
+    assert service._learn("nothing durable here") is True
+
+
+def test_a_diagnosis_with_no_answers_makes_no_model_call(db, now):
+    """Nothing the owner said means nothing to learn — do not pay for a call."""
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    model = ScriptedStructuredModel([])
+    service = ProfileService(repo=ProfileRepository(db), gate_model=model, now=now)
+
+    service.learn_from_diagnosis(answers={}, location_text=None)
+
+    assert model.call_count == 0

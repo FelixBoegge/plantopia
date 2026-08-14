@@ -13,8 +13,11 @@ from collections.abc import Callable
 from datetime import datetime
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
 
+from agent.prompts.profile import EXTRACT_PROFILE
 from agent.schemas import ProfileUpdate
+from agent.structured import StructuredOutputFailed, invoke_structured
 from data.db import transaction
 from data.repositories.profile import ProfileFact, ProfileRepository
 
@@ -103,3 +106,50 @@ class ProfileService:
                     logger.info("dropping supersession of an unknown fact: %r", fact)
                     continue
                 self._repo.supersede(fact)
+
+    def learn_from_diagnosis(self, *, answers: dict[str, str], location_text: str | None) -> None:
+        """Extract durable facts from what the owner said during a diagnosis.
+
+        The clarifying answers are the highest-signal text in the application —
+        the owner literally answering how often they water. Called after the
+        diagnosis is committed, so a failure here is invisible to them.
+        """
+        if not answers:
+            return
+
+        material = "\n".join(f"- {key}: {value}" for key, value in answers.items())
+        if location_text:
+            material = f"Stated location: {location_text}\n{material}"
+
+        self._learn(material)
+
+    def _learn(self, material: str) -> bool:
+        """Run one extraction/reconciliation round over new material.
+
+        Returns:
+            ``True`` when a round completed and any update was applied — including
+            an empty one, because material that genuinely held no durable fact has
+            been dealt with and must not be re-read forever. ``False`` only when
+            extraction failed, which is what tells ``learn_from_chat`` to leave its
+            cursor alone so those turns are retried.
+        """
+        current = self._repo.list_all()
+        profile_block = (
+            "\n".join(f"- {f.fact}" for f in current) if current else "(the profile is empty)"
+        )
+        messages = [
+            SystemMessage(EXTRACT_PROFILE),
+            HumanMessage(f"Profile as it stands:\n{profile_block}\n\nNew material:\n{material}"),
+        ]
+
+        try:
+            update = invoke_structured(self._gate_model, ProfileUpdate, messages)
+        except StructuredOutputFailed as exc:
+            logger.warning("profile extraction failed: %s", exc)
+            return False
+        except Exception as exc:  # noqa: BLE001 — extraction must never break its caller
+            logger.warning("profile extraction raised: %s", exc)
+            return False
+
+        self.apply_update(update)
+        return True
