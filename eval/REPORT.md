@@ -1,6 +1,6 @@
 # Evaluation report
 
-Generated 2026-08-13T15:03:10.449588+00:00 by `uv run python -m eval.run_eval`.
+Generated 2026-08-14T07:37:10.459833+00:00 by `uv run python -m eval.run_eval`.
 
 ## Run provenance
 
@@ -12,6 +12,8 @@ Generated 2026-08-13T15:03:10.449588+00:00 by `uv run python -m eval.run_eval`.
 | Temperature | 0.2 |
 | Corpus documents | 43 |
 | Golden-set size | 28 |
+| Total tokens | 192,500 in / 53,937 out (246,437 total) |
+| Total cost | $1.0168 |
 
 ## Headline metrics
 
@@ -19,12 +21,12 @@ Generated 2026-08-13T15:03:10.449588+00:00 by `uv run python -m eval.run_eval`.
 |---|---|
 | Top-1 diagnostic accuracy | 75.0% |
 | Top-3 diagnostic accuracy | 82.1% |
-| Context precision | 65.1% |
-| Context recall | 72.7% |
-| Faithfulness | 56.8% |
-| Answer relevancy | 42.0% |
+| Context precision | 63.3% (16 of 28 scored) |
+| Context recall | 73.8% (14 of 28 scored) |
+| Faithfulness | 47.5% (13 of 28 scored) |
+| Answer relevancy | 52.5% (18 of 28 scored) |
 
-28 cases scored, of which **0 failed** and are counted in the denominator rather than dropped. 1 top-1 misses landed on a disorder the case listed as a confusable neighbour.
+28 cases scored, of which **0 failed** and are counted in the denominator rather than dropped. 2 top-1 misses landed on a disorder the case listed as a confusable neighbour.
 
 ## By category
 
@@ -40,13 +42,13 @@ Generated 2026-08-13T15:03:10.449588+00:00 by `uv run python -m eval.run_eval`.
 
 ## Stability
 
-8 cases run 5 times each, on byte-identical input.
+8 cases run 5 times each, on byte-identical input: `aphids-clustered-new-growth-hibiscus`, `botrytis-grey-mould-spent-flowers`, `calcium-deficiency-crinkled-new-leaf`, `cold-draught-one-sided-blackening-fiddle-leaf`, `etiolation-leggy-stretched-wandering-jew`, `fungal-leaf-spot-target-spots-schefflera`, `fungus-gnats-flies-over-damp-soil`, `heat-stress-wilting-heatwave-olive`.
 
 | Measure | Value |
 |---|---|
-| Top-1 agreement | 97.5% |
-| Candidate-set churn | 19.2% |
-| Clarifying-question drift | 62.1% |
+| Top-1 agreement | 92.5% |
+| Candidate-set churn | 21.3% |
+| Clarifying-question drift | 57.1% |
 
 Churn is mean pairwise Jaccard distance between candidate sets: 0% identical, 100% disjoint. Question drift is the same measure over the clarifying questions asked, reported separately because those are model-generated — without it, question variance would read as diagnostic instability.
 
