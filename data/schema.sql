@@ -79,6 +79,14 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at      TEXT    NOT NULL
 );
 
+-- How far profile extraction has read each plant's chat thread. Separate from
+-- `messages` so a profile concern stays out of a table about conversation, and
+-- keyed by plant because each thread advances independently.
+CREATE TABLE IF NOT EXISTS profile_cursors (
+    plant_id        INTEGER PRIMARY KEY REFERENCES plants(id) ON DELETE CASCADE,
+    last_message_id INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_observations_plant ON observations(plant_id);
 CREATE INDEX IF NOT EXISTS idx_diagnoses_plant    ON diagnoses(plant_id);
 CREATE INDEX IF NOT EXISTS idx_roadmap_plant      ON roadmap_steps(plant_id);
