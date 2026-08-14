@@ -2234,4 +2234,120 @@ metric and wrong about the record: the field is serialised into a committed resu
 and a docstring explaining the omission does not survive serialisation. It now records
 the complete set, and the filtering moved to the metric that needs it (§8.4).
 
+### 8.4 Two scoring modules, split along one line
+
+`eval/metrics.py` and `eval/ragas_metrics.py` could have been one file. They are not, and
+the boundary is the point: **everything in `metrics.py` is a pure function over completed
+`CaseRun` objects** — no models, no network, no I/O — while everything in
+`ragas_metrics.py` needs a judge model and an embedder, which means latency, money, and
+failure. Merging them would put a network dependency into the one module with no reason
+to have one, and that module is where the numbers a reader trusts most are computed.
+
+**Accuracy keeps failed runs in the denominator.** This is stated twice in the code
+because it was got wrong once:
+
+```python
+def accuracy(runs: list[CaseRun]) -> AccuracyReport:
+    """...
+    Failed runs stay in the denominator. Averaging over the survivors would report
+    a better number for a worse run, which is the opposite of what an evaluation is
+    for.
+    """
+```
+
+The plan's own reference code then violated that principle inside `stability()`:
+`_modal_agreement([r.candidates[0] for r in runs if r.candidates])` filtered failed runs
+out of *both* numerator and denominator, while the sibling churn metric kept them. Three
+repeated runs where two agree and one fails would have reported **1.0 — perfect
+stability** — instead of 2/3, discarding the failure from the number that exists to
+measure instability. It now reads:
+
+```python
+def _modal_agreement(tops: list[str | None]) -> float:
+    if not tops:
+        return 0.0
+    hits = [value for value in tops if value is not None]
+    if not hits:
+        return 0.0
+    return max(hits.count(value) for value in set(hits)) / len(tops)
+```
+
+`None` for a failed run, scrubbed before the modal count so several failures cannot
+register as "agreeing with each other", but counted in `len(tops)`.
+
+**Question drift is reported separately from diagnostic instability, and that separation
+earned its keep.** Clarifying questions are model-generated, so the set asked varies
+between runs of the same case — but the mandatory ones never do, and leaving them in
+dampens Jaccard distance toward zero:
+
+```python
+_DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_QUESTION.key}
+```
+
+Imported from `agent/nodes/context.py` rather than hardcoded, so a rename in production
+cannot silently desynchronise the metric. Two runs asking `{drainage, a}` and
+`{drainage, b}` differ completely in what the model chose but score 0.67 with `drainage`
+included versus 1.0 without. §8.5 shows why keeping these apart mattered.
+
+`_accepted()` deliberately ignores `also_acceptable`:
+
+```python
+def _accepted(run: CaseRun) -> set[str]:
+    return {run.ground_truth}
+```
+
+A near miss is still a miss. Counting confusable neighbours as correct would flatter
+exactly the cases most likely to be wrong — nutrient deficiencies, which §8.5 shows are
+the weak spot. Near misses are counted separately by `near_misses()` and reported as
+their own figure. The spec originally said to fold them into top-1/top-3; the code was
+kept and the spec corrected, because the stricter behaviour is the more honest one.
+
+**`ragas_metrics.py` opens with a compatibility shim**, which is unusual enough to
+explain:
+
+```python
+def _shim_legacy_vertexai() -> None:
+    """ragas (<=0.4.x) imports legacy Vertex AI classes that langchain-community
+    v0.4+ removed. They are only used for isinstance checks on GCP models we
+    never pass, so empty stubs keep ragas importable next to LangChain v1."""
+```
+
+`import ragas` fails outright in this environment: ragas 0.4.3 is the latest release and
+hard-depends on `langchain-community`, which has removed the module it reaches for. There
+is no newer ragas to upgrade into, and downgrading `langchain-community` would endanger
+the LangChain/LangGraph stack the whole application runs on. The stubs are safe for the
+stated reason, and the docstring carrying that reason is what makes this a considered
+workaround rather than a hack. It also forces a structural constraint: `judge_llm()` and
+`judge_embeddings()` live in *this* module, where the shim has already run, so
+`run_eval.py` never imports ragas and cannot trip the import-order landmine.
+
+Two rows are excluded from scoring before Ragas sees them — failed runs, and runs that
+retrieved nothing. Context precision over an empty context list is undefined, and scoring
+it zero would be indistinguishable from genuinely bad retrieval.
+
+**What Ragas is *given* turned out to matter more than how it is called.** The first
+implementation built `user_input` from a template — *"What is wrong with this plant?
+Clarifying questions asked: …"* — identical across all 28 cases and carrying none of the
+case's symptoms, and passed the bare corpus slug as `reference`. Answer relevancy
+generates questions from the response and measures their similarity to `user_input`;
+against a content-free question, a *specific and correct* differential scores badly by
+construction. Three of the four metrics were partly measuring the harness. `user_input`
+now carries the case's real symptoms and answers, and `_reference()` builds a reference
+*answer* from the ground-truth document's name and Symptoms section, falling back to the
+slug only when the document is missing. Faithfulness, which reads only the response and
+contexts, was unaffected throughout.
+
+Finally, `RagasScores` carries counts as well as scores:
+
+```python
+METRIC_NAMES = ("context_precision", "context_recall", "faithfulness", "answer_relevancy")
+```
+
+Ragas emits NaN for a judge call that failed, and `pandas.mean` skips NaN — so a metric
+computed over half its cases looks identical to one computed over all of them. The counts
+come from the per-cell dataframe rather than an error tally, because Ragas swallows job
+failures internally and only the NaN cells reveal them. `eval/report.py` renders
+`63.3% (16 of 28 scored)`; a metric that scored nothing renders as "not measured", never
+`0.0%`. §8.5 is why this exists.
+
 ---
