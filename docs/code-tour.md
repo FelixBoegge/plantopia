@@ -2134,4 +2134,104 @@ One gap survives, recorded as `M18`: `persist` returns early when there is no
 differential, so a run that burned vision and reasoning tokens and then failed to produce
 one writes no row — and therefore no usage. `M12` is fixed for diagnoses that *succeed*.
 
+### 8.3 The golden set, and a harness that drives the real graph
+
+`PLAN.md` §16 proposed a golden set built from PlantVillage-style photographs. `eval/`
+does not do that, and the reasoning is the most consequential design decision in the
+phase.
+
+The corpus is 43 houseplant and ornamental disorders dominated by watering, light and
+nutrient problems. PlantVillage is crop leaf pathology — tomato, potato, corn. Scoring
+against it would have measured **corpus scope**, not agent quality. More decisively,
+every metric §16 asks for except top-1/top-3 is a *retrieval-and-generation* metric that
+cannot see the vision layer at all.
+
+So cases are **text**. `eval/golden_set/` holds 28 YAML files, one per case, mirroring
+`knowledge/corpus/`'s one-document-per-disorder convention so they diff and review
+individually:
+
+```yaml
+id: overwatering-lower-leaf-yellowing
+category: watering
+plant: {name: "Kitchen ficus", species: "Ficus elastica", location_kind: indoor}
+symptoms:                         # a real agent.schemas.SymptomSet
+  overall_vigor: declining
+  symptoms: [...]
+answers: {drainage: "the pot has no drainage holes", ...}
+ground_truth: overwatering
+also_acceptable: [poor-drainage, root-rot]
+```
+
+`GoldenCase.symptoms` is typed as the production `SymptomSet`, not a lookalike, so a case
+that could not have come out of the real pipeline fails to parse. `ground_truth` is
+scored against `Candidate.disorder_id`, which is already the corpus slug — so scoring is
+an identifier comparison, never name-matching fuzz.
+
+Two structural tests do most of the quality work. `corpus_slugs()` reads every disorder
+id from **frontmatter** rather than filenames, and the suite fails if any `ground_truth`
+or `also_acceptable` value does not resolve — a case naming a disorder the corpus does
+not contain would score zero at runtime for a reason having nothing to do with the agent.
+Both `GoldenCase` and `CasePlant` set `extra="forbid"`, added when the set grew from 3
+cases to 28: a mistyped field name was survivable at 3 and would silently fall back to a
+default at 28.
+
+**The authoring rule that mattered most is invisible in the code.** Cases must paraphrase
+the corpus, never reuse its phrasing. Retrieval is embedding-based, so a case sharing a
+document's distinctive vocabulary makes the retriever match on *vocabulary* rather than
+*meaning*, and context precision and recall come out high for reasons unrelated to the
+agent working. The first draft of the set failed this in about a third of its cases —
+corpus sentence skeletons with synonym-level substitution — and every case was rewritten
+from memory rather than from the open document. No test can detect this; only reading
+both texts side by side can.
+
+**`eval/scripted.py` is where the harness meets the real pipeline.** The gate and vision
+tiers are scripted from the case; everything else is real. It dispatches on the schema
+requested, not on call order:
+
+```python
+def _response_for(schema: Any, case: GoldenCase) -> BaseModel:
+    if schema is PlantCheck:
+        return PlantCheck(is_plant=True, what_it_is=f"a {case.plant.name}")
+    ...
+    if schema is SymptomSet:
+        return case.symptoms
+    raise ValueError(...)
+```
+
+This is deliberately unlike `tests/fakes/chat_models.py`'s `ScriptedStructuredModel`,
+which replays a positional queue. The graph *branches* — `route_after_quality` sends a
+re-check of an unidentified plant through `identify_plant` while a fresh diagnosis may
+skip it — and a queue desynchronises on the branch, handing a node the wrong object
+entirely. Schema dispatch is order-independent and re-entrant. It also means `eval/`
+imports nothing from `tests/`, keeping the dependency direction right.
+
+Two details are more than plumbing. An unidentified plant is expressed as
+`SpeciesGuess(common_name="Unidentified plant", confidence=0.0)` because `common_name`
+has `min_length=1` — the schema will not accept the empty string, so "unknown" has to be
+carried as zero *confidence*. And an unknown schema raises rather than returning `None`,
+because a node silently receiving nothing fails far from the cause.
+
+`eval/harness.py:run_case` runs one case end to end, and its most important property is
+that it **never raises**:
+
+```python
+    except Exception as exc:  # noqa: BLE001 — a failed case is data, not a crash
+        logger.warning("case %s failed: %s", case.id, exc)
+        return _failed(...)
+```
+
+One bad case must not abort a run that costs real money and 100 minutes. A failure
+becomes a recorded `CaseRun` with `error` set and empty `candidates`, which then counts
+as a miss in the denominator rather than vanishing from it.
+
+Two things the brief got wrong, both caught by implementation rather than review:
+`DiagnosisState.images` has `min_length=1`, so the planned `images=[]` raised a
+`ValidationError` before any node ran — the harness supplies a placeholder `ImageRef`
+inside `eval/`, and production was not bent to accommodate evaluation. And
+`questions_asked` initially filtered out the mandatory watering and drainage questions,
+on the reasoning that deterministic questions cannot vary. That was right about the
+metric and wrong about the record: the field is serialised into a committed results JSON,
+and a docstring explaining the omission does not survive serialisation. It now records
+the complete set, and the filtering moved to the metric that needs it (§8.4).
+
 ---
