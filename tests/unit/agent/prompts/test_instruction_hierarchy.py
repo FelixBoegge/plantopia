@@ -12,6 +12,13 @@ its ``web_search_plant_info`` and ``search_plant_knowledge`` tools pipe raw web 
 corpus text straight back into a loop that also decides whether to call
 ``suggest_new_diagnosis``, so injected text could steer tool selection rather than
 merely colour a single structured answer.
+
+``EXTRACT_PROFILE`` is checked here for a different, arguably stronger reason: it is
+the only prompt in this list that writes durable state. The chat agent's and
+diagnose's injected text can misdirect a single turn or a single diagnosis, but a
+successful injection against the profile extractor is written to ``user_profile``
+and then re-injected as a prior into every future diagnosis — it does not expire
+with the turn that produced it.
 """
 
 import pytest
@@ -20,6 +27,7 @@ from agent.chat_agent import _SYSTEM_PROMPT_TEMPLATE
 from agent.prompts.diagnose import DIAGNOSE
 from agent.prompts.identify import IDENTIFY_PLANT
 from agent.prompts.intake import GUARD_INPUT, QUALITY_CHECK
+from agent.prompts.profile import EXTRACT_PROFILE
 from agent.prompts.recheck import COMPARE_PROGRESS
 from agent.prompts.symptoms import ASSESS_SYMPTOMS
 
@@ -31,6 +39,7 @@ UNTRUSTED_INPUT_PROMPTS = {
     "COMPARE_PROGRESS": COMPARE_PROGRESS,
     "DIAGNOSE": DIAGNOSE,
     "CHAT_AGENT": _SYSTEM_PROMPT_TEMPLATE,
+    "EXTRACT_PROFILE": EXTRACT_PROFILE,
 }
 
 
