@@ -24,6 +24,7 @@ from agent.schemas import (
 from agent.state import DiagnosisState
 from core.cost import UsageCollector, UsageSnapshot
 from core.images import store_upload
+from services.profile_service import ProfileService
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +69,18 @@ class FinalResult:
 class DiagnosisService:
     """Drives the diagnosis graph on behalf of the UI."""
 
-    def __init__(self, deps: Deps, graph, *, upload_dir: Path) -> None:
+    def __init__(
+        self,
+        deps: Deps,
+        graph,
+        *,
+        upload_dir: Path,
+        profile: ProfileService | None = None,
+    ) -> None:
         self._deps = deps
         self._graph = graph
         self._upload_dir = upload_dir
+        self._profile = profile
         # Keyed by thread_id because a diagnosis spans two invocations: start()
         # pauses at the clarifying-question interrupt and answer() resumes it. The
         # gate and vision calls all happen in the first, so a per-invoke collector
@@ -173,9 +182,22 @@ class DiagnosisService:
         # try/finally covers both the success path and any exception out of invoke.
         try:
             result = self._graph.invoke(Command(resume=answers), self._run_config(thread_id))
-            return self._final_result(result, self._collectors[thread_id].snapshot())
+            final = self._final_result(result, self._collectors[thread_id].snapshot())
         finally:
             self._release(thread_id)
+
+        # Fired after the diagnosis is fully committed and its collector released, so
+        # nothing about learning can take either away from the owner. See the guard's
+        # docstring on ProfileService for what this covers beyond extraction itself.
+        if self._profile is not None:
+            try:
+                self._profile.learn_from_diagnosis(
+                    answers=answers, location_text=result.get("location_text")
+                )
+            except Exception as exc:  # noqa: BLE001 — learning must never break a diagnosis
+                logger.warning("profile learning failed: %s", exc)
+
+        return final
 
     def start_recheck(
         self,

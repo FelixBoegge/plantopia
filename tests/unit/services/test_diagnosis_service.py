@@ -14,7 +14,7 @@ from tests.fakes.chat_models import ScriptedStructuredModel
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 
 
-def _service(make_deps, pipeline_models, upload_dir: Path) -> DiagnosisService:
+def _service(make_deps, pipeline_models, upload_dir: Path, *, profile=None) -> DiagnosisService:
     """Build a service wired with the happy-path scripted models.
 
     Mirrors the ``service`` fixture's construction, but as a plain callable so a
@@ -29,7 +29,7 @@ def _service(make_deps, pipeline_models, upload_dir: Path) -> DiagnosisService:
     gate, vision, chat = pipeline_models
     deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
     graph = build_diagnosis_graph(deps, MemorySaver())
-    return DiagnosisService(deps, graph, upload_dir=upload_dir)
+    return DiagnosisService(deps, graph, upload_dir=upload_dir, profile=profile)
 
 
 @pytest.fixture
@@ -588,3 +588,46 @@ def test_a_pending_clarifying_question_session_still_keeps_its_collector(
 
     assert result.status == "questions"
     assert "t-pending" in service._collectors
+
+
+def test_a_completed_diagnosis_triggers_profile_learning(make_deps, pipeline_models, tmp_path):
+    """Called after the diagnosis is committed, so its failure cannot cost one."""
+    calls = []
+
+    class _Spy:
+        def learn_from_diagnosis(self, *, answers, location_text):
+            calls.append(answers)
+
+    service = _service(make_deps, pipeline_models, tmp_path, profile=_Spy())
+    service.start(
+        uploads=[PNG],
+        plant_name="Basil",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+        thread_id="p1",
+    )
+    service.answer({"watering": "daily"}, thread_id="p1")
+
+    assert len(calls) == 1
+
+
+def test_a_failing_profile_service_does_not_break_the_diagnosis(
+    make_deps, pipeline_models, tmp_path
+):
+    class _Boom:
+        def learn_from_diagnosis(self, *, answers, location_text):
+            raise RuntimeError("boom")
+
+    service = _service(make_deps, pipeline_models, tmp_path, profile=_Boom())
+    service.start(
+        uploads=[PNG],
+        plant_name="Basil",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+        thread_id="p2",
+    )
+    final = service.answer({"watering": "daily"}, thread_id="p2")
+
+    assert final.differential is not None

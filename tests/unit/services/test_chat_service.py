@@ -349,3 +349,49 @@ def test_send_commits_durably_not_just_visible_on_the_same_connection(make_deps,
 
     assert [m.role for m in history] == ["user", "assistant"]
     assert history[0].content == "Is this normal?"
+
+
+def test_a_completed_chat_turn_triggers_profile_learning(make_deps, db, now):
+    """Called after the assistant's reply is committed, so its failure cannot cost one."""
+    calls = []
+
+    class _Spy:
+        def learn_from_chat(self, plant_id, messages):
+            calls.append(plant_id)
+
+    plant_id = _plant_id(db, now)
+    model = ScriptedToolCallingModel([AIMessage(content="Some yellowing is normal for basil.")])
+    deps = make_deps(chat_model=model)
+    service = ChatService(
+        deps=deps,
+        messages=MessageRepository(db),
+        checkpointer=MemorySaver(),
+        now=now,
+        profile=_Spy(),
+    )
+
+    service.send(plant_id, "Is this normal?")
+
+    assert calls == [plant_id]
+
+
+def test_a_failing_profile_service_does_not_break_the_chat_reply(make_deps, db, now):
+    class _Boom:
+        def learn_from_chat(self, plant_id, messages):
+            raise RuntimeError("boom")
+
+    plant_id = _plant_id(db, now)
+    model = ScriptedToolCallingModel([AIMessage(content="Some yellowing is normal for basil.")])
+    deps = make_deps(chat_model=model)
+    service = ChatService(
+        deps=deps,
+        messages=MessageRepository(db),
+        checkpointer=MemorySaver(),
+        now=now,
+        profile=_Boom(),
+    )
+
+    turn = service.send(plant_id, "Is this normal?")
+
+    assert turn.reply
+    assert service.history(plant_id)[-1].role == "assistant"

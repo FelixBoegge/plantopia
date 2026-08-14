@@ -22,12 +22,14 @@ from data.repositories.feedback import FeedbackRepository
 from data.repositories.messages import MessageRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
+from data.repositories.profile import ProfileRepository
 from data.repositories.roadmap import RoadmapRepository
 from knowledge.ingest import load_corpus
 from knowledge.retriever import ChromaRetriever, build_vectorstore
 from services.chat_service import ChatService
 from services.diagnosis_service import DiagnosisService
 from services.plant_service import PlantService
+from services.profile_service import ProfileService
 from tools.care_profiles import lookup_plant_care_profile
 from tools.weather import get_local_weather
 from tools.web_search import web_search_plant_info
@@ -92,13 +94,16 @@ def get_service() -> DiagnosisService:
         weather=get_local_weather,
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
         care_profile=lookup_plant_care_profile,
+        profile_facts=get_profile_service().facts_for_prompt,
         now=lambda: datetime.now(tz=UTC),
     )
 
     checkpointer = SqliteSaver(connect(Path(str(settings.db_path) + ".checkpoints")))
     graph = build_diagnosis_graph(deps, checkpointer)
 
-    return DiagnosisService(deps, graph, upload_dir=settings.upload_path)
+    return DiagnosisService(
+        deps, graph, upload_dir=settings.upload_path, profile=get_profile_service()
+    )
 
 
 @st.cache_resource
@@ -122,6 +127,26 @@ def get_plant_service() -> PlantService:
         diagnoses=DiagnosisRepository(conn),
         roadmap=RoadmapRepository(conn),
         feedback=FeedbackRepository(conn),
+        now=lambda: datetime.now(tz=UTC),
+    )
+
+
+@st.cache_resource
+def get_profile_service() -> ProfileService:
+    """Build the profile service. Cached for the process.
+
+    Opens its own connection to the same database file, like its siblings; the
+    module-level write lock in ``data/db.py`` serialises writes across them.
+    """
+    from datetime import UTC, datetime
+
+    settings = get_settings()
+    conn = connect(settings.db_path)
+    apply_schema(conn)
+
+    return ProfileService(
+        repo=ProfileRepository(conn),
+        gate_model=build_gate_model(),
         now=lambda: datetime.now(tz=UTC),
     )
 
@@ -152,4 +177,5 @@ def get_chat_service() -> ChatService:
         messages=MessageRepository(conn),
         checkpointer=SqliteSaver(connect(Path(str(settings.db_path) + ".chat-checkpoints"))),
         now=lambda: datetime.now(tz=UTC),
+        profile=get_profile_service(),
     )

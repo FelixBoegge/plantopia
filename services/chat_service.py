@@ -1,5 +1,6 @@
 """Orchestration for the plant-scoped chat page."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,6 +13,9 @@ from agent.deps import Deps
 from data.db import transaction
 from data.repositories.messages import MessageRecord, MessageRepository
 from data.repositories.plants import PlantRecord
+from services.profile_service import ProfileService
+
+logger = logging.getLogger(__name__)
 
 # Tool output can be long — four retrieved corpus passages, or a whole journal. The
 # stored summary exists to show the owner what the agent consulted, not to be a second
@@ -86,11 +90,13 @@ class ChatService:
         messages: MessageRepository,
         checkpointer: BaseCheckpointSaver,
         now: Callable[[], datetime],
+        profile: ProfileService | None = None,
     ) -> None:
         self._deps = deps
         self._messages = messages
         self._checkpointer = checkpointer
         self._now = now
+        self._profile = profile
 
     @staticmethod
     def _thread_id(plant_id: int) -> str:
@@ -143,4 +149,14 @@ class ChatService:
                 tool_calls=tool_calls,
                 now=self._now(),
             )
+
+        # Fired after the assistant's reply is committed, so nothing about learning
+        # can take it away from the owner. See ProfileService's guard docstring for
+        # what this covers beyond extraction itself.
+        if self._profile is not None:
+            try:
+                self._profile.learn_from_chat(plant_id, self._messages)
+            except Exception as exc:  # noqa: BLE001 — learning must never break a chat reply
+                logger.warning("profile learning failed: %s", exc)
+
         return ChatTurn(reply=reply, escalated=bool(escalation))
