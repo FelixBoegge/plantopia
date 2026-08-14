@@ -210,3 +210,40 @@ def test_diagnosis_proceeds_on_visual_matches_alone(make_deps, sample_images):
     deps = make_deps(chat_model=ScriptedStructuredModel([_differential()]))
     result = make_diagnose(deps)(_state(sample_images, retrieved=[], visual_matches=[visual]))
     assert result["differential"] is not None
+
+
+def test_the_case_carries_the_profile_block_when_facts_exist(make_deps, sample_images):
+    from agent.nodes.diagnose import _build_case
+    from agent.state import DiagnosisState
+
+    state = DiagnosisState(
+        images=sample_images,
+        plant_name="Basil",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+    )
+    case = _build_case(state, lambda: "- tends to overwater (confidence 0.7)")
+
+    assert "tends to overwater" in case
+
+
+def test_the_case_omits_the_profile_section_entirely_when_empty(make_deps, sample_images):
+    """No header, no placeholder — an empty described section invites invention."""
+    from agent.nodes.diagnose import _build_case
+    from agent.state import DiagnosisState
+
+    state = DiagnosisState(
+        images=sample_images,
+        plant_name="Basil",
+        location_kind="indoor",
+        location_text=None,
+        user_notes=None,
+    )
+    case = _build_case(state, lambda: "")
+
+    assert "owner" not in case.lower()
+
+
+def test_deps_defaults_profile_facts_to_empty(make_deps):
+    assert make_deps().profile_facts() == ""

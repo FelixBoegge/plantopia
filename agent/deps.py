@@ -41,4 +41,10 @@ class Deps:
     web_search: Callable[[str], list[Passage]]
     care_profile: Callable[[str], CareProfile | None]
 
+    # What the agent has learned about the owner, rendered for a prompt. A callable
+    # rather than a value because it is read per run and the profile changes between
+    # them — and because the evaluation harness binds one returning "" so an empty
+    # profile can be proven to change nothing (spec §4.3).
+    profile_facts: Callable[[], str]
+
     now: Callable[[], datetime]

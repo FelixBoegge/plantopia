@@ -6,6 +6,7 @@ cause this, and here is how to tell them apart".
 """
 
 import logging
+from collections.abc import Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -24,7 +25,7 @@ def make_diagnose(deps: Deps) -> NodeFn:
     """Produce a differential diagnosis from everything gathered so far."""
 
     def diagnose(state: DiagnosisState) -> dict:
-        messages = [SystemMessage(DIAGNOSE), HumanMessage(_build_case(state))]
+        messages = [SystemMessage(DIAGNOSE), HumanMessage(_build_case(state, deps.profile_facts))]
         try:
             differential = invoke_structured(deps.chat_model, Differential, messages)
         except StructuredOutputFailed as exc:
@@ -40,7 +41,7 @@ def make_diagnose(deps: Deps) -> NodeFn:
     return diagnose
 
 
-def _build_case(state: DiagnosisState) -> str:
+def _build_case(state: DiagnosisState, profile_facts: Callable[[], str]) -> str:
     """Assemble the case description, fencing anything that came from outside."""
     sections: list[str] = [f"Species: {state.species_name or 'unidentified'}"]
     sections.append(f"Setting: {state.location_kind}")
@@ -100,6 +101,15 @@ def _build_case(state: DiagnosisState) -> str:
             "refer to visually similar reference material in your reasoning, and do not "
             "treat its absence as evidence either way."
         )
+
+    # Last on purpose: the owner's priors are the weakest evidence in the case and
+    # should read after the photograph-derived material, not before it. An empty
+    # profile appends nothing at all — no header, no placeholder — because a section
+    # that describes itself and is then blank invites the model to invent
+    # corroborating evidence to fill it (docs/known-limitations.md).
+    block = profile_facts()
+    if block:
+        sections.append(block)
 
     return "\n\n".join(sections)
 

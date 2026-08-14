@@ -88,6 +88,7 @@ def make_deps(db, now, chroma_retriever):
             "weather": lambda location, days: None,
             "web_search": lambda query: [],
             "care_profile": lambda species: None,
+            "profile_facts": lambda: "",
             "now": now,
         }
         return Deps(**{**defaults, **overrides})
