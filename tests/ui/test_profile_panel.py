@@ -51,6 +51,38 @@ def test_a_fact_shows_its_source_and_confidence():
     assert "0.9" in body or "90" in body
 
 
+def test_a_populated_profile_explains_that_source_is_origin_not_current_standing():
+    """A fact's `source` never upgrades from `inferred` to `stated` — the panel must
+    say so, or the label reads as a claim about present-day confidence rather than
+    where the fact was first learned."""
+    from streamlit.testing.v1 import AppTest
+
+    def script():
+        from datetime import UTC, datetime
+
+        from data.repositories.profile import ProfileFact
+        from ui.components.profile_panel import render_profile_panel
+
+        when = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+        render_profile_panel(
+            [
+                ProfileFact(
+                    fact="lives in Berlin",
+                    source="stated",
+                    confidence=0.9,
+                    first_seen=when,
+                    last_confirmed=when,
+                )
+            ],
+            lambda fact: None,
+        )
+
+    app = AppTest.from_function(script).run()
+    assert not app.exception
+    captions = " ".join(c.value.lower() for c in app.caption)
+    assert "origin" in captions or "how a fact was first learned" in captions
+
+
 def test_clicking_forget_calls_on_delete_with_the_fact():
     """The delete control is the panel's whole reason to exist (spec: read-and-delete,
     not an editor). ``on_delete`` must receive the exact stored fact string, not a

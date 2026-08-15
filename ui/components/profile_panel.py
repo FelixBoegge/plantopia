@@ -18,6 +18,10 @@ def render_profile_panel(facts: list[ProfileFact], on_delete: Callable[[str], No
         st.caption("Nothing learned yet — facts appear here after a few diagnoses or chats.")
         return
 
+    st.caption(
+        "Source records how a fact was first learned, not its current standing — it never "
+        "upgrades from *inferred* to *stated* even after the owner later says it outright."
+    )
     for fact in facts:
         left, right = st.columns([6, 1])
         left.markdown(f"**{fact.fact}**")
