@@ -256,6 +256,27 @@ def test_question_drift_is_zero_when_only_deterministic_questions_differ():
     assert ALWAYS_ASK_KEYS  # sanity: the constant this test relies on is non-empty
 
 
+def test_stability_normalises_separator_variants_before_comparing():
+    """Gate 1 recorded `insufficient_light` once against `insufficient-light`
+    everywhere else — nondeterministic output formatting, not real disagreement.
+    `top1_hit`/`top3_hit` already fold this out via `_normalise_id`; `stability()`
+    must apply the same normalisation to its own modal-agreement and churn
+    comparisons, or the exact noise the change exists to remove still counts as
+    instability here."""
+    runs = {
+        "a": [
+            _run("a", ["insufficient-light"]),
+            _run("a", ["insufficient_light"]),
+            _run("a", [" Insufficient-Light \n"]),
+        ]
+    }
+
+    report = stability(runs)
+
+    assert report.top1_agreement == 1.0
+    assert report.candidate_churn == 0.0
+
+
 def test_stability_of_no_cases_is_zero_not_a_division_error():
     report = stability({})
     assert report.top1_agreement == 0.0

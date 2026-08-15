@@ -147,6 +147,11 @@ def render_report(results: dict) -> str:
         "asked, reported separately because those are model-generated — without it, "
         "question variance would read as diagnostic instability.",
         "",
+        "Top-1 agreement and candidate-set churn normalise disorder-id formatting "
+        "(`insufficient_light` vs `insufficient-light`) before comparing; figures from "
+        "runs recorded before this normalisation was added to `stability()` were "
+        "computed without it and may overstate disagreement slightly.",
+        "",
         "## What this does not measure",
         "",
         "**The vision layer.** Golden cases supply symptoms as text and are injected past "

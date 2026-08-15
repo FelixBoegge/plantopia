@@ -119,6 +119,10 @@ class StabilityReport:
     it can never agree with anything, but it still counts as a run that did not
     agree; it does not vanish from the average the way it would if filtered out
     before scoring.
+    Both ``top1_agreement`` and ``candidate_churn`` compare disorder ids through
+    ``_normalise_id`` first, same as ``top1_hit``/``top3_hit`` — otherwise the exact
+    formatting nondeterminism those exist to fold out (``insufficient_light`` vs
+    ``insufficient-light``) would register as disagreement here instead.
     ``candidate_churn`` is mean pairwise Jaccard *distance* between candidate sets:
     0.0 is identical, 1.0 disjoint. ``question_drift`` is the same distance over the
     clarifying questions asked, after subtracting the deterministic mandatory ones
@@ -175,9 +179,11 @@ def stability(runs_by_case: dict[str, list[CaseRun]]) -> StabilityReport:
 
     agreements, churns, drifts = [], [], []
     for runs in runs_by_case.values():
-        tops = [r.candidates[0] if r.candidates else None for r in runs]
+        tops = [_normalise_id(r.candidates[0]) if r.candidates else None for r in runs]
         agreements.append(_modal_agreement(tops))
-        churns.append(_mean_pairwise_distance([set(r.candidates) for r in runs]))
+        churns.append(
+            _mean_pairwise_distance([{_normalise_id(c) for c in r.candidates} for r in runs])
+        )
         drifts.append(
             _mean_pairwise_distance(
                 [set(r.questions_asked) - _DETERMINISTIC_QUESTION_KEYS for r in runs]
