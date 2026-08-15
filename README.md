@@ -34,6 +34,10 @@ answers, the way a clinician takes a history.
 - **Says when it cannot tell**, instead of guessing
 - **Remembers every plant.** The My Plants grid shows a health badge and pending
   roadmap steps per plant; the Plant detail page shows its full diagnosis history.
+- **Learns about you, not just your plants.** Durable facts extracted from diagnoses
+  and chat — *"tends to overwater"*, *"lives in Berlin"* — are injected as priors into
+  later runs, each shown on My Plants with its source, confidence and last-confirmed
+  date, and forgettable with one click.
 - **Re-checks progress.** Upload a new photo of a known plant and get a verdict —
   improving, static, worsening, or a new problem — against the prior diagnosis,
   without repeating the clarifying questions: roadmap-step completion already
@@ -223,6 +227,19 @@ with the same case run several times to measure how stable the diagnosis is unde
 byte-identical input. It takes several minutes and makes real, billed model calls, so
 it is never invoked by the test suite or by the app itself. It writes a timestamped
 JSON file to `eval/results/` and a human-readable `eval/REPORT.md`.
+
+```bash
+uv run python -m eval.run_eval --profile overwaterer
+```
+
+`--profile` injects a fixture from `eval/profiles/` as a run-level prior, the same
+block a real owner's learned facts would produce, so the harness can measure whether
+the profile moves diagnosis rather than just trusting that it does. It defaults to
+`empty`, which renders as no block at all. Two such runs are recorded in
+`docs/known-limitations.md`: an empty profile reproduces the Phase 3 baseline exactly,
+and a deliberately lopsided one changes candidates and clarifying questions on a
+minority of cases without pulling any category's top diagnosis toward the biased
+disorder.
 
 The **Evaluation** page in the app renders whatever the newest file in `eval/results/`
 contains; it only reads that file and never runs the harness itself. Before the first

@@ -949,10 +949,16 @@ truth. The two are complementary and neither substitutes for the other:
 | Agentic RAG | **Hard 1** | §6 `enrich`, §10 |
 | LLM observability (LangSmith) | **Hard 2** | §15 |
 | AI evaluation report (Ragas/DeepEval) | **Hard 3** | §16 |
-| Agent learning from user feedback | **Hard 4** (partial) | §11.3 learned user profile |
+| Agent learning from user feedback | **Hard 4** | §11.3 learned user profile |
 | Integration with external data sources | **Hard 5** | §9 weather + web search |
 
-Bonus threshold is 2 medium + 1 hard. The plan claims **five medium and five hard** (Hard 4 partial).
+Bonus threshold is 2 medium + 1 hard. The plan claims **five medium and five hard**.
+
+Hard 4 shipped in Phase 4: durable-fact extraction from diagnoses and chat, reconciliation
+against existing facts, injection into both the diagnosis and chat prompts, an owner-visible
+profile panel, and two evaluation gates measuring the effect (`docs/known-limitations.md`,
+"Two gates on the learned user profile"). This is durable-fact extraction with confidence,
+not model fine-tuning — the claim should not be read as more than that.
 
 ### Optional tasks deliberately not claimed
 

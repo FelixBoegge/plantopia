@@ -47,6 +47,7 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | M18 | **A run that spends tokens but produces no differential records nothing at all.** `agent/nodes/persist.py` returns early when `state.differential is None`, so a diagnosis that burned gate, vision and reasoning calls and then failed to produce a differential writes no row — and therefore no `token_usage_json` or `cost_usd` either. `M12` is fixed for diagnoses that *succeed*. The cost badge not rendering on that path (`ui/pages/diagnose.py`) is the visible half of the same gap, not a separate issue. | The early return is correct as persistence — there is no diagnosis to store, and inventing a row with a null differential would put a broken record in the timeline that the owner cannot act on. Spend on failed runs is the smaller loss. | Either write an observation-only row for a failed run, or record the run's usage somewhere that is not the `diagnoses` table. The collector already has the numbers (`config["configurable"]["usage_collector"]`); only the destination is missing. |
 | M19 | **The evaluation measures reasoning and retrieval only — the vision layer is structurally invisible to it.** Golden cases supply symptoms as text and are injected past `identify_plant` and `assess_symptoms`, so no metric in `eval/REPORT.md` says anything about species identification or symptom extraction from a photograph. An image-based golden set was considered and deliberately deferred. | The metrics Ragas provides are retrieval-and-generation metrics that cannot see vision regardless, and licence-checked, *reliably labelled* photographs are hardest to source exactly where the agent is weakest (nutrient deficiencies, whose visual diagnosis is genuinely ambiguous even for an expert). A mislabelled golden image yields a confidently wrong metric, which is worse than an absent one. | Build an image-based golden set as its own spec. The stability evidence below makes vision the prime suspect for the instability recorded in [First live run](#first-live-run), so this is the measurement most worth buying next — but note it would not address the nutrient weakness, which occurs with perfect symptom input. |
 | M20 | **Roughly half of every Ragas judge call fails, so the four RAG metrics are means over 13–18 of 28 cases.** Measured on the 2026-08-14 run: **51 of 112 judge jobs failed** — 39 `APIConnectionError`, 12 `TimeoutError` — against OpenRouter, *already* at `RunConfig(timeout=300, max_workers=4)` rather than Ragas's 180s/16-worker defaults. The failure rate is invisible in the scores themselves because Ragas emits NaN for a failed cell and `pandas.mean` skips it; `eval/report.py` discloses the per-metric counts precisely so this cannot hide again. Top-1/top-3 accuracy and the stability figures are unaffected — they are computed by `eval/metrics.py` from the pipeline runs, which had a 0% failure rate across both runs. | The disclosure is the important half, and it is in place: a reader sees "13 of 28 scored" and knows not to over-read the number. Chasing the transport failure is a separate problem from measuring the agent, and the metrics that matter most for diagnosis quality do not depend on the judge. | Drop `max_workers` further (2, or 1) and measure whether the failure rate falls — 39 connection errors at only 4 concurrent workers suggests rate limiting surfacing as dropped connections rather than genuine timeouts. Failing that, add per-cell retry around the judge call, or run the judge against a provider that is not the same restricted key the pipeline is already saturating. Until then, treat cross-run comparisons of the RAG metrics with care: two runs may score overlapping but different subsets, which is why faithfulness moved 56.8% → 47.5% between the 2026-08-13 and 2026-08-14 runs without anything in the agent changing. |
+| M21 | **The Ragas judge failure rate is far higher than `M20` records.** Gate 2 scored only **4, 4, 2 and 5 of 28 cases** across context precision, context recall, faithfulness and answer relevancy respectively. Gate 1 managed 17, 20, 11 and 16. A "Faithfulness 90.9%" computed over two cases is not a measurement. The disclosure added earlier is doing its job — the numbers are visibly qualified — but the underlying transport failure is worse than one run suggested. Cross-run comparison of the RAG metrics is unsafe. | Same as `M20`: the per-metric counts are shown alongside every score, so nobody reads Gate 2's numbers as unqualified. The transport failure, not the diagnosis pipeline, is what degraded. | Same remedies as `M20`, now with more urgency: at 2–5 of 28 cases scored, several Gate 2 RAG figures are barely more than a judge's opinion on a handful of rows. |
 
 ---
 
@@ -158,6 +159,30 @@ query-insensitive retrieval; it was passing a bare string to `ChromaRetriever.se
 parameter is `queries: Sequence[str]`, so Python iterated the string and embedded each
 *character* as a query. Self-query sanity-checking (feed a document's own text back and
 require it to rank first) is what caught it.
+
+### Two gates on the learned user profile (2026-08-15)
+
+Phase 4 added durable facts about the owner, injected as priors into diagnosis and chat.
+Two runs of the golden-set harness measured whether that injection changes diagnosis, one
+with an empty profile and one with a deliberately lopsided one.
+
+**Gate 1 (empty profile):** top-1 75.0%, top-3 82.1% after separator normalisation, with
+every per-category top-1 identical to the Phase 3 baseline. The profile injection is
+provably inert when there is nothing to inject.
+
+**Gate 2 (lopsided "overwaterer" profile):** top-1 75.0% and top-3 82.1%, all seven
+per-category scores identical to Gate 1 — **but the profile was not ignored.** 7 of 28
+cases produced a different candidate list and 15 of 28 asked different clarifying
+questions. What moved were third-place candidates (`fertiliser-burn`,
+`bacterial-leaf-spot`, `thrips`), none of them watering-related.
+
+**Interpretation:** a deliberately lopsided watering prior changed the model's reasoning
+without pulling the leading diagnosis toward water in any category. That is what the
+"evidence takes precedence" framing in the injected block was built to produce.
+
+**The bound, stated plainly:** 28 cases, 4 of them watering. This says the effect did not
+reach the top candidate — not that no effect exists. Do not read it as though the hazard
+is closed.
 
 ## Two plan defects caught during implementation
 
