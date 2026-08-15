@@ -68,6 +68,35 @@ def test_an_empty_differential_is_a_miss():
     assert top3_hit(_run("a", [])) is False
 
 
+def test_top1_hit_accepts_an_underscore_variant_of_the_ground_truth():
+    """Gate 1: the model emitted `insufficient_light` where the corpus slug is
+    `insufficient-light`, scoring a correct diagnosis as a miss."""
+    assert top1_hit(_run("a", ["insufficient_light"], truth="insufficient-light")) is True
+
+
+def test_top3_hit_accepts_an_underscore_variant_in_third_place():
+    assert (
+        top3_hit(_run("a", ["rust", "root-rot", "insufficient_light"], truth="insufficient-light"))
+        is True
+    )
+
+
+def test_top1_hit_ignores_case_and_surrounding_whitespace():
+    assert top1_hit(_run("a", [" Insufficient-Light \n"], truth="insufficient-light")) is True
+
+
+def test_top1_hit_still_misses_a_genuinely_different_disorder():
+    """The normalisation must not make everything match."""
+    assert top1_hit(_run("a", ["overwatering"], truth="insufficient-light")) is False
+
+
+def test_near_misses_counts_a_normalised_also_acceptable_match():
+    runs = [_run("a", ["root_rot"], truth="overwatering")]
+    cases = {"a": _case("a", also_acceptable=["root-rot"], truth="overwatering")}
+
+    assert near_misses(runs, cases) == 1
+
+
 def test_accuracy_aggregates_and_breaks_down_by_category():
     runs = [
         _run("a", ["overwatering"], category="watering"),

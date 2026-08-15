@@ -24,20 +24,33 @@ from eval.harness import CaseRun
 _DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_QUESTION.key}
 
 
+def _normalise_id(disorder_id: str) -> str:
+    """Fold formatting variance out of a disorder id before comparing.
+
+    The model emits ``insufficient_light`` and ``insufficient-light`` for the same
+    corpus slug across runs — nondeterministic output formatting, not a systematic
+    habit, which made the headline top-3 metric drift run to run for reasons
+    unrelated to diagnosis quality (Gate 1). Lowercase, strip, and treat ``_`` and
+    ``-`` as equivalent. Nothing else about the id is touched: a genuinely wrong
+    disorder must still compare unequal.
+    """
+    return disorder_id.strip().lower().replace("_", "-")
+
+
 def _accepted(run: CaseRun) -> set[str]:
-    """The disorder ids that count as correct for this case.
+    """The normalised disorder ids that count as correct for this case.
 
     Deliberately ``ground_truth`` alone, not ``ground_truth | also_acceptable``: a
     near miss onto a confusable neighbour is still a miss, and it is surfaced
     separately by ``near_misses`` rather than folded into top-1/top-3, which would
     make the headline number too lenient to say anything about ranking (spec §3.5).
     """
-    return {run.ground_truth}
+    return {_normalise_id(run.ground_truth)}
 
 
 def top1_hit(run: CaseRun) -> bool:
     """Was the leading candidate the ground truth?"""
-    return bool(run.candidates) and run.candidates[0] in _accepted(run)
+    return bool(run.candidates) and _normalise_id(run.candidates[0]) in _accepted(run)
 
 
 def top3_hit(run: CaseRun) -> bool:
@@ -47,7 +60,7 @@ def top3_hit(run: CaseRun) -> bool:
     high top-3 with a mediocre top-1 says ranking is the problem, not retrieval
     (``PLAN.md`` §16).
     """
-    return bool(_accepted(run) & set(run.candidates[:3]))
+    return bool(_accepted(run) & {_normalise_id(c) for c in run.candidates[:3]})
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +206,8 @@ def near_misses(runs: list[CaseRun], cases: dict[str, GoldenCase]) -> int:
     for run in runs:
         if top1_hit(run) or not run.candidates:
             continue
-        if run.candidates[0] in set(cases[run.case_id].also_acceptable):
+        also_acceptable = {_normalise_id(d) for d in cases[run.case_id].also_acceptable}
+        if _normalise_id(run.candidates[0]) in also_acceptable:
             total += 1
     return total
 
