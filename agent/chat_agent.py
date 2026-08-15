@@ -4,6 +4,7 @@ A ReAct loop (``langchain.agents.create_agent``), not a fixed graph — follow-u
 conversation has no predictable shape, unlike the diagnosis pipeline (PLAN.md §5.1).
 """
 
+import logging
 from datetime import datetime
 
 from langchain.agents import create_agent
@@ -13,6 +14,8 @@ from langgraph.graph.state import CompiledStateGraph
 
 from agent.deps import Deps
 from tools.knowledge import search_plant_knowledge
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT_TEMPLATE = """You are a knowledgeable, plain-spoken plant-care
 assistant, scoped to a single plant. Never falsely reassuring, never
@@ -61,7 +64,13 @@ def build_chat_system_prompt(deps: Deps, plant_id: int) -> str:
         latest_diagnosis=latest_summary,
     )
 
-    block = deps.profile_facts()
+    # Guarded like the diagnosis node's read of the same callable: a failed profile
+    # read must not cost the owner their chat turn, so it degrades to "no profile".
+    try:
+        block = deps.profile_facts()
+    except Exception as exc:  # noqa: BLE001 — a read failure here must not break chat
+        logger.warning("profile read failed, proceeding without it: %s", exc)
+        block = ""
     return f"{prompt}\n\n{block}" if block else prompt
 
 

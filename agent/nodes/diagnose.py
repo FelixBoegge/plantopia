@@ -107,7 +107,15 @@ def _build_case(state: DiagnosisState, profile_facts: Callable[[], str]) -> str:
     # profile appends nothing at all — no header, no placeholder — because a section
     # that describes itself and is then blank invites the model to invent
     # corroborating evidence to fill it (docs/known-limitations.md).
-    block = profile_facts()
+    #
+    # Reading the profile is guarded the same way writing it is: a failed SELECT on
+    # the profile connection must not cost the owner their diagnosis, so it degrades
+    # to "no profile" rather than raising out of this node.
+    try:
+        block = profile_facts()
+    except Exception as exc:  # noqa: BLE001 — a read failure here must not break diagnosis
+        logger.warning("profile read failed, proceeding without it: %s", exc)
+        block = ""
     if block:
         sections.append(block)
 

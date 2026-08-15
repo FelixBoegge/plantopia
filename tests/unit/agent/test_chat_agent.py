@@ -199,3 +199,16 @@ def test_an_unknown_plant_still_raises(make_deps):
 
     with pytest.raises(ValueError, match="No plant"):
         build_chat_system_prompt(make_deps(profile_facts=lambda: ""), 9999)
+
+
+def test_a_raising_profile_read_does_not_break_the_chat_turn(make_deps, sample_plant):
+    """`deps.profile_facts()` resolves to a separate sqlite connection; if that read
+    raises, the chat turn must still get a system prompt rather than fail."""
+    from agent.chat_agent import build_chat_system_prompt
+
+    def _boom():
+        raise RuntimeError("profile db is locked")
+
+    prompt = build_chat_system_prompt(make_deps(profile_facts=_boom), sample_plant)
+
+    assert "Plant:" in prompt

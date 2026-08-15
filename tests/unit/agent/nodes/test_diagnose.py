@@ -247,3 +247,19 @@ def test_the_case_omits_the_profile_section_entirely_when_empty(make_deps, sampl
 
 def test_deps_defaults_profile_facts_to_empty(make_deps):
     assert make_deps().profile_facts() == ""
+
+
+def test_a_raising_profile_read_does_not_break_the_case(make_deps, sample_images):
+    """`deps.profile_facts()` resolves to a separate sqlite connection; if that read
+    raises, the diagnosis must proceed without the profile rather than fail."""
+
+    def _boom():
+        raise RuntimeError("profile db is locked")
+
+    model = ScriptedStructuredModel([_differential()])
+    deps = make_deps(chat_model=model, profile_facts=_boom)
+
+    result = make_diagnose(deps)(_state(sample_images))
+
+    assert result["differential"] is not None
+    assert "what we believe about this owner" not in str(model.prompts[0]).lower()
