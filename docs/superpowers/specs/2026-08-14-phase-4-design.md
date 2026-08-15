@@ -135,20 +135,36 @@ exactly. A model must not be able to delete a fact by hallucinating near-miss te
 | Bucket | Effect |
 |---|---|
 | `confirmed` | `last_confirmed = now`; confidence `+= 0.1`, capped at **0.95** |
-| `added` | insert; `stated` starts at **0.8**, `inferred` at **0.5** |
+| `added` | insert; `stated` starts at **0.8**, `inferred` at **0.5**, then the model's own reported `confidence` is applied *downward-only* (`min(initial, candidate.confidence)`) — a hedged inference is honoured, an inflated one is not |
 | `superseded` | delete the row |
 
 Confidence never reaches 1.0 — an inference about a person should not become unfalsifiable. Only
-facts at **≥ 0.5** are injected, so one weak inference does not immediately begin steering
-diagnoses.
+facts at **≥ 0.6** are injected. A fresh `inferred` fact (0.5) is therefore stored but not yet
+injected — it must be confirmed once (0.5 → 0.6) before it begins steering diagnoses; a `stated`
+fact (0.8) clears the bar immediately. (An earlier draft of this section set the threshold at 0.5,
+which — since confirmation only ever raises confidence — excluded nothing reachable through
+`apply_update` at all; 0.6 is the value that actually delivers the protection this paragraph
+describes.)
+
+Every `added.fact` is also scanned for injection patterns (`core.guards.scan_for_injection`) before
+being persisted; a match is dropped and logged rather than stored. This channel is free text by
+construction (bounded only 3–200 characters) and, once stored, is appended unfenced into the
+diagnosis case and into the chat agent's system prompt — the highest-authority channel in the
+application — so the check has to happen at write time, once, rather than at every future read.
 
 ### 3.3 Bounds
 
 At most **30** facts are injected, ordered by confidence then recency. `learn_from_chat` reads only
-messages after `profile_cursors.last_message_id` and advances the cursor **inside the same
-transaction as the writes**, so either both move or neither does and the turns are retried. Chat
-extraction fires every **4** user turns (configurable), which keeps per-turn cost flat rather than
-growing with thread length — the failure mode `M16` already records for chat context.
+messages after `profile_cursors.last_message_id` and advances the cursor once extraction has
+applied cleanly. This is **two transactions, not one**: `apply_update` commits its own transaction
+inside `_learn`, and `learn_from_chat` then opens a second one to advance the cursor. The guarantee
+that matters is delivered by `_learn`'s `bool` return rather than by a shared transaction: a failed
+apply reports failure and `learn_from_chat` leaves the cursor untouched, so those turns are retried
+in full. A crash between the two transactions is benign but not free — `added` facts are naturally
+skipped a second time (the fact already exists), but a `confirmed` fact takes a second confidence
+increment when those turns are re-read. Chat extraction fires every **4** user turns (configurable),
+which keeps per-turn cost flat rather than growing with thread length — the failure mode `M16`
+already records for chat context.
 
 ### 3.4 Exclusions, stated in the prompt
 
@@ -270,7 +286,7 @@ already committed and rendering.
 | Tier | Coverage |
 |---|---|
 | unit — repository | round-trip; `upsert` bumps `last_confirmed` rather than violating `UNIQUE`; `supersede` removes; cursor upsert and read |
-| unit — reconciliation | unknown `confirmed`/`superseded` dropped; confidence starts 0.8 stated / 0.5 inferred and caps at 0.95; sub-0.5 excluded from injection; the 30-fact bound |
+| unit — reconciliation | unknown `confirmed`/`superseded` dropped; confidence starts 0.8 stated / 0.5 inferred and caps at 0.95; sub-0.6 excluded from injection, exactly 0.6 included; a hedged model confidence lowers the stored value, an inflated one does not raise it; a candidate fact matching an injection pattern is dropped rather than stored; the 30-fact bound |
 | unit — rendering | empty profile → `""`; populated → the framed block with confidences |
 | unit — failure | a raising gate model leaves the profile untouched and does not propagate |
 | unit — prompt | the untrusted-input clause is present in the extraction prompt |
