@@ -21,6 +21,7 @@ rather than fixed.
 6. [Prompts, guards, and configuration](#6-prompts-guards-and-configuration) — what every model is actually told, and where every number comes from
 7. [Phase 2: plant profiles, re-check, and chat](#7-phase-2-plant-profiles-re-check-and-chat) — the tables, the second entry path, the chat agent, and the pages that surface them
 8. [Phase 3: observability, cost, and evaluation](#8-phase-3-observability-cost-and-evaluation) — one callback seam, and a harness that measures the pipeline against a golden set
+9. [Phase 4: the learned user profile](#9-phase-4-the-learned-user-profile) — what the agent remembers about the owner, and how it was proved not to make things worse
 
 ---
 
@@ -2470,3 +2471,191 @@ dropped, a stability figure reporting perfection for a run that failed, cases sc
 because they echoed the corpus's own words. None of them would have crashed anything.
 
 ---
+
+## 9. Phase 4: the learned user profile
+
+The last unshipped claim in `PLAN.md` §20, and the first feature this project could
+*prove* did no harm — because Phase 3 left behind a harness and a 75.0% baseline to
+measure against.
+
+The idea is small: remember durable facts about the **owner** — "waters on a schedule",
+"lives in Berlin" — and let them shift priors on later diagnoses. Most of the engineering
+is about the two ways that goes wrong. A memory of a person is worth having only if the
+person can see it, and a prior is worth having only if evidence still beats it.
+
+### 9.1 One callable, two consumers, and a table that waited three phases
+
+`user_profile` has existed since Phase 1 — `fact` (UNIQUE), `source`, `confidence`,
+`first_seen`, `last_confirmed` — and had never held a row. Phase 4 gave it its first
+repository. Only one new table was needed, `profile_cursors`, recording how far chat
+extraction has read each thread.
+
+That prompted the phase's first real decision: does a new table require the project's first
+`ALTER TABLE` path? It does not, and the reasoning is worth keeping. **`data/plantopia.db`
+is gitignored.** It ships with nobody; every clone starts empty and `apply_schema`'s
+`CREATE TABLE IF NOT EXISTS` builds the schema in full. A migration would have executed for
+no one, ever — dead code from the day it was written. The owner asked for the migration on
+cleanliness grounds, and the smaller answer turned out to be the cleaner one.
+
+Facts reach the prompts through **one new `Deps` field**, matching `weather`, `web_search`
+and `care_profile`, which are all injected callables:
+
+```python
+    profile_facts: Callable[[], str]
+```
+
+A callable rather than a value because it is read per run — and because the evaluation
+harness binds one returning `""`, which is what makes §9.4's first gate possible at all.
+It was added with **no default**, deliberately: a default would let a future node forget to
+pass the profile and silently inject nothing. The cost of that choice was a branch on which
+the application could not start until the wiring task landed, since `ui/bootstrap.py` and
+`eval/run_eval.py` both construct `Deps` and neither is covered by tests. That was the
+right trade — a `TypeError` at startup is impossible to miss, while a placeholder
+`lambda: ""` left behind by a forgetful wiring task would leave the feature inert forever.
+
+Two consumers: `_build_case` in `agent/nodes/diagnose.py`, and the chat system prompt built
+by `build_chat_system_prompt`. The block goes **last** in both — the owner's priors are the
+weakest evidence in the case and should read after the photograph-derived material — and
+its framing does the real work:
+
+```
+What we believe about this owner — background only, possibly outdated.
+The photograph, the symptoms and the owner's answers about THIS plant always
+take precedence. Do not let a prior about past habits override evidence in front
+of you; if they conflict, say so in your reasoning.
+```
+
+**An empty profile appends nothing at all** — no header, no blank section. That is not
+tidiness. `known-limitations.md`'s first live run records the model *inventing corroborating
+evidence* to fill a section the prompt described unconditionally and then left empty. The
+same trap, avoided twice more here.
+
+### 9.2 Reconciliation, and what stops a model rewriting its own memory
+
+`user_profile.fact` is `UNIQUE` over free text, so deduplication is **exact-string only**:
+"tends to overwater" and "the user overwaters" are two rows. A model paraphrasing freely
+would fill the table with near-duplicates of one habit.
+
+So extraction is a **reconciliation**, not an append. The model receives the current profile
+verbatim and answers in three buckets:
+
+```python
+class ProfileUpdate(BaseModel):
+    confirmed: list[str]          # existing facts, echoed VERBATIM
+    added: list[ExtractedFact]
+    superseded: list[str]         # existing facts, echoed VERBATIM
+```
+
+Seeing the existing wording is what lets it re-state rather than re-invent. `ExtractedFact`
+and the stored `ProfileFact` are deliberately different types — the model's output carries
+no timestamps, because the service assigns them.
+
+**Three defences stand between model output and permanent storage**, and each closes a
+different door:
+
+- `confirmed` and `superseded` are validated against stored text and **dropped if they do
+  not match exactly**. A model must not insert a fact through the confirmation channel,
+  where it would bypass the confidence policy entirely, nor delete a real fact by
+  hallucinating near-miss text — "tends to over-water" must not remove "tends to overwater".
+- Every `added.fact` is passed through `core.guards.scan_for_injection` **before**
+  persisting, and skipped on a match. This is the youngest defence, added by the final
+  whole-branch review: `added` is free text bounded only by length, and it lands *unfenced*
+  in the diagnosis case and in the chat **system prompt** — the highest-authority channel,
+  for every future turn. A successful injection there persists rather than expiring with the
+  turn, which is why the check runs at write time rather than read time.
+- The prompt carries the instruction-hierarchy clause and is registered in
+  `tests/unit/agent/prompts/test_instruction_hierarchy.py`'s systematic guard, so a refactor
+  cannot quietly drop it.
+
+Confidence is graduated rather than binary. `stated` facts start at 0.8, `inferred` at 0.5,
+confirmation adds 0.1, and the ceiling is **0.95** — an inference about a person should not
+become unfalsifiable. Only facts at **≥ 0.6** are injected, so a fresh inference is stored
+but must be confirmed once before it steers anything.
+
+That threshold is worth dwelling on, because it was wrong first. It began at 0.5 — the same
+value `inferred` facts start at — which made it incapable of excluding anything the service
+could write, while the spec claimed it stopped weak inferences from steering diagnoses. The
+constant and the initial value were each defensible in isolation; only reading them together
+showed the protection was undelivered. The model's own reported confidence is applied
+**downward-only** (`min(initial, reported)`), so a hedged inference stores weaker and an
+inflated one cannot store stronger.
+
+Chat has no session boundary, so extraction fires every four *owner* turns over only the
+turns after a stored cursor — keeping per-turn cost flat rather than inheriting `M16`'s
+unbounded growth. The cursor advances only when extraction succeeded, which is the entire
+reason `_learn` returns `bool`: a failed round leaves those turns to be re-read, while a
+successful-but-empty one advances, because material that genuinely held no fact has been
+dealt with and re-reading it forever would bill for nothing.
+
+### 9.3 Learning must never cost someone their diagnosis
+
+The guarantee is stated plainly and implemented in layers, because it is the one property a
+background feature can most easily violate.
+
+Ordering does the first half: the graph persists the diagnosis and returns, *then*
+`DiagnosisService` calls the profile. By the time learning runs, the owner's result is
+committed and rendering. `ChatService` is the same, after its assistant-message commit.
+
+`ProfileService._learn` swallows extraction failures and returns `False`. That guard
+originally covered only the model call — `apply_update`, the half that writes to the
+database, sat *outside* it, so a locked file or a reconciliation bug would have propagated
+to a caller running after the owner's diagnosis was already on screen. The brief declared
+the guarantee and then delivered half of it; the review caught it.
+
+Both call sites add their own `try/except` on top, covering everything on the way *to*
+extraction — acquiring a connection, a bug in the service itself.
+
+The final review then found the mirror-image gap: learning was triple-guarded, and
+**reading was not guarded at all**. `deps.profile_facts()` runs on the critical path in
+both consumers and resolves to a `SELECT` on a separate connection. A failure there would
+have cost the owner the very diagnosis the write path is so careful to protect. Both reads
+now degrade to `""`.
+
+`ui/components/profile_panel.py` is the other half of taking this seriously: every stored
+fact with its `source`, confidence and last-confirmed date, and a delete control. It is
+read-and-delete, not an editor. A system that accumulates inferences about a person and
+shows them nothing is a worse system than one that shows its working — and deleting is the
+owner's only correction mechanism, since reconciliation can supersede a fact only when the
+model contradicts it. One honest caveat is captioned there: `source` records a fact's
+**origin**, not its current standing, and never upgrades from `inferred` to `stated`.
+
+### 9.4 Two gates, and what they actually proved
+
+Phase 3's harness exists to answer questions like this one, and Phase 4 is the first change
+to use it as a gate rather than as a report.
+
+**Gate 1 — an empty profile must change nothing.** `--profile empty` reproduced top-1
+75.0% and top-3 82.1%, with every per-category score identical to the baseline. The
+injection is provably inert when there is nothing to inject.
+
+It also exposed a defect in the scorer itself. The raw run read 78.6% at top-3, because the
+model emitted `insufficient_light` where the corpus slug is `insufficient-light`, and
+`_accepted` compared raw strings — so a **correct diagnosis scored as a miss**. The same
+case emitted the hyphenated form in Gate 2, making it nondeterministic formatting noise on
+the headline metric. Scoring now normalises separators. The committed report still renders
+78.6%, deliberately: it is the honest record of what that run measured, and
+`known-limitations.md` explains the difference rather than quietly restating history.
+
+**Gate 2 — a deliberately lopsided prior, measured rather than assumed.** The
+`overwaterer` fixture asserts "tends to overwater" at 0.7 and "has lost plants to
+overwatering" at 0.8. The hazard being tested is specific: an owner who overwatered a fern
+in March may have spider mites in August, and a prompt that keeps whispering "they
+overwater" could talk the model out of the right answer.
+
+Top-1 75.0%, top-3 82.1%, **all seven per-category scores identical to Gate 1** — and the
+profile was *not* ignored: 7 of 28 cases produced a different candidate list and 15 of 28
+asked different clarifying questions. What moved were third-place candidates
+(`fertiliser-burn`, `bacterial-leaf-spot`, `thrips`), none of them watering-related.
+
+So the prior changed the model's reasoning without pulling the leading diagnosis toward
+water in any category, which is exactly what §9.1's framing was built to produce. The
+result is bounded rather than conclusive — 28 cases, four of them watering — and the
+documentation says so, instead of reading the identical scores as proof the hazard is
+closed.
+
+This closes the Phase 4 tour, and with it the optional-task table: `PLAN.md` §20 no longer
+claims anything that has not shipped. The recurring lesson from §8 held here too, in a
+sharper form. Every defect worth catching this phase was a *correct-looking* thing: a
+threshold that could never fire, a guard covering half its surface, a required schema field
+nothing read, a security registry that did not know its most dangerous prompt existed. None
+would have crashed anything, and none would have shown up in a green test suite.
