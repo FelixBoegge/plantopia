@@ -18,6 +18,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agent.prompts.profile import EXTRACT_PROFILE
 from agent.schemas import ProfileUpdate
 from agent.structured import StructuredOutputFailed, invoke_structured
+from core.guards import scan_for_injection
 from data.db import transaction
 from data.repositories.messages import MessageRepository
 from data.repositories.profile import ProfileFact, ProfileRepository
@@ -25,7 +26,12 @@ from data.repositories.profile import ProfileFact, ProfileRepository
 logger = logging.getLogger(__name__)
 
 MAX_INJECTED_FACTS = 30
-MIN_INJECTED_CONFIDENCE = 0.5
+# A fresh ``inferred`` fact is stored at 0.5 (INITIAL_CONFIDENCE below) — one point
+# below this threshold on purpose, so it is stored but not injected until confirmed
+# once (0.5 -> 0.6). A ``stated`` fact (0.8) clears the bar immediately. Set to 0.5
+# this would exclude nothing reachable through ``apply_update``, since confirmation
+# only ever raises confidence — the threshold would then protect against nothing.
+MIN_INJECTED_CONFIDENCE = 0.6
 CONFIDENCE_CAP = 0.95
 CONFIRM_STEP = 0.1
 INITIAL_CONFIDENCE = {"stated": 0.8, "inferred": 0.5}
@@ -106,10 +112,22 @@ class ProfileService:
             for candidate in update.added:
                 if candidate.fact in known:
                     continue
+                matches = scan_for_injection(candidate.fact)
+                if matches:
+                    logger.warning(
+                        "dropping a candidate fact matching injection patterns %s: %r",
+                        matches,
+                        candidate.fact,
+                    )
+                    continue
                 self._repo.upsert(
                     fact=candidate.fact,
                     source=candidate.source,
-                    confidence=INITIAL_CONFIDENCE[candidate.source],
+                    # Downward-only: a model hedging an inference (a lower reported
+                    # confidence) is honoured and stored weaker than the table default,
+                    # but a model inflating its own confidence cannot raise a fact above
+                    # what the table says its source deserves.
+                    confidence=min(INITIAL_CONFIDENCE[candidate.source], candidate.confidence),
                     now=now,
                 )
 
