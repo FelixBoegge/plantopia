@@ -170,6 +170,17 @@ with an empty profile and one with a deliberately lopsided one.
 every per-category top-1 identical to the Phase 3 baseline. The profile injection is
 provably inert when there is nothing to inject.
 
+*The committed [`eval/REPORT.md`](../eval/REPORT.md) renders this same run at top-3 **78.6%**,
+not 82.1%, and the two are not a contradiction.* That run was scored before separator
+normalisation existed: the model returned `insufficient_light` where the corpus slug is
+`insufficient-light`, and the scorer compared raw strings, so one correct diagnosis counted
+as a miss. Normalising that single separator — and nothing else — yields 82.1%, exactly the
+Phase 3 baseline. The report is generated from the stored results file and is left as the
+honest record of what that run measured at the time; the scorer fix that followed changes
+future runs only. Stability repeats are not serialised, so the stability figures in that
+report were likewise computed without normalisation and cannot be recomputed without a
+re-run.
+
 **Gate 2 (lopsided "overwaterer" profile):** top-1 75.0% and top-3 82.1%, all seven
 per-category scores identical to Gate 1 — **but the profile was not ignored.** 7 of 28
 cases produced a different candidate list and 15 of 28 asked different clarifying
