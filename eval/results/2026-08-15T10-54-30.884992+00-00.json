@@ -1,0 +1,558 @@
+{
+  "generated_at": "2026-08-15T10:54:30.884992+00:00",
+  "provenance": {
+    "reasoning_model": "openai/gpt-4o",
+    "vision_model": "scripted",
+    "embedding_model": "openai/text-embedding-3-small",
+    "temperature": 0.2,
+    "corpus_documents": 43,
+    "golden_set_size": 28,
+    "profile": "empty",
+    "total_token_usage": {
+      "prompt_tokens": 192911,
+      "completion_tokens": 53108,
+      "total_tokens": 246019
+    },
+    "total_cost_usd": 1.0037575
+  },
+  "accuracy": {
+    "top1": 0.75,
+    "top3": 0.7857142857142857,
+    "scored": 28,
+    "failed": 0,
+    "by_category": {
+      "environmental": {
+        "top1": 0.75,
+        "top3": 1.0,
+        "scored": 4
+      },
+      "fungal": {
+        "top1": 1.0,
+        "top3": 1.0,
+        "scored": 4
+      },
+      "light": {
+        "top1": 0.6666666666666666,
+        "top3": 0.6666666666666666,
+        "scored": 3
+      },
+      "nutrient": {
+        "top1": 0.3333333333333333,
+        "top3": 0.3333333333333333,
+        "scored": 6
+      },
+      "other": {
+        "top1": 0.5,
+        "top3": 0.5,
+        "scored": 2
+      },
+      "pest": {
+        "top1": 1.0,
+        "top3": 1.0,
+        "scored": 5
+      },
+      "watering": {
+        "top1": 1.0,
+        "top3": 1.0,
+        "scored": 4
+      }
+    }
+  },
+  "ragas": {
+    "context_precision": 0.5535294117428609,
+    "context_recall": 0.675,
+    "faithfulness": 0.6187229437229438,
+    "answer_relevancy": 0.6079122712123
+  },
+  "ragas_counts": {
+    "context_precision": {
+      "scored": 17,
+      "total": 28
+    },
+    "context_recall": {
+      "scored": 20,
+      "total": 28
+    },
+    "faithfulness": {
+      "scored": 11,
+      "total": 28
+    },
+    "answer_relevancy": {
+      "scored": 16,
+      "total": 28
+    }
+  },
+  "stability": {
+    "top1_agreement": 0.925,
+    "candidate_churn": 0.16583333333333333,
+    "question_drift": 0.4083333333333334,
+    "cases": 8,
+    "runs_per_case": 5.0
+  },
+  "stability_case_ids": [
+    "aphids-clustered-new-growth-hibiscus",
+    "botrytis-grey-mould-spent-flowers",
+    "calcium-deficiency-crinkled-new-leaf",
+    "cold-draught-one-sided-blackening-fiddle-leaf",
+    "etiolation-leggy-stretched-wandering-jew",
+    "fungal-leaf-spot-target-spots-schefflera",
+    "fungus-gnats-flies-over-damp-soil",
+    "heat-stress-wilting-heatwave-olive"
+  ],
+  "near_misses": 1,
+  "cases": [
+    {
+      "case_id": "aphids-clustered-new-growth-hibiscus",
+      "ground_truth": "aphids",
+      "category": "pest",
+      "candidates": [
+        "aphids",
+        "scale-insects"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "pest_control_methods",
+        "air_circulation"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "botrytis-grey-mould-spent-flowers",
+      "ground_truth": "botrytis",
+      "category": "fungal",
+      "candidates": [
+        "botrytis",
+        "sooty-mould"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_temperature_changes",
+        "air_circulation"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "calcium-deficiency-crinkled-new-leaf",
+      "ground_truth": "calcium-deficiency",
+      "category": "nutrient",
+      "candidates": [
+        "low-humidity",
+        "underwatering",
+        "insufficient-light"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "humidity",
+        "fertilization"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "cold-draught-one-sided-blackening-fiddle-leaf",
+      "ground_truth": "cold-draught",
+      "category": "environmental",
+      "candidates": [
+        "cold-draught",
+        "root-rot",
+        "fertiliser-burn"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_temperature_changes",
+        "pest_inspection"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "etiolation-leggy-stretched-wandering-jew",
+      "ground_truth": "etiolation",
+      "category": "light",
+      "candidates": [
+        "etiolation",
+        "insufficient-light"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "light_exposure",
+        "fertilization_schedule"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "fungal-leaf-spot-target-spots-schefflera",
+      "ground_truth": "fungal-leaf-spot",
+      "category": "fungal",
+      "candidates": [
+        "fungal-leaf-spot",
+        "anthracnose",
+        "bacterial-leaf-spot"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_changes",
+        "pest_inspection"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "fungus-gnats-flies-over-damp-soil",
+      "ground_truth": "fungus-gnats",
+      "category": "pest",
+      "candidates": [
+        "fungus-gnats",
+        "overwatering"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_changes",
+        "fertilization"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "heat-stress-wilting-heatwave-olive",
+      "ground_truth": "heat-stress",
+      "category": "environmental",
+      "candidates": [
+        "low-humidity",
+        "heat-stress",
+        "underwatering"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_transplant",
+        "fertilizer_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "insufficient-light-etiolation",
+      "ground_truth": "insufficient-light",
+      "category": "light",
+      "candidates": [
+        "etiolation",
+        "insufficient_light"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "light_source",
+        "light_duration"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "iron-deficiency-pale-new-growth-citrus",
+      "ground_truth": "iron-deficiency",
+      "category": "nutrient",
+      "candidates": [
+        "iron-deficiency",
+        "insufficient-light"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "fertilizer_use",
+        "temperature_changes"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "low-humidity-crispy-fern-fronds",
+      "ground_truth": "low-humidity",
+      "category": "environmental",
+      "candidates": [
+        "low-humidity",
+        "potassium-deficiency",
+        "calcium-deficiency"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "humidity_level",
+        "fertilizer_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "magnesium-deficiency-marbled-tomato-leaves",
+      "ground_truth": "magnesium-deficiency",
+      "category": "nutrient",
+      "candidates": [
+        "magnesium-deficiency",
+        "natural-senescence"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "fertilizer_use",
+        "temperature_fluctuations"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "mealybugs-cottony-leaf-joints-jade",
+      "ground_truth": "mealybugs",
+      "category": "pest",
+      "candidates": [
+        "mealybugs",
+        "insufficient-light"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "pest_inspection",
+        "recent_chemical_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "natural-senescence-single-old-leaf-monstera",
+      "ground_truth": "natural-senescence",
+      "category": "other",
+      "candidates": [],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "fertilization",
+        "temperature_changes"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "nitrogen-deficiency-pale-lower-leaves",
+      "ground_truth": "nitrogen-deficiency",
+      "category": "nutrient",
+      "candidates": [
+        "insufficient-light",
+        "natural-senescence",
+        "phosphorus-deficiency"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "fertilizer_use",
+        "temperature_changes"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "overwatering-lower-leaf-yellowing",
+      "ground_truth": "overwatering",
+      "category": "watering",
+      "candidates": [
+        "overwatering",
+        "bacterial-leaf-spot"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_environmental_changes",
+        "fertilizer_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "phosphorus-deficiency-stunted-coffee-plant",
+      "ground_truth": "phosphorus-deficiency",
+      "category": "nutrient",
+      "candidates": [
+        "calcium-deficiency",
+        "iron-deficiency",
+        "low-humidity"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_fertilizer_use",
+        "temperature_changes"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "poor-drainage-soggy-saucer-snake-plant",
+      "ground_truth": "poor-drainage",
+      "category": "watering",
+      "candidates": [
+        "poor-drainage",
+        "overwatering"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "repotting_history",
+        "soil_type"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "pot-bound-fast-drying-spider-plant",
+      "ground_truth": "pot-bound",
+      "category": "other",
+      "candidates": [
+        "pot-bound",
+        "root-rot"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "repotting_history",
+        "fertilizer_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "potassium-deficiency-scorched-frond-margins",
+      "ground_truth": "potassium-deficiency",
+      "category": "nutrient",
+      "candidates": [
+        "salt-buildup",
+        "fungal-leaf-spot",
+        "natural-senescence"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "humidity",
+        "fertilizer_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "powdery-mildew-dusty-coating-courgette",
+      "ground_truth": "powdery-mildew",
+      "category": "fungal",
+      "candidates": [
+        "powdery-mildew",
+        "rust"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_weather",
+        "fungicide_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "root-rot-mushy-stem-basil",
+      "ground_truth": "root-rot",
+      "category": "watering",
+      "candidates": [
+        "root-rot",
+        "overwatering"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_changes",
+        "fertilizer_use"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "rust-orange-pustules-rose",
+      "ground_truth": "rust",
+      "category": "fungal",
+      "candidates": [
+        "rust",
+        "scale-insects"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "pest_presence",
+        "recent_weather"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "salt-buildup-white-crust-aloe",
+      "ground_truth": "salt-buildup",
+      "category": "environmental",
+      "candidates": [
+        "salt-buildup",
+        "fertiliser-burn"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "water_source",
+        "fertilizer_type"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "scale-insects-shell-bumps-bay-tree",
+      "ground_truth": "scale-insects",
+      "category": "pest",
+      "candidates": [
+        "scale-insects",
+        "sooty-mould"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_pest_control",
+        "air_circulation"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "spider-mites-stippling-webbing",
+      "ground_truth": "spider-mites",
+      "category": "pest",
+      "candidates": [
+        "spider-mites",
+        "mealybugs"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "pest_control_methods",
+        "humidity_level"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "sunscald-bleached-patch-zz-plant",
+      "ground_truth": "sunscald",
+      "category": "light",
+      "candidates": [
+        "sunscald",
+        "natural-senescence"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_changes",
+        "window_type"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "underwatering-crisp-wilting-pothos",
+      "ground_truth": "underwatering",
+      "category": "watering",
+      "candidates": [
+        "underwatering",
+        "pot-bound"
+      ],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_changes",
+        "humidity"
+      ],
+      "error": null
+    }
+  ]
+}

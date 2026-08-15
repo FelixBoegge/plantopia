@@ -1,6 +1,6 @@
 # Evaluation report
 
-Generated 2026-08-14T07:37:10.459833+00:00 by `uv run python -m eval.run_eval`.
+Generated 2026-08-15T10:54:30.884992+00:00 by `uv run python -m eval.run_eval`.
 
 ## Run provenance
 
@@ -12,21 +12,22 @@ Generated 2026-08-14T07:37:10.459833+00:00 by `uv run python -m eval.run_eval`.
 | Temperature | 0.2 |
 | Corpus documents | 43 |
 | Golden-set size | 28 |
-| Total tokens | 192,500 in / 53,937 out (246,437 total) |
-| Total cost | $1.0168 |
+| Profile | `empty` |
+| Total tokens | 192,911 in / 53,108 out (246,019 total) |
+| Total cost | $1.0038 |
 
 ## Headline metrics
 
 | Metric | Score |
 |---|---|
 | Top-1 diagnostic accuracy | 75.0% |
-| Top-3 diagnostic accuracy | 82.1% |
-| Context precision | 63.3% (16 of 28 scored) |
-| Context recall | 73.8% (14 of 28 scored) |
-| Faithfulness | 47.5% (13 of 28 scored) |
-| Answer relevancy | 52.5% (18 of 28 scored) |
+| Top-3 diagnostic accuracy | 78.6% |
+| Context precision | 55.4% (17 of 28 scored) |
+| Context recall | 67.5% (20 of 28 scored) |
+| Faithfulness | 61.9% (11 of 28 scored) |
+| Answer relevancy | 60.8% (16 of 28 scored) |
 
-28 cases scored, of which **0 failed** and are counted in the denominator rather than dropped. 2 top-1 misses landed on a disorder the case listed as a confusable neighbour.
+28 cases scored, of which **0 failed** and are counted in the denominator rather than dropped. 1 top-1 miss landed on a disorder the case listed as a confusable neighbour.
 
 ## By category
 
@@ -34,7 +35,7 @@ Generated 2026-08-14T07:37:10.459833+00:00 by `uv run python -m eval.run_eval`.
 |---|---|---|---|
 | environmental | 4 | 75.0% | 100.0% |
 | fungal | 4 | 100.0% | 100.0% |
-| light | 3 | 66.7% | 100.0% |
+| light | 3 | 66.7% | 66.7% |
 | nutrient | 6 | 33.3% | 33.3% |
 | other | 2 | 50.0% | 50.0% |
 | pest | 5 | 100.0% | 100.0% |
@@ -47,8 +48,8 @@ Generated 2026-08-14T07:37:10.459833+00:00 by `uv run python -m eval.run_eval`.
 | Measure | Value |
 |---|---|
 | Top-1 agreement | 92.5% |
-| Candidate-set churn | 21.3% |
-| Clarifying-question drift | 57.1% |
+| Candidate-set churn | 16.6% |
+| Clarifying-question drift | 40.8% |
 
 Churn is mean pairwise Jaccard distance between candidate sets: 0% identical, 100% disjoint. Question drift is the same measure over the clarifying questions asked, reported separately because those are model-generated — without it, question variance would read as diagnostic instability.
 
