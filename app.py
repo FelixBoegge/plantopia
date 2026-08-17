@@ -5,7 +5,10 @@ import streamlit as st
 from core.config import get_settings
 from core.tracing import configure_tracing
 
-st.set_page_config(page_title="Plantopia", page_icon="🌿", layout="centered")
+# "wide" rather than the default centred column: My Plants is a grid of cards, each
+# holding a portrait photograph beside its details, and a centred column squeezed
+# three of those into roughly half the browser window.
+st.set_page_config(page_title="Plantopia", page_icon="🌿", layout="wide")
 
 
 @st.cache_resource

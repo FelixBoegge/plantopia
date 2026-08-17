@@ -82,18 +82,23 @@ def test_a_plant_appears_as_a_card(app, db, now):
 def test_a_diagnosed_plant_shows_its_primary_candidate_and_pending_steps(app, sample_plant):
     """``sample_plant`` (tests/conftest.py) is an unhealthy diagnosis — top candidate
     Overwatering at 70% — with two roadmap steps, one done and one still pending.
-    Exercises the unhealthy-caption branch, the per-card pending count, and the
-    aggregate "due across your plants" caption in one pass."""
+    Exercises the unhealthy branch, the per-card pending count, and the aggregate
+    "due across your plants" caption in one pass.
+
+    The card's own lines are markdown, not captions: they share half a card with the
+    photograph, where caption-sized text was too small to read. The aggregate line
+    above the grid is still a caption — it is genuinely secondary.
+    """
     app.run()
     assert not app.exception
-    assert any("Overwatering" in c.value for c in app.caption)
-    assert any("1 step(s) pending" in c.value for c in app.caption)
+    assert any("Overwatering" in m.value for m in app.markdown)
+    assert any("1 step(s) pending" in m.value for m in app.markdown)
     assert any("step(s) due across your plants" in c.value for c in app.caption)
 
 
-def test_a_healthy_plant_shows_the_healthy_caption(app, db, now):
+def test_a_healthy_plant_shows_the_healthy_verdict(app, db, now):
     """A healthy plant is a distinct, first-class outcome (PLAN §14), not the absence
-    of a diagnosis — this must render its own caption rather than falling through to
+    of a diagnosis — this must render its own verdict rather than falling through to
     "No diagnosis yet"."""
     from agent.schemas import Differential
     from data.repositories.diagnoses import DiagnosisRepository
@@ -125,7 +130,7 @@ def test_a_healthy_plant_shows_the_healthy_caption(app, db, now):
     )
     app.run()
     assert not app.exception
-    assert any("Healthy" in c.value for c in app.caption)
+    assert any("Healthy" in m.value for m in app.markdown)
 
 
 def test_view_button_selects_the_plant_before_navigating(app, sample_plant):
@@ -162,3 +167,40 @@ def test_add_a_plant_button_attempts_to_navigate_to_the_diagnose_page(app, sampl
     add_button = next(b for b in app.button if b.label == "Add a plant")
     add_button.click().run()
     assert "ui/pages/diagnose.py" in str(app.exception[0])
+
+
+def test_the_card_that_overflows_a_row_starts_a_new_one(app, db, now):
+    """The grid builds one ``st.columns()`` call per row.
+
+    The earlier shape called ``st.columns`` once and indexed it by ``index % 3``,
+    which does not wrap: the fourth card lands *underneath* the first, inside the
+    same column, so cards no longer line up in rows at all. Asserted as a
+    difference rather than a total because the profile expander contributes columns
+    of its own — a new row costs three columns plus the arriving card's own
+    photo/details split, where the broken shape would cost only the split.
+    """
+    from data.repositories.plants import PlantRepository
+
+    cards_per_row, columns_per_card = 3, 2
+    repo = PlantRepository(db)
+
+    def add(name: str) -> None:
+        repo.create(
+            name=name,
+            species="Basil",
+            species_confidence=0.9,
+            location_kind="indoor",
+            location_text=None,
+            photo_ref=None,
+            now=now(),
+        )
+
+    for name in ("one", "two", "three"):
+        add(name)
+    app.run()
+    filled_row = len(app.columns)
+
+    add("four")
+    app.run()
+
+    assert len(app.columns) - filled_row == cards_per_row + columns_per_card
