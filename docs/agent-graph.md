@@ -94,22 +94,36 @@ alone and hands back to the wizard.
 ## Opening these in LangGraph Studio
 
 Studio is no longer a separate application: a local API server serves the graphs and
-Studio renders them inside LangSmith.
+Studio renders them inside LangSmith. Run it in its own terminal, from the repository
+root:
 
 ```bash
-uv run langgraph dev
+uv run langgraph dev --studio-url https://eu.smith.langchain.com
 ```
 
 That reads `langgraph.json`, imports the factories in `agent/studio.py`, and serves
-both graphs on `http://127.0.0.1:2024`. It opens a browser at the Studio URL for you.
-On the **EU** LangSmith instance — which is where this project's key lives — the URL is:
+both graphs on `http://127.0.0.1:2024`. Pick `diagnosis` or `chat` from the graph
+selector. Studio draws the topology, and can run a thread, stop at the interrupt, show
+state at every step, and fork from any point.
+
+`--studio-url` is not optional here. This project's LangSmith key is on the **EU**
+instance, and the CLI defaults to the US one: it tries to derive the host from the
+tracing environment, but `langgraph.json`'s `env: .env` reaches the *graph* process
+rather than the CLI, so the derivation finds nothing and falls back. Without the flag it
+prints and opens `https://smith.langchain.com/...`, which is a different workspace and
+shows nothing. The equivalent link, if the server is already running:
 
 ```
 https://eu.smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
 ```
 
-Pick `diagnosis` or `chat` from the graph selector. Studio draws the topology, and can
-run a thread, stop at the interrupt, show state at every step, and fork from any point.
+Two things that are *not* this:
+
+- A **project** view with `?mode=graph` draws the graph reconstructed from one trace's
+  spans — the path a single run took, and only once traces exist. It is a view of
+  history, not of topology.
+- Nothing about the graph is stored on LangSmith. Studio reads it from the server on
+  your machine, so the diagram is blank whenever `langgraph dev` is not running.
 
 Two things worth knowing before pressing run:
 
