@@ -12,25 +12,19 @@ _MY_PLANTS_PAGE = Path(__file__).resolve().parent.parent.parent / "ui" / "pages"
 
 @pytest.fixture
 def app(monkeypatch, db, now):
-    """The My Plants page with every bootstrap accessor it touches swapped for a
-    fake wired to the in-memory test database — including ``get_profile_service``,
-    added alongside the "what we've learned about you" expander. Left unmocked, it
-    would fall through to the real ``@st.cache_resource``-cached service and open a
-    connection to the actual project database file (spec risk flagged in Task 9's
-    review): every test in this file would then run ``apply_schema`` (which commits)
-    against production data on every run, purely as a side effect of rendering the
-    page.
+    """The My Plants page with every bootstrap accessor it touches swapped for a fake
+    wired to the in-memory test database. Left unmocked, it would fall through to the
+    real ``@st.cache_resource``-cached service and open a connection to the actual
+    project database file (spec risk flagged in Task 9's review): every test in this
+    file would then run ``apply_schema`` (which commits) against production data on
+    every run, purely as a side effect of rendering the page.
     """
-    from data.db import transaction
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.feedback import FeedbackRepository
     from data.repositories.observations import ObservationRepository
     from data.repositories.plants import PlantRepository
-    from data.repositories.profile import ProfileRepository
     from data.repositories.roadmap import RoadmapRepository
     from services.plant_service import PlantService
-    from services.profile_service import ProfileService
-    from tests.fakes.chat_models import ScriptedStructuredModel
 
     service = PlantService(
         plants=PlantRepository(db),
@@ -41,14 +35,6 @@ def app(monkeypatch, db, now):
         now=now,
     )
     monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: service)
-
-    profile_repo = ProfileRepository(db)
-    with transaction(db):
-        profile_repo.upsert(fact="waters weekly", source="stated", confidence=0.8, now=now())
-    profile_service = ProfileService(
-        repo=profile_repo, gate_model=ScriptedStructuredModel([]), now=now
-    )
-    monkeypatch.setattr("ui.bootstrap.get_profile_service", lambda: profile_service)
 
     return AppTest.from_file(str(_MY_PLANTS_PAGE), default_timeout=30)
 
@@ -175,9 +161,9 @@ def test_the_card_that_overflows_a_row_starts_a_new_one(app, db, now):
     The earlier shape called ``st.columns`` once and indexed it by ``index % 3``,
     which does not wrap: the fourth card lands *underneath* the first, inside the
     same column, so cards no longer line up in rows at all. Asserted as a
-    difference rather than a total because the profile expander contributes columns
-    of its own — a new row costs three columns plus the arriving card's own
-    photo/details split, where the broken shape would cost only the split.
+    difference rather than a total so it stays true of whatever else the page grows:
+    a new row costs three columns plus the arriving card's own photo/details split,
+    where the broken shape would cost only the split.
     """
     from data.repositories.plants import PlantRepository
 

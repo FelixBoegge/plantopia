@@ -60,9 +60,15 @@ def _name_plant(plant_id: int | None, name: str) -> None:
 # Both of the other places that needed a fresh thread id used to inline
 # ``uuid.uuid4().hex`` themselves; they call _rotate_thread() now, so the rotation
 # rule lives in exactly one place.
-if "thread_id" not in st.session_state:
-    _rotate_thread()
-    st.session_state.stage = "upload"
+#
+# Arriving on this page always starts a new diagnosis. Without the reset, a wizard
+# left at its result — or halfway through its questions — was still sitting there on
+# the way back from My Plants, and the way to a fresh start was a button at the foot
+# of someone else's diagnosis. ``arrived_on_page`` is set in app.py, where navigation
+# is resolved: it is true only on the first rerun after a move, so clicking around
+# within the wizard does not wipe it.
+if "thread_id" not in st.session_state or st.session_state.get("arrived_on_page"):
+    _reset()
 
 service = bootstrap.get_service()
 

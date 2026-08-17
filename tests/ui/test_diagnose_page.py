@@ -421,3 +421,42 @@ def test_a_changed_name_is_still_sent_as_a_species_correction(app, monkeypatch, 
     next(b for b in app.button if b.label == "Get my diagnosis").click().run()
 
     assert seen["species_override"] == "Rosemary"
+
+
+def test_arriving_on_the_page_starts_a_fresh_diagnosis(app, monkeypatch, db, now):
+    """Navigating here always begins a new diagnosis.
+
+    ``app.py`` sets ``arrived_on_page`` on the first rerun after a move, which is the
+    only signal a page has for "the user just got here" as opposed to "the user
+    clicked something" — every rerun re-executes the whole script either way. Without
+    the reset, a finished wizard was still sitting at its result on the way back from
+    My Plants, and the route to a clean start was a button at the foot of a diagnosis
+    the owner had already read.
+    """
+    _plant_service(monkeypatch, db, now)
+    app.run()
+    _finish_diagnosis(app)
+    assert app.session_state["stage"] == "result"
+    finished_thread = app.session_state["thread_id"]
+
+    app.session_state["arrived_on_page"] = True
+    app.run()
+
+    assert app.session_state["stage"] == "upload"
+    assert "result" not in app.session_state
+    assert app.session_state["thread_id"] != finished_thread, (
+        "a new diagnosis must not resume the finished run's checkpoint"
+    )
+
+
+def test_clicking_within_the_wizard_does_not_reset_it(app):
+    """The reset keys off arrival, not off every rerun — otherwise submitting the
+    intake form would wipe the very state that submission produced."""
+    app.run()
+    _submit_intake(app)
+
+    assert app.session_state["stage"] == "questions"
+
+    app.run()
+
+    assert app.session_state["stage"] == "questions"

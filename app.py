@@ -38,7 +38,18 @@ pages = [
     st.Page("ui/pages/diagnose.py", title="Diagnose", icon="🔍"),
     st.Page("ui/pages/plant_detail.py", title="Plant detail", icon="📋"),
     st.Page("ui/pages/chat.py", title="Chat", icon="💬"),
+    st.Page("ui/pages/profile.py", title="What we've learned", icon="🧠"),
     st.Page("ui/pages/evaluation.py", title="Evaluation", icon="📊"),
 ]
 
-st.navigation(pages).run()
+selected = st.navigation(pages)
+
+# Whether this rerun is the first one after navigating somewhere new. Every rerun
+# re-executes this file, so a page cannot tell "the user just arrived" from "the user
+# clicked something" on its own; comparing here, at the one place navigation is
+# resolved, means no page has to remember to report where it is — and a page added
+# later cannot forget to.
+st.session_state.arrived_on_page = st.session_state.get("current_page") != selected.url_path
+st.session_state.current_page = selected.url_path
+
+selected.run()
