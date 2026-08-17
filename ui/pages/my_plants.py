@@ -105,5 +105,7 @@ else:
                         st.session_state.selected_plant_id = summary.plant.id
                         st.switch_page("ui/pages/plant_detail.py")
 
-    if st.button("Add a plant"):
-        st.switch_page("ui/pages/diagnose.py")
+# No "Add a plant" button below the grid: adding one is what the Diagnose page in the
+# sidebar is, and a second door to it only made the grid end on a stray control. The
+# empty state keeps its call to action, where there is no grid and no reason yet to
+# know what Diagnose does.

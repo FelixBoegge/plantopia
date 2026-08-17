@@ -146,13 +146,11 @@ def test_diagnose_button_attempts_to_navigate_to_the_diagnose_page(app):
     assert "ui/pages/diagnose.py" in str(app.exception[0])
 
 
-def test_add_a_plant_button_attempts_to_navigate_to_the_diagnose_page(app, sample_plant):
-    """Same button target as the empty-state CTA, reachable once at least one plant
-    exists."""
+def test_the_grid_does_not_end_in_an_add_a_plant_button(app, sample_plant):
+    """Adding a plant is what the Diagnose page in the sidebar is. A second door to it
+    below the grid only made the page end on a stray control."""
     app.run()
-    add_button = next(b for b in app.button if b.label == "Add a plant")
-    add_button.click().run()
-    assert "ui/pages/diagnose.py" in str(app.exception[0])
+    assert not any(b.label == "Add a plant" for b in app.button)
 
 
 def test_the_card_that_overflows_a_row_starts_a_new_one(app, db, now):
