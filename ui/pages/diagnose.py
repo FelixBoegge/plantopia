@@ -34,67 +34,27 @@ def _reset() -> None:
     """Send the wizard back to the upload stage for a brand-new plant."""
     _rotate_thread()
     st.session_state.stage = "upload"
-    for key in ("questions", "species", "result", "species_correction", "named_as"):
+    for key in ("questions", "species", "result"):
         st.session_state.pop(key, None)
 
 
-def _suggested_name() -> str | None:
-    """What to call this plant, taken from the identification — or ``None`` when no
-    name is the honest answer.
+def _name_plant(plant_id: int | None, name: str) -> None:
+    """Give the newly created plant the name chosen at the questions step.
 
-    A species the owner corrected outranks the model's guess: if they say it is a
-    rosemary, it is a rosemary. Below ``_CONFIDENT_SPECIES`` nothing is suggested at
-    all — the questions step hedged about the guess, and naming the plant after a
-    hedge launders that uncertainty into a label the grid then shows as fact.
+    A rename after the fact, rather than a name threaded through the service and the
+    graph: ``persist`` creates the plant from the placeholder, and its label is the
+    only thing about it that needs to change.
+
+    A failure here is logged, not raised. The diagnosis is committed by this point,
+    and throwing away a result the owner waited and paid for — over a label they can
+    fix later — would be a poor trade.
     """
-    correction = st.session_state.get("species_correction")
-    if correction:
-        return correction
-    species = st.session_state.get("species")
-    if species is None or species.confidence < _CONFIDENT_SPECIES:
-        return None
-    return species.common_name
-
-
-def _render_naming(plant_id: int | None) -> None:
-    """Offer the identified species as this plant's name, for the owner to confirm.
-
-    This is the only place a plant gets named: intake no longer asks, because
-    identification is the agent's job and a name typed before it has happened is a
-    guess made without the answer. Naming waits until after the diagnosis rather
-    than sitting inside the wizard because the species is only settled here — a
-    correction typed at the questions step has been applied by now.
-
-    The field is always offered, even when nothing confident came back. With intake
-    no longer asking, skipping it for an unidentified plant would leave that plant
-    stuck as "My plant" with nowhere to rename it.
-    """
-    if plant_id is None:
+    if plant_id is None or not name:
         return
-
-    if named := st.session_state.get("named_as"):
-        st.success(f"Saved as **{named}**.")
-        return
-
-    suggestion = _suggested_name()
-    st.subheader("Name this plant")
-    if suggestion is None:
-        st.write("I could not put a confident name to this one. What would you like to call it?")
-    else:
-        st.write(f"I think this is **{suggestion}**. Call it something else if you prefer.")
-
-    with st.form("name_plant"):
-        chosen = st.text_input("Call it", value=suggestion or _DEFAULT_PLANT_NAME)
-        saved = st.form_submit_button("Save name")
-
-    if saved:
-        try:
-            bootstrap.get_plant_service().rename_plant(plant_id, name=chosen)
-        except ValueError as exc:
-            st.error(str(exc))
-        else:
-            st.session_state.named_as = chosen.strip()
-            st.rerun()
+    try:
+        bootstrap.get_plant_service().rename_plant(plant_id, name=name)
+    except Exception:  # noqa: BLE001 — see the docstring: never lose a diagnosis
+        logger.exception("could not name plant %s %r", plant_id, name)
 
 
 # Both of the other places that needed a fresh thread id used to inline
@@ -164,13 +124,19 @@ elif st.session_state.stage == "questions":
             else "I am not certain"
         )
         st.write(f"{confidence_note} this is **{species.common_name}**.")
-        correction = st.text_input(
-            "If that's wrong, tell me what it actually is",
-            placeholder=species.common_name,
-            help="You know your plant better than a photo does — I'll trust your answer.",
+        chosen_name = st.text_input(
+            "What should I call this plant?",
+            value=species.common_name,
+            help=(
+                "Prefilled with what I think it is. Change it if I have it wrong, or to "
+                "whatever you call this plant — this is the name it gets in My Plants."
+            ),
         )
     else:
-        correction = st.text_input("What kind of plant is this? (optional)")
+        chosen_name = st.text_input(
+            "What kind of plant is this? (optional)",
+            help="Whatever you put here is the name it gets in My Plants.",
+        )
 
     st.write(
         "A photo cannot show me how you care for this plant, and that is usually what "
@@ -192,15 +158,18 @@ elif st.session_state.stage == "questions":
         submitted = st.form_submit_button("Get my diagnosis", type="primary")
 
     if submitted:
-        # The correction outranks the guess when naming the plant later: if the owner
-        # says it is a rosemary, it is a rosemary.
-        st.session_state.species_correction = correction or None
+        chosen_name = chosen_name.strip()
+        # Only text that differs from the guess is a correction. Sending the prefilled
+        # value back would restate the same species at confidence 1.0 with its
+        # scientific name dropped (DiagnosisService.answer) — turning a hedge into a
+        # certainty purely because the owner left the field alone.
+        guess = species.common_name if species is not None else None
         try:
             with st.spinner("Working through the possibilities…"):
                 result = service.answer(
                     answers,
                     thread_id=st.session_state.thread_id,
-                    species_override=correction or None,
+                    species_override=chosen_name if chosen_name != guess else None,
                 )
         except Exception:
             logger.exception("service.answer failed for thread %s", st.session_state.thread_id)
@@ -210,6 +179,7 @@ elif st.session_state.stage == "questions":
                 "a fresh diagnosis."
             )
         else:
+            _name_plant(result.plant_id, chosen_name)
             st.session_state.result = result
             st.session_state.stage = "result"
             st.rerun()
@@ -251,6 +221,5 @@ elif st.session_state.stage == "result":
                 st.caption("Non-fatal issues: " + "; ".join(result.errors))
 
         render_cost_badge(result.token_usage, result.cost_usd)
-        _render_naming(result.plant_id)
 
     st.button("Diagnose another plant", on_click=_reset)

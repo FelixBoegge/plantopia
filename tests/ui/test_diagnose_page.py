@@ -294,8 +294,8 @@ def _plant_service(monkeypatch, db, now):
     """A real PlantService on the test database, standing in for the cached one.
 
     Left unmocked, ``bootstrap.get_plant_service()`` returns an ``st.cache_resource``
-    service holding a connection to the actual project database file — clicking
-    "Save name" in a test would rename a row in production data.
+    service holding a connection to the actual project database file — finishing a
+    diagnosis in a test would then rename a row in production data.
     """
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.feedback import FeedbackRepository
@@ -316,117 +316,108 @@ def _plant_service(monkeypatch, db, now):
     return service
 
 
-def test_the_result_offers_the_identified_species_as_a_name(app):
-    """A plant left at the placeholder name is offered the identification to confirm
-    — the scripted vision model names it Basil at 0.9 confidence."""
-    app.run()
-    _finish_diagnosis(app)
-
-    assert not app.exception
-    name_field = next(t for t in app.text_input if t.label == "Call it")
-    assert name_field.value == "Basil"
-
-
-def test_saving_the_confirmed_name_renames_the_plant(app, monkeypatch, db, now):
-    service = _plant_service(monkeypatch, db, now)
-    app.run()
-    _finish_diagnosis(app)
-
-    name_field = next(t for t in app.text_input if t.label == "Call it")
-    name_field.set_value("Kitchen basil")
-    next(b for b in app.button if b.label == "Save name").click().run()
-
-    assert not app.exception
-    assert [s.plant.name for s in service.list_plants()] == ["Kitchen basil"]
-    assert any("Kitchen basil" in s.value for s in app.success)
-
-
-def test_the_naming_prompt_is_gone_once_the_name_is_saved(app, monkeypatch, db, now):
-    """Confirming is a one-time step. Leaving the form up would invite a second
-    rename of a plant the owner has already named."""
-    _plant_service(monkeypatch, db, now)
-    app.run()
-    _finish_diagnosis(app)
-    next(b for b in app.button if b.label == "Save name").click().run()
-
-    assert not any(t.label == "Call it" for t in app.text_input)
+_NAME_FIELD = "What should I call this plant?"
 
 
 def test_intake_does_not_ask_for_a_name(app):
     """Identification is the agent's job. A name typed before it has happened is a
-    guess made without the answer, so the question moved to after the diagnosis."""
+    guess made without the answer, so the question moved past identification."""
     app.run()
 
     assert not any(t.label == "What do you call this plant?" for t in app.text_input)
 
 
-def test_a_corrected_species_is_what_gets_suggested(app):
-    """The owner's correction outranks the model's guess: if they say it is a
-    rosemary, the name offered is Rosemary and not Basil."""
+def test_the_name_field_is_prefilled_with_the_identification(app):
+    """Prefilled, not a placeholder hint: the agent has made its suggestion, and
+    accepting it should cost nothing. The scripted vision model says Basil."""
     app.run()
     _submit_intake(app)
 
-    correction = next(
-        t for t in app.text_input if t.label == "If that's wrong, tell me what it actually is"
-    )
-    correction.set_value("Rosemary")
-    answer = next(t for t in app.text_input if t.label == "How much light?")
-    answer.set_value("A few hours of morning sun")
+    assert next(t for t in app.text_input if t.label == _NAME_FIELD).value == "Basil"
+
+
+def test_accepting_the_suggestion_names_the_plant(app, monkeypatch, db, now):
+    service = _plant_service(monkeypatch, db, now)
+    app.run()
+    _finish_diagnosis(app)
+
+    assert not app.exception
+    assert [s.plant.name for s in service.list_plants()] == ["Basil"]
+
+
+def test_a_name_typed_over_the_suggestion_is_the_one_kept(app, monkeypatch, db, now):
+    service = _plant_service(monkeypatch, db, now)
+    app.run()
+    _submit_intake(app)
+
+    next(t for t in app.text_input if t.label == _NAME_FIELD).set_value("Kitchen basil")
+    next(t for t in app.text_input if t.label == "How much light?").set_value("Morning sun")
     next(b for b in app.button if b.label == "Get my diagnosis").click().run()
 
-    name_field = next(t for t in app.text_input if t.label == "Call it")
-    assert name_field.value == "Rosemary"
+    assert not app.exception
+    assert [s.plant.name for s in service.list_plants()] == ["Kitchen basil"]
 
 
-def test_an_unidentified_plant_is_still_offered_a_name(
-    monkeypatch, make_deps, tmp_path, pipeline_models
-):
-    """Nothing confident came back, so there is no suggestion to prefill — but the
-    field still has to appear. Intake no longer asks for a name, so skipping the
-    prompt here would strand the plant as "My plant" with nowhere to rename it.
-    """
-    from langgraph.checkpoint.memory import MemorySaver
-
-    from agent.diagnosis_graph import build_diagnosis_graph
-    from agent.schemas import (
-        Severity,
-        SpeciesGuess,
-        Symptom,
-        SymptomPosition,
-        SymptomSet,
-    )
-    from services.diagnosis_service import DiagnosisService
-    from tests.fakes.chat_models import ScriptedStructuredModel
-
-    gate, _, chat = pipeline_models
-    # Same script as the shared fixture's vision model, but hedging on the species:
-    # 0.4 is below the confidence at which the page states a guess plainly.
-    vision = ScriptedStructuredModel(
-        [
-            SpeciesGuess(common_name="Basil", scientific_name=None, confidence=0.4),
-            SymptomSet(
-                symptoms=[
-                    Symptom(
-                        description="Yellowing",
-                        position=SymptomPosition.LOWER_LEAVES,
-                        severity=Severity.ACT_THIS_WEEK,
-                    )
-                ],
-                soil_condition="wet",
-                overall_vigor="declining",
-            ),
-        ]
-    )
-    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
-    service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
-    monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
-
-    app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
+def test_the_result_has_no_separate_naming_section(app, monkeypatch, db, now):
+    """Naming happens at the questions step now. A second prompt at the end would ask
+    the owner to name a plant they have already named."""
+    _plant_service(monkeypatch, db, now)
     app.run()
     _finish_diagnosis(app)
 
     assert app.session_state["stage"] == "result"
-    name_field = next(t for t in app.text_input if t.label == "Call it")
-    assert name_field.value == "My plant", "no confident guess to prefill, so the placeholder"
+    assert not any("Name this plant" in s.value for s in app.subheader)
+
+
+def test_an_untouched_field_is_not_sent_as_a_species_correction(app, monkeypatch, db, now):
+    """``DiagnosisService.answer`` treats an override as certain: it rewrites the
+    species at confidence 1.0 and drops the scientific name. Prefilling the field
+    must not turn a hedged guess into a certainty just because the owner left it
+    alone, so only text that differs from the guess counts as a correction.
+    """
+    _plant_service(monkeypatch, db, now)
+    app.run()
+    _submit_intake(app)
+
+    import ui.bootstrap as bootstrap_module
+
+    seen = {}
+    service = bootstrap_module.get_service()
+    original = service.answer
+
+    def _spy(*args, **kwargs):
+        seen["species_override"] = kwargs.get("species_override")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(service, "answer", _spy)
+
+    next(t for t in app.text_input if t.label == "How much light?").set_value("Morning sun")
+    next(b for b in app.button if b.label == "Get my diagnosis").click().run()
+
+    assert seen["species_override"] is None
+
+
+def test_a_changed_name_is_still_sent_as_a_species_correction(app, monkeypatch, db, now):
+    """The other half of the rule above: the owner knows their plant better than a
+    photograph does, so a name they typed themselves still reaches the diagnosis."""
+    _plant_service(monkeypatch, db, now)
+    app.run()
+    _submit_intake(app)
+
+    import ui.bootstrap as bootstrap_module
+
+    seen = {}
+    service = bootstrap_module.get_service()
+    original = service.answer
+
+    def _spy(*args, **kwargs):
+        seen["species_override"] = kwargs.get("species_override")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(service, "answer", _spy)
+
+    next(t for t in app.text_input if t.label == _NAME_FIELD).set_value("Rosemary")
+    next(t for t in app.text_input if t.label == "How much light?").set_value("Morning sun")
+    next(b for b in app.button if b.label == "Get my diagnosis").click().run()
+
+    assert seen["species_override"] == "Rosemary"
