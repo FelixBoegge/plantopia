@@ -38,6 +38,28 @@ def _reset() -> None:
         st.session_state.pop(key, None)
 
 
+def _needs_reset() -> bool:
+    """Whether this rerun should start the wizard over.
+
+    Two cases. The first visit of a session has nothing to resume. And arriving on
+    the page with a *finished* diagnosis on screen starts the next one clean, rather
+    than opening on the last one's result with a button at the foot of it as the only
+    way forward.
+
+    A wizard still in flight is deliberately left where it was: its photos have
+    already been analysed and paid for, and clicking the Diagnose tab is how the
+    owner comes back to it.
+
+    ``arrived_on_page`` is set in ``app.py``, where navigation is resolved, and is
+    true only on the first rerun after a move — clicking around inside the wizard
+    does not count as arriving, or submitting the intake form would wipe the state
+    that submission just produced.
+    """
+    if "thread_id" not in st.session_state:
+        return True
+    return bool(st.session_state.get("arrived_on_page")) and st.session_state.stage == "result"
+
+
 def _name_plant(plant_id: int | None, name: str) -> None:
     """Give the newly created plant the name chosen at the questions step.
 
@@ -61,13 +83,7 @@ def _name_plant(plant_id: int | None, name: str) -> None:
 # ``uuid.uuid4().hex`` themselves; they call _rotate_thread() now, so the rotation
 # rule lives in exactly one place.
 #
-# Arriving on this page always starts a new diagnosis. Without the reset, a wizard
-# left at its result — or halfway through its questions — was still sitting there on
-# the way back from My Plants, and the way to a fresh start was a button at the foot
-# of someone else's diagnosis. ``arrived_on_page`` is set in app.py, where navigation
-# is resolved: it is true only on the first rerun after a move, so clicking around
-# within the wizard does not wipe it.
-if "thread_id" not in st.session_state or st.session_state.get("arrived_on_page"):
+if _needs_reset():
     _reset()
 
 service = bootstrap.get_service()

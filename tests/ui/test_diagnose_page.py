@@ -423,8 +423,8 @@ def test_a_changed_name_is_still_sent_as_a_species_correction(app, monkeypatch, 
     assert seen["species_override"] == "Rosemary"
 
 
-def test_arriving_on_the_page_starts_a_fresh_diagnosis(app, monkeypatch, db, now):
-    """Navigating here always begins a new diagnosis.
+def test_arriving_after_a_finished_diagnosis_starts_a_fresh_one(app, monkeypatch, db, now):
+    """Coming back to a completed diagnosis begins a new one.
 
     ``app.py`` sets ``arrived_on_page`` on the first rerun after a move, which is the
     only signal a page has for "the user just got here" as opposed to "the user
@@ -447,6 +447,25 @@ def test_arriving_on_the_page_starts_a_fresh_diagnosis(app, monkeypatch, db, now
     assert app.session_state["thread_id"] != finished_thread, (
         "a new diagnosis must not resume the finished run's checkpoint"
     )
+
+
+def test_returning_to_a_wizard_in_flight_resumes_it(app):
+    """Only a finished diagnosis is cleared. A run paused at its questions has already
+    had its photos analysed and paid for, and clicking the Diagnose tab is how the
+    owner comes back to it — restarting there would throw away work they were told
+    was in progress.
+    """
+    app.run()
+    _submit_intake(app)
+    assert app.session_state["stage"] == "questions"
+    running_thread = app.session_state["thread_id"]
+
+    app.session_state["arrived_on_page"] = True
+    app.run()
+
+    assert app.session_state["stage"] == "questions"
+    assert app.session_state["thread_id"] == running_thread
+    assert any(t.label == "How much light?" for t in app.text_input)
 
 
 def test_clicking_within_the_wizard_does_not_reset_it(app):
