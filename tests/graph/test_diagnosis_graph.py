@@ -186,3 +186,48 @@ class TestOrdering:
         graph.invoke(_initial(sample_images, location_kind="indoor"), config)
         graph.invoke(Command(resume={"watering": "weekly"}), config)
         assert calls == []
+
+
+class TestStudioEntryPoint:
+    """The graph as the LangGraph dev server behind Studio builds it.
+
+    Studio's value is that it draws the graph that actually runs, which only holds if
+    both are assembled by the same builder. These cover the one difference between the
+    two callers — the API server attaches its own persistence, so it asks for a graph
+    with no checkpointer fitted — and pin the topology the diagram is drawn from.
+    """
+
+    def test_the_graph_compiles_without_a_checkpointer(self, make_deps):
+        """``checkpointer=None`` is a supported call, not an accident: the API server
+        refuses a graph that arrives with one already attached."""
+        graph = build_diagnosis_graph(make_deps(), checkpointer=None)
+
+        assert graph.checkpointer is None
+
+    def test_every_node_and_router_is_reachable_in_the_drawn_graph(self, make_deps):
+        """What Studio renders comes from ``get_graph()``. Asserted here so a node
+        added to the builder but never wired to an edge — invisible in the app until
+        something fails to run — shows up as a test failure instead.
+        """
+        drawn = build_diagnosis_graph(make_deps(), checkpointer=None).get_graph()
+
+        assert set(drawn.nodes) == {
+            "__start__",
+            "__end__",
+            "guard_input",
+            "quality_check",
+            "identify_plant",
+            "assess_symptoms",
+            "select_questions",
+            "gather_context",
+            "enrich",
+            "diagnose",
+            "check_contagion",
+            "build_roadmap",
+            "persist",
+            "compare_progress",
+            "revise_roadmap",
+        }
+        # Every node bar START must be someone's target, or it can never run.
+        targets = {edge.target for edge in drawn.edges}
+        assert set(drawn.nodes) - {"__start__"} <= targets

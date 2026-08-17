@@ -1,0 +1,134 @@
+"""Build the real dependencies, outside any UI framework.
+
+Lifted out of ``ui/bootstrap.py``, whose accessors are ``@st.cache_resource``
+functions and so only callable from a Streamlit script run. A second entry point
+needed the same objects — the LangGraph dev server behind Studio, which builds the
+graph itself in a plain Python process — and the one thing worse than wiring in an
+awkward place is the same wiring in two places, quietly drifting until Studio shows a
+graph the app does not run.
+
+Nothing here caches. Callers decide that: ``ui/bootstrap.py`` wraps these in
+``st.cache_resource``, and the dev server builds once at startup.
+"""
+
+import logging
+import sqlite3
+from collections.abc import Callable
+from datetime import UTC, datetime
+
+from agent.deps import Deps
+from core.config import Settings, get_settings
+from core.embeddings import ImageEmbedder
+from core.llm import (
+    build_embeddings,
+    build_gate_model,
+    build_reasoning_model,
+    build_vision_model,
+)
+from data.db import apply_schema, connect
+from data.repositories.diagnoses import DiagnosisRepository
+from data.repositories.observations import ObservationRepository
+from data.repositories.plants import PlantRepository
+from data.repositories.profile import ProfileRepository
+from data.repositories.roadmap import RoadmapRepository
+from knowledge.ingest import load_corpus
+from knowledge.retriever import ChromaRetriever, build_vectorstore
+from services.profile_service import ProfileService
+from tools.care_profiles import lookup_plant_care_profile
+from tools.weather import get_local_weather
+from tools.web_search import web_search_plant_info
+
+logger = logging.getLogger(__name__)
+
+
+def now_utc() -> datetime:
+    """The clock the whole application shares, injected rather than called inline."""
+    return datetime.now(tz=UTC)
+
+
+def open_database(settings: Settings | None = None) -> sqlite3.Connection:
+    """A connection to the project database, with the schema applied.
+
+    Each caller opens its own, as the bootstrap accessors always have:
+    ``data.db.transaction``'s write lock is module-level rather than per-connection,
+    so writes through different connections still serialise against each other.
+    """
+    settings = settings or get_settings()
+    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(settings.db_path)
+    apply_schema(conn)
+    return conn
+
+
+def build_profile_service(settings: Settings | None = None) -> ProfileService:
+    """The learned-profile service, on its own connection."""
+    settings = settings or get_settings()
+    return ProfileService(
+        repo=ProfileRepository(open_database(settings)),
+        gate_model=build_gate_model(),
+        now=now_utc,
+    )
+
+
+def build_deps(*, profile_facts: Callable[[], str], settings: Settings | None = None) -> Deps:
+    """Everything the graph's nodes need from the outside world.
+
+    Args:
+        profile_facts: Renders the owner's learned profile for injection into
+            prompts. Passed in rather than built here because the profile service is
+            also a UI-facing object with its own lifetime, and ``Deps`` deliberately
+            declares no default for it (see ``agent/deps.py``).
+        settings: Overridable for tests and alternative entry points.
+    """
+    settings = settings or get_settings()
+    conn = open_database(settings)
+
+    # Embeddings go through OpenRouter's /embeddings endpoint, same key as the chat
+    # models. The corpus is small — roughly 300 chunks — so the whole collection
+    # embeds for a fraction of a cent. Every Document gets a deterministic id
+    # (doc_id::section), so re-running this on an existing persist_directory is a
+    # no-op upsert rather than a re-embed — the corpus does not grow with launches.
+    vectorstore = build_vectorstore(
+        chunks=load_corpus(settings.corpus_path),
+        embeddings=build_embeddings(),
+        persist_directory=settings.chroma_path,
+    )
+
+    # The image embedder shares the collection's vector space, which is what makes
+    # cross-modal retrieval work. If you change embedding_model, delete the Chroma
+    # directory and re-index — vectors from two different models are not comparable.
+    #
+    # Wired only when the configured embedding model actually accepts images. Passing
+    # it unconditionally would cost one doomed HTTP call per uploaded image on every
+    # diagnosis; passing None disables the path cleanly in ChromaRetriever.
+    image_embedder = (
+        ImageEmbedder(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            model=settings.embedding_model,
+        )
+        if settings.multimodal_embeddings
+        else None
+    )
+    if image_embedder is None:
+        logger.info(
+            "cross-modal image retrieval disabled (multimodal_embeddings=False); "
+            "diagnosis will use the text retrieval path only"
+        )
+
+    return Deps(
+        settings=settings,
+        gate_model=build_gate_model(),
+        vision_model=build_vision_model(),
+        chat_model=build_reasoning_model(),
+        retriever=ChromaRetriever(vectorstore, image_embedder),
+        plants=PlantRepository(conn),
+        observations=ObservationRepository(conn),
+        diagnoses=DiagnosisRepository(conn),
+        roadmap=RoadmapRepository(conn),
+        weather=get_local_weather,
+        web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
+        care_profile=lookup_plant_care_profile,
+        profile_facts=profile_facts,
+        now=now_utc,
+    )

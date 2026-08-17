@@ -62,13 +62,17 @@ def route_after_verdict(state: DiagnosisState) -> str:
     return "escalate"
 
 
-def build_diagnosis_graph(deps: Deps, checkpointer: BaseCheckpointSaver):
+def build_diagnosis_graph(deps: Deps, checkpointer: BaseCheckpointSaver | None):
     """Build and compile the diagnosis pipeline.
 
     Args:
         deps: Everything the nodes need from the outside world.
-        checkpointer: State persistence. Required — the graph interrupts, and without
-            a checkpointer there is nothing to resume from.
+        checkpointer: State persistence. Every caller that intends to *run* this graph
+            must pass one — the graph interrupts for the clarifying questions, and
+            without a checkpointer there is nothing to resume from. ``None`` is for the
+            LangGraph API server behind Studio (``agent/studio.py``), which attaches
+            its own persistence and refuses a graph that arrives with one already
+            fitted.
     """
     graph = StateGraph(DiagnosisState)
 

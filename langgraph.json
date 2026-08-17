@@ -1,0 +1,9 @@
+{
+  "python_version": "3.12",
+  "dependencies": ["."],
+  "graphs": {
+    "diagnosis": "./agent/studio.py:diagnosis_graph",
+    "chat": "./agent/studio.py:chat_graph"
+  },
+  "env": ".env"
+}

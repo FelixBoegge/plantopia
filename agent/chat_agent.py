@@ -75,17 +75,19 @@ def build_chat_system_prompt(deps: Deps, plant_id: int) -> str:
 
 
 def make_chat_agent(
-    deps: Deps, plant_id: int, checkpointer: BaseCheckpointSaver
+    deps: Deps, plant_id: int, checkpointer: BaseCheckpointSaver | None
 ) -> tuple[CompiledStateGraph, dict[str, str]]:
     """Build a ReAct agent scoped to one plant.
 
     Args:
         deps: Everything the tools need from the outside world.
         plant_id: The plant this conversation is about.
-        checkpointer: Where the ReAct loop's own message state lives. Required, not
-            optional: a graph compiled without one silently ignores ``thread_id``,
-            so every turn would arrive as turn one and the agent would remember
-            nothing said earlier in the same conversation (design spec §5).
+        checkpointer: Where the ReAct loop's own message state lives. Every caller that
+            serves a conversation must pass one: a graph compiled without one silently
+            ignores ``thread_id``, so every turn would arrive as turn one and the agent
+            would remember nothing said earlier in the same conversation (design spec
+            §5). ``None`` is for the LangGraph API server behind Studio
+            (``agent/studio.py``), which brings its own persistence.
 
     Returns:
         An ``(agent, escalation)`` pair. ``escalation`` is a dict that
