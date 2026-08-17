@@ -73,10 +73,35 @@ def _ragas_metric(value: float | None, counts: dict | None) -> str:
     return f"{pct} ({scored} of {total} scored)"
 
 
+def _scored_note(counts: dict | None) -> str | None:
+    """The partial-scoring disclosure as tooltip text, or ``None`` when complete.
+
+    ``st.metric`` renders its value in a large type size that truncates, so the
+    "(n of m scored)" suffix ``_ragas_metric`` appends — fine in a table cell —
+    is cut off mid-phrase in a metric tile. The disclosure moves to ``help`` so
+    the number stays legible without the caveat being dropped: a partially
+    scored mean must never read as a complete one (spec §5).
+    """
+    if not counts:
+        return None
+    scored, total = counts.get("scored", 0), counts.get("total", 0)
+    if total == 0 or scored == total:
+        return None
+    return (
+        f"Averaged over {scored} of {total} cases — the remaining judge calls failed "
+        "(M20). Treat this figure as partial, and do not compare it across runs, "
+        "which score overlapping but different subsets."
+    )
+
+
 left, middle, right = st.columns(3)
 left.metric("Top-1 accuracy", _pct(accuracy["top1"]))
 middle.metric("Top-3 accuracy", _pct(accuracy["top3"]))
-right.metric("Faithfulness", _ragas_metric(ragas["faithfulness"], ragas_counts.get("faithfulness")))
+right.metric(
+    "Faithfulness",
+    _pct(ragas["faithfulness"]),
+    help=_scored_note(ragas_counts.get("faithfulness")),
+)
 
 st.subheader("Retrieval quality")
 st.dataframe(

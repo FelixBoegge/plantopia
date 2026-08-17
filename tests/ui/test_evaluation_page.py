@@ -92,7 +92,13 @@ def test_the_vision_caveat_is_shown(tmp_path, monkeypatch):
 def test_partial_ragas_scoring_is_disclosed(tmp_path, monkeypatch):
     """``eval/report.py`` already renders "(n of m scored)" for a metric whose cells
     partly failed; the in-app view must disclose the same thing rather than showing
-    a bare percentage that reads as complete."""
+    a bare percentage that reads as complete.
+
+    The disclosure lives in the metric's tooltip rather than its value: ``st.metric``
+    renders the value in a large type size that truncates, so a suffix legible in a
+    markdown table is cut off mid-phrase in a tile. The value therefore stays a bare
+    percentage and ``help`` carries the caveat.
+    """
     from streamlit.testing.v1 import AppTest
 
     payload = _payload()
@@ -105,7 +111,8 @@ def test_partial_ragas_scoring_is_disclosed(tmp_path, monkeypatch):
 
     assert not app.exception
     faithfulness = next(m for m in app.metric if m.label == "Faithfulness")
-    assert "5 of 8 scored" in faithfulness.value
+    assert faithfulness.value == "90.0%", "the tile itself must stay a clean percentage"
+    assert "5 of 8" in (faithfulness.help or ""), "the caveat must survive, in the tooltip"
 
 
 def test_a_fully_scored_ragas_metric_has_no_disclosure(tmp_path, monkeypatch):
