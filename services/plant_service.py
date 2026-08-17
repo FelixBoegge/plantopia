@@ -123,6 +123,18 @@ class PlantService:
             if step.diagnosis_id == latest_diagnosis.id
         ]
 
+    def rename_plant(self, plant_id: int, *, name: str) -> None:
+        """Give a plant the name its owner confirmed after identification.
+
+        Blank input is rejected here rather than in the page: a plant with an empty
+        name would render as an unlabelled card with no way back to fix it.
+        """
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValueError("A plant needs a name.")
+        with transaction(self._plants.connection):
+            self._plants.rename(plant_id, name=cleaned)
+
     def mark_roadmap_step(self, step_id: int, *, status: StepStatus) -> None:
         """Tick, skip, or reopen a roadmap step."""
         with transaction(self._roadmap.connection):

@@ -280,3 +280,153 @@ def test_thread_id_rotates_after_a_retake(monkeypatch, make_deps, tmp_path):
     second_thread = app.session_state["thread_id"]
 
     assert first_thread != second_thread
+
+
+def _finish_diagnosis(app) -> None:
+    """Run the wizard from intake through to the result stage."""
+    _submit_intake(app)
+    answer = next(t for t in app.text_input if t.label == "How much light?")
+    answer.set_value("A few hours of morning sun")
+    next(b for b in app.button if b.label == "Get my diagnosis").click().run()
+
+
+def _plant_service(monkeypatch, db, now):
+    """A real PlantService on the test database, standing in for the cached one.
+
+    Left unmocked, ``bootstrap.get_plant_service()`` returns an ``st.cache_resource``
+    service holding a connection to the actual project database file — clicking
+    "Save name" in a test would rename a row in production data.
+    """
+    from data.repositories.diagnoses import DiagnosisRepository
+    from data.repositories.feedback import FeedbackRepository
+    from data.repositories.observations import ObservationRepository
+    from data.repositories.plants import PlantRepository
+    from data.repositories.roadmap import RoadmapRepository
+    from services.plant_service import PlantService
+
+    service = PlantService(
+        plants=PlantRepository(db),
+        observations=ObservationRepository(db),
+        diagnoses=DiagnosisRepository(db),
+        roadmap=RoadmapRepository(db),
+        feedback=FeedbackRepository(db),
+        now=now,
+    )
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: service)
+    return service
+
+
+def test_the_result_offers_the_identified_species_as_a_name(app):
+    """A plant left at the placeholder name is offered the identification to confirm
+    — the scripted vision model names it Basil at 0.9 confidence."""
+    app.run()
+    _finish_diagnosis(app)
+
+    assert not app.exception
+    name_field = next(t for t in app.text_input if t.label == "Call it")
+    assert name_field.value == "Basil"
+
+
+def test_saving_the_confirmed_name_renames_the_plant(app, monkeypatch, db, now):
+    service = _plant_service(monkeypatch, db, now)
+    app.run()
+    _finish_diagnosis(app)
+
+    name_field = next(t for t in app.text_input if t.label == "Call it")
+    name_field.set_value("Kitchen basil")
+    next(b for b in app.button if b.label == "Save name").click().run()
+
+    assert not app.exception
+    assert [s.plant.name for s in service.list_plants()] == ["Kitchen basil"]
+    assert any("Kitchen basil" in s.value for s in app.success)
+
+
+def test_the_naming_prompt_is_gone_once_the_name_is_saved(app, monkeypatch, db, now):
+    """Confirming is a one-time step. Leaving the form up would invite a second
+    rename of a plant the owner has already named."""
+    _plant_service(monkeypatch, db, now)
+    app.run()
+    _finish_diagnosis(app)
+    next(b for b in app.button if b.label == "Save name").click().run()
+
+    assert not any(t.label == "Call it" for t in app.text_input)
+
+
+def test_intake_does_not_ask_for_a_name(app):
+    """Identification is the agent's job. A name typed before it has happened is a
+    guess made without the answer, so the question moved to after the diagnosis."""
+    app.run()
+
+    assert not any(t.label == "What do you call this plant?" for t in app.text_input)
+
+
+def test_a_corrected_species_is_what_gets_suggested(app):
+    """The owner's correction outranks the model's guess: if they say it is a
+    rosemary, the name offered is Rosemary and not Basil."""
+    app.run()
+    _submit_intake(app)
+
+    correction = next(
+        t for t in app.text_input if t.label == "If that's wrong, tell me what it actually is"
+    )
+    correction.set_value("Rosemary")
+    answer = next(t for t in app.text_input if t.label == "How much light?")
+    answer.set_value("A few hours of morning sun")
+    next(b for b in app.button if b.label == "Get my diagnosis").click().run()
+
+    name_field = next(t for t in app.text_input if t.label == "Call it")
+    assert name_field.value == "Rosemary"
+
+
+def test_an_unidentified_plant_is_still_offered_a_name(
+    monkeypatch, make_deps, tmp_path, pipeline_models
+):
+    """Nothing confident came back, so there is no suggestion to prefill — but the
+    field still has to appear. Intake no longer asks for a name, so skipping the
+    prompt here would strand the plant as "My plant" with nowhere to rename it.
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.diagnosis_graph import build_diagnosis_graph
+    from agent.schemas import (
+        Severity,
+        SpeciesGuess,
+        Symptom,
+        SymptomPosition,
+        SymptomSet,
+    )
+    from services.diagnosis_service import DiagnosisService
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    gate, _, chat = pipeline_models
+    # Same script as the shared fixture's vision model, but hedging on the species:
+    # 0.4 is below the confidence at which the page states a guess plainly.
+    vision = ScriptedStructuredModel(
+        [
+            SpeciesGuess(common_name="Basil", scientific_name=None, confidence=0.4),
+            SymptomSet(
+                symptoms=[
+                    Symptom(
+                        description="Yellowing",
+                        position=SymptomPosition.LOWER_LEAVES,
+                        severity=Severity.ACT_THIS_WEEK,
+                    )
+                ],
+                soil_condition="wet",
+                overall_vigor="declining",
+            ),
+        ]
+    )
+    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
+    service = DiagnosisService(
+        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
+    )
+    monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
+
+    app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
+    app.run()
+    _finish_diagnosis(app)
+
+    assert app.session_state["stage"] == "result"
+    name_field = next(t for t in app.text_input if t.label == "Call it")
+    assert name_field.value == "My plant", "no confident guess to prefill, so the placeholder"

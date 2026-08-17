@@ -305,3 +305,41 @@ def test_mark_roadmap_step_persists(db, now, sample_plant):
         s for s in service.get_plant_detail(sample_plant).roadmap_steps if s.id == step.id
     )
     assert updated.status == "done"
+
+
+def test_rename_plant_persists(db, now, sample_plant):
+    """The name confirmed after identification replaces the placeholder from intake."""
+    service = _service(db, now)
+    service.rename_plant(sample_plant, name="Kitchen basil")
+    assert service.get_plant_detail(sample_plant).plant.name == "Kitchen basil"
+
+
+def test_rename_plant_trims_surrounding_whitespace(db, now, sample_plant):
+    service = _service(db, now)
+    service.rename_plant(sample_plant, name="  Kitchen basil  ")
+    assert service.get_plant_detail(sample_plant).plant.name == "Kitchen basil"
+
+
+def test_rename_plant_refuses_a_blank_name(db, now, sample_plant):
+    """A nameless plant renders as an unlabelled card with no way back to fix it, so
+    the emptiness is refused here rather than stored and worked around in the UI."""
+    import pytest
+
+    service = _service(db, now)
+    before = service.get_plant_detail(sample_plant).plant.name
+
+    with pytest.raises(ValueError):
+        service.rename_plant(sample_plant, name="   ")
+
+    assert service.get_plant_detail(sample_plant).plant.name == before
+
+
+def test_rename_plant_leaves_the_species_alone(db, now, sample_plant):
+    """The name is what the owner calls it; the species is what it is. Confirming one
+    must not overwrite the other."""
+    service = _service(db, now)
+    species = service.get_plant_detail(sample_plant).plant.species
+
+    service.rename_plant(sample_plant, name="Kitchen basil")
+
+    assert service.get_plant_detail(sample_plant).plant.species == species

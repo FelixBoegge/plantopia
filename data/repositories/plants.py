@@ -89,6 +89,15 @@ class PlantRepository:
     def delete(self, plant_id: int) -> None:
         self._conn.execute("DELETE FROM plants WHERE id = ?", (plant_id,))
 
+    def rename(self, plant_id: int, *, name: str) -> None:
+        """Give a plant a new display name.
+
+        Separate from ``update_species``: the name is what the owner calls the plant
+        and the species is what it is, and confirming one must not overwrite the
+        other.
+        """
+        self._conn.execute("UPDATE plants SET name = ? WHERE id = ?", (name, plant_id))
+
     def update_species(
         self, plant_id: int, *, species: str, species_confidence: float | None
     ) -> None:
