@@ -22,6 +22,40 @@ _CARDS_PER_ROW = 3
 # card, and the name, verdict and button are a caption to it.
 _CARD_SPLIT = (1, 1)
 
+# A bordered container has no fill parameter, so the cards would sit at the page's
+# own colour with only a border to separate them. ``st.container(key=…)`` renders an
+# ``st-key-<key>`` class — a documented styling hook, unlike Streamlit's internal
+# class names, which is why this one rule is safe where blanket CSS would not be.
+# A shade down from the sage in .streamlit/config.toml, so a card reads as a surface
+# lying on the page.
+_CARD_KEY = "plant_card_"
+_CARD_FILL = "#DFEADB"
+
+# The card's text scales with the window; Streamlit's heading and body sizes do not.
+# Moving the browser to a smaller screen narrowed the cards and their photographs
+# while the name and verdict stayed the size they were, so the text set the card's
+# height and the photo was left looking like a thumbnail inside it. clamp() ties the
+# size to viewport width between a floor and a ceiling: it stays readable on a laptop
+# and stops growing on a large monitor.
+st.markdown(
+    f"""<style>
+    [class*="st-key-{_CARD_KEY}"] {{ background-color: {_CARD_FILL}; }}
+    [class*="st-key-{_CARD_KEY}"] h4 {{
+        font-size: clamp(0.9rem, 1.05vw, 1.3rem);
+        margin: 0 0 0.2rem 0;
+        padding: 0;
+    }}
+    [class*="st-key-{_CARD_KEY}"] p {{
+        font-size: clamp(0.75rem, 0.8vw, 1rem);
+        margin-bottom: 0.15rem;
+    }}
+    [class*="st-key-{_CARD_KEY}"] button p {{
+        font-size: clamp(0.7rem, 0.75vw, 0.9rem);
+    }}
+    </style>""",
+    unsafe_allow_html=True,
+)
+
 if not summaries:
     st.write("No plants yet. Start your first diagnosis to add one.")
     if st.button("Diagnose a plant"):
@@ -41,7 +75,11 @@ else:
             # height="stretch" fills the column, and columns in one row are as tall
             # as the tallest among them — so cards match without anyone picking a
             # pixel height that a longer candidate name would then overflow.
-            with column, st.container(border=True, height="stretch"):
+            # Constructed inside the `with`, not before it: a container attaches to
+            # whichever container is active when it is created, so building it first
+            # would put the card on the page instead of in its column.
+            key = f"{_CARD_KEY}{summary.plant.id}"
+            with column, st.container(border=True, height="stretch", key=key):
                 photo, details = st.columns(_CARD_SPLIT)
                 with photo:
                     render_plant_photo(summary.plant.photo_ref, upload_dir)

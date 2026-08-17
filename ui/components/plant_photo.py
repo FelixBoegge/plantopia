@@ -20,7 +20,10 @@ from PIL import Image, ImageOps
 # Portrait cards are narrower, which is why the grid runs four across.
 _ASPECT = 3 / 4
 _WIDTH = 600
-_PLACEHOLDER_RGB = (222, 231, 222)
+# #DCE8D9, the sage one shade down from the card surface in .streamlit/config.toml.
+# The tile is drawn by Pillow, so it cannot read the theme and has to be kept in
+# step by hand; a photoless card should read as an empty surface, not a grey hole.
+_PLACEHOLDER_RGB = (220, 232, 217)
 
 
 def resolve_photo(photo_ref: str | None, upload_dir: Path) -> Path | None:
