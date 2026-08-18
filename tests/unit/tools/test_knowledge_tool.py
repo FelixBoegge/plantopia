@@ -136,3 +136,54 @@ def test_only_descriptive_sections_are_allowed_to_match(chroma_retriever):
     assert calls == [(4, list(MATCHABLE_SECTIONS))]
     ranked = [p for p in passages if p.section != DISCRIMINATING_SECTION]
     assert {p.section for p in ranked} <= set(MATCHABLE_SECTIONS)
+
+
+def test_hypothesised_documents_arrive_regardless_of_rank(chroma_retriever):
+    """The whole point of naming a disorder: rank stops mattering.
+
+    Measured on the golden set, the correct document sat at 16th, 17th and 21st of 43
+    for three nutrient cases — beyond any k a prompt can carry. A named document is one
+    lookup away.
+    """
+    queries = build_symptom_queries(_symptoms(), species=None)
+
+    passages = search_plant_knowledge(
+        chroma_retriever, queries, k=4, hypotheses=["potassium-deficiency"]
+    )
+
+    assert "potassium-deficiency" in {p.doc_id for p in passages}
+
+
+def test_a_hypothesised_document_brings_its_descriptive_sections(chroma_retriever):
+    """A named candidate must not be argued about on thinner evidence than one
+    similarity happened to find, or the differential is biased towards whatever ranked."""
+    passages = search_plant_knowledge(
+        chroma_retriever, [], k=4, hypotheses=["potassium-deficiency"]
+    )
+
+    sections = {p.section for p in passages if p.doc_id == "potassium-deficiency"}
+    assert set(MATCHABLE_SECTIONS) <= sections
+    assert DISCRIMINATING_SECTION in sections
+
+
+def test_a_hypothesis_that_similarity_also_found_is_not_duplicated(chroma_retriever):
+    queries = build_symptom_queries(_symptoms(), species=None)
+    matched = search_plant_knowledge(chroma_retriever, queries, k=4)
+    found_anyway = next(p.doc_id for p in matched)
+
+    passages = search_plant_knowledge(chroma_retriever, queries, k=4, hypotheses=[found_anyway])
+
+    keys = [(p.doc_id, p.section) for p in passages]
+    assert len(keys) == len(set(keys))
+
+
+def test_hypotheses_alone_are_enough_to_retrieve(chroma_retriever):
+    """Symptom extraction can fail while a hypothesis survives — the node is skipped in
+    that case today, but the retrieval path must not depend on queries existing."""
+    passages = search_plant_knowledge(chroma_retriever, [], k=4, hypotheses=["root-rot"])
+
+    assert {p.doc_id for p in passages} == {"root-rot"}
+
+
+def test_neither_queries_nor_hypotheses_returns_nothing(chroma_retriever):
+    assert search_plant_knowledge(chroma_retriever, [], k=4, hypotheses=[]) == []

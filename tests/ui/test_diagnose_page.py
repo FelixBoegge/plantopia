@@ -145,6 +145,7 @@ def test_healthy_result_does_not_claim_no_treatment_plan(monkeypatch, make_deps,
     from agent.diagnosis_graph import build_diagnosis_graph
     from agent.schemas import (
         Differential,
+        Hypotheses,
         ImageQuality,
         PlantCheck,
         Question,
@@ -185,6 +186,7 @@ def test_healthy_result_does_not_claim_no_treatment_plan(monkeypatch, make_deps,
             QuestionSet(
                 questions=[Question(key="light_hours", text="How much light?", kind="text")]
             ),
+            Hypotheses(doc_ids=["overwatering", "root-rot"], reasoning="scripted"),
             Differential(is_healthy=True, candidates=[], reasoning="No symptoms of concern."),
         ]
     )

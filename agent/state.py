@@ -49,6 +49,11 @@ class DiagnosisState(BaseModel):
     questions: list[Question] = Field(default_factory=list)
     answers: dict[str, str] = Field(default_factory=dict)
 
+    # Disorders the model named as worth reading about, before any retrieval ran.
+    # Kept on state rather than passed straight to enrich so the trace, and Studio,
+    # show what the agent chose to look up and the diagnosis can be read against it.
+    hypotheses: list[str] = Field(default_factory=list)
+
     # Enrichment — the two retrieval paths are kept separate on purpose. Their scores
     # are not comparable, so they must never be merged into one ranked list (§10.4).
     retrieved: list[Passage] = Field(default_factory=list)

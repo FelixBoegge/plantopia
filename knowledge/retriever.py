@@ -45,6 +45,14 @@ class Retriever(Protocol):
         """
         ...
 
+    def known_doc_ids(self) -> tuple[str, ...]:
+        """Every disorder in the corpus, sorted.
+
+        Offered so a caller can ask a model to *name* disorders and then look them up,
+        rather than only finding them by similarity — see ``agent/nodes/hypothesise.py``.
+        """
+        ...
+
     @property
     def supports_image_search(self) -> bool:
         """Whether the cross-modal path is wired at all.
@@ -109,6 +117,7 @@ class ChromaRetriever:
     def __init__(self, vectorstore: Chroma, image_embedder: ImageEmbedder | None = None) -> None:
         self._store = vectorstore
         self._image_embedder = image_embedder
+        self._doc_ids: tuple[str, ...] | None = None
 
     def search(
         self, queries: Sequence[str], k: int, *, sections: Sequence[str] | None = None
@@ -172,6 +181,17 @@ class ChromaRetriever:
             )
             for metadata, text in zip(found["metadatas"], found["documents"], strict=True)
         ]
+
+    def known_doc_ids(self) -> tuple[str, ...]:
+        """Every disorder in the corpus, sorted, read from the collection's metadata.
+
+        Cached: the corpus is fixed for the life of the process, and this is called
+        once per diagnosis to tell a model which names it is allowed to use.
+        """
+        if self._doc_ids is None:
+            found = self._store.get(include=["metadatas"])
+            self._doc_ids = tuple(sorted({m["doc_id"] for m in found["metadatas"]}))
+        return self._doc_ids
 
     @property
     def supports_image_search(self) -> bool:

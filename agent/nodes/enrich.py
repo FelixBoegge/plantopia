@@ -50,13 +50,23 @@ def make_enrich(deps: Deps) -> NodeFn:
 
 
 def _retrieve(deps: Deps, state: DiagnosisState, tools_used: list[str]) -> list:
-    """Search the curated corpus. Nothing to search on without symptoms."""
-    if state.symptoms is None:
+    """Search the curated corpus, and look up whatever ``hypothesise`` named.
+
+    Nothing to search on without symptoms — but a hypothesis is still worth fetching
+    if one somehow exists, so the two conditions are separate.
+    """
+    queries = (
+        build_symptom_queries(state.symptoms, state.species_name)
+        if state.symptoms is not None
+        else []
+    )
+    if not queries and not state.hypotheses:
         return []
 
-    queries = build_symptom_queries(state.symptoms, state.species_name)
     tools_used.append("search_plant_knowledge")
-    return search_plant_knowledge(deps.retriever, queries, k=KNOWLEDGE_RESULTS)
+    return search_plant_knowledge(
+        deps.retriever, queries, k=KNOWLEDGE_RESULTS, hypotheses=state.hypotheses
+    )
 
 
 def _retrieve_by_image(deps: Deps, state: DiagnosisState, tools_used: list[str]) -> list:

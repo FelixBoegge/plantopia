@@ -22,6 +22,7 @@ graph TD;
 	assess_symptoms(assess_symptoms)
 	select_questions(select_questions)
 	gather_context(gather_context)
+	hypothesise(hypothesise)
 	enrich(enrich)
 	diagnose(diagnose)
 	check_contagion(check_contagion)
@@ -39,10 +40,11 @@ graph TD;
 	identify_plant --> assess_symptoms;
 	assess_symptoms -. recheck .-> compare_progress;
 	assess_symptoms -. continue .-> select_questions;
-	compare_progress -. escalate .-> enrich;
+	compare_progress -. escalate .-> hypothesise;
 	compare_progress -. revise .-> revise_roadmap;
 	select_questions --> gather_context;
-	gather_context --> enrich;
+	gather_context --> hypothesise;
+	hypothesise --> enrich;
 	enrich --> diagnose;
 	diagnose --> check_contagion;
 	check_contagion --> build_roadmap;
@@ -54,11 +56,18 @@ graph TD;
 	classDef last fill:#bfb6fc
 ```
 
-Three things the picture does not say on its own:
+Four things the picture does not say on its own:
 
 - **The interrupt is at `gather_context`.** The run stops there and waits for the
   owner's answers to the clarifying questions; resuming needs a checkpointer, which is
   why every builder call that intends to *run* the graph must pass one.
+- **`hypothesise` reasons before it retrieves.** It names the disorders worth reading
+  about, from the list of ids the corpus actually holds, and `enrich` then fetches those
+  documents directly instead of hoping similarity ranks them. Measured against the
+  golden set, the correct document reached the model in 23 of 28 cases on similarity
+  alone and 28 of 28 with this step — it was sitting at rank 16, 17, 21, 24 and 35 of
+  43 in the cases that failed. Both routes into `enrich` pass through it, so a re-check
+  that escalates reads the same shortlist a first diagnosis would.
 - **Two paths reach `__end__` early.** `guard_input` rejects an upload that is not
   plant material, and `quality_check` asks for a retake. Both are refusals, not
   failures.

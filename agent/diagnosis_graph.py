@@ -14,6 +14,7 @@ from agent.deps import Deps
 from agent.nodes.context import make_gather_context, make_select_questions
 from agent.nodes.diagnose import make_diagnose
 from agent.nodes.enrich import make_enrich
+from agent.nodes.hypothesise import make_hypothesise
 from agent.nodes.identify import make_identify_plant
 from agent.nodes.intake import make_guard_input, make_quality_check
 from agent.nodes.persist import make_persist
@@ -82,6 +83,7 @@ def build_diagnosis_graph(deps: Deps, checkpointer: BaseCheckpointSaver | None):
     graph.add_node("assess_symptoms", make_assess_symptoms(deps))
     graph.add_node("select_questions", make_select_questions(deps))
     graph.add_node("gather_context", make_gather_context(deps))
+    graph.add_node("hypothesise", make_hypothesise(deps))
     graph.add_node("enrich", make_enrich(deps))
     graph.add_node("diagnose", make_diagnose(deps))
     graph.add_node("check_contagion", make_check_contagion(deps))
@@ -105,14 +107,17 @@ def build_diagnosis_graph(deps: Deps, checkpointer: BaseCheckpointSaver | None):
         route_after_symptoms,
         {"continue": "select_questions", "recheck": "compare_progress"},
     )
+    # Both routes into enrich pass through hypothesise, so a re-check that escalates
+    # into a full differential reads the same shortlist a first diagnosis would.
     graph.add_conditional_edges(
         "compare_progress",
         route_after_verdict,
-        {"revise": "revise_roadmap", "escalate": "enrich"},
+        {"revise": "revise_roadmap", "escalate": "hypothesise"},
     )
     graph.add_edge("revise_roadmap", "persist")
     graph.add_edge("select_questions", "gather_context")
-    graph.add_edge("gather_context", "enrich")
+    graph.add_edge("gather_context", "hypothesise")
+    graph.add_edge("hypothesise", "enrich")
     graph.add_edge("enrich", "diagnose")
     graph.add_edge("diagnose", "check_contagion")
     graph.add_edge("check_contagion", "build_roadmap")

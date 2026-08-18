@@ -10,6 +10,7 @@ from agent.diagnosis_graph import build_diagnosis_graph
 from agent.schemas import (
     Candidate,
     Differential,
+    Hypotheses,
     ImageQuality,
     IPMTier,
     PlantCheck,
@@ -236,6 +237,9 @@ class TestWorseningAndNewProblem:
                 ProgressVerdict(
                     verdict="worsening", reasoning="Symptoms progressed despite compliance."
                 ),
+                # A worsening verdict escalates into the full differential chain, which
+                # now runs hypothesise before enrich.
+                Hypotheses(doc_ids=["spider-mites"], reasoning="scripted"),
                 new_differential,
                 Roadmap(
                     steps=[

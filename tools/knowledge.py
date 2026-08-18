@@ -53,37 +53,48 @@ def search_plant_knowledge(
     retriever: Retriever,
     queries: Sequence[str],
     k: int = 6,
+    hypotheses: Sequence[str] = (),
 ) -> list[Passage]:
-    """Search the curated corpus, then add the shortlist's discriminating sections.
+    """Gather reference material from two directions, then add the discriminators.
 
-    Similarity search alone answers "which disorders look like this", which is the
-    wrong question once several do. A measured run retrieved the correct document for
-    every nutrient case and still got four of six wrong, because what came back was
-    the *Symptoms* section of each candidate — six descriptions of similar-looking
-    problems and nothing about how to tell them apart. Where a look-alikes section did
-    appear it belonged to a competitor, so the model read a rival's case for itself and
-    none for the truth.
+    **Similarity**, which answers "which corpus text resembles this description". It
+    finds the obvious cases and nothing else: measured against the golden set, the
+    correct document sat at rank 16, 17 and 21 of 43 for three of the six nutrient
+    cases, because the owner's words and the corpus's are not near neighbours.
 
-    Those sections cannot be left to ranking: they describe *other* disorders, so they
-    match a query about this plant's symptoms less well than the symptom sections they
-    would have to outrank. Fetching them by id once a document is in contention is the
-    only way they arrive reliably.
+    **Named hypotheses**, fetched by id. ``agent/nodes/hypothesise.py`` asks the model
+    which disorders are worth reading about, and rank stops mattering for those — a
+    document at 21st is one lookup away once something names it. Where the two agree
+    the document simply arrives once.
 
-    Returns an empty list when given no queries.
+    **Discriminating sections** for everything on the combined shortlist. This is the
+    material that decides *between* candidates, and it cannot be left to ranking: it
+    describes other disorders, so it will always match this plant's symptoms less well
+    than the symptom sections it would have to outrank.
+
+    ``k`` bounds the similarity shortlist, not the total. Hypotheses add to it, and
+    every shortlisted disorder contributes a discriminator.
+
+    Returns an empty list when given neither queries nor hypotheses.
     """
-    if not queries:
-        return []
+    matched = retriever.search(queries, k=k, sections=MATCHABLE_SECTIONS) if queries else []
 
-    shortlist = retriever.search(queries, k=k, sections=MATCHABLE_SECTIONS)
+    # Hypothesised documents get the same descriptive sections a matched document
+    # brings, so a candidate the model named is not argued about on thinner evidence
+    # than one similarity happened to find.
+    named = [doc_id for doc_id in hypotheses if doc_id not in {p.doc_id for p in matched}]
+    hypothesised = retriever.sections_for(named, MATCHABLE_SECTIONS) if named else []
+
+    shortlist = matched + hypothesised
     if not shortlist:
         return []
 
     discriminators = retriever.sections_for(
-        [passage.doc_id for passage in shortlist], [DISCRIMINATING_SECTION]
+        list(dict.fromkeys(passage.doc_id for passage in shortlist)), [DISCRIMINATING_SECTION]
     )
 
-    # Ranked material first, then the discriminators, rather than interleaved by
+    # Ranked material first, then everything fetched by id, rather than interleaved by
     # score: the fetched sections carry no meaningful score, and the ranking is what
-    # tells the reader which candidates were actually matched.
+    # tells the reader which candidates similarity actually matched.
     already = {(p.doc_id, p.section) for p in shortlist}
     return shortlist + [p for p in discriminators if (p.doc_id, p.section) not in already]

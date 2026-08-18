@@ -220,6 +220,7 @@ class TestStudioEntryPoint:
             "assess_symptoms",
             "select_questions",
             "gather_context",
+            "hypothesise",
             "enrich",
             "diagnose",
             "check_contagion",

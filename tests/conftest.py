@@ -212,6 +212,7 @@ def pipeline_models():
     from agent.schemas import (
         Candidate,
         Differential,
+        Hypotheses,
         ImageQuality,
         IPMTier,
         PlantCheck,
@@ -256,6 +257,7 @@ def pipeline_models():
             QuestionSet(
                 questions=[Question(key="light_hours", text="How much light?", kind="text")]
             ),
+            Hypotheses(doc_ids=["overwatering", "root-rot"], reasoning="scripted"),
             Differential(
                 is_healthy=False,
                 reasoning="Wet soil and lower-leaf yellowing.",

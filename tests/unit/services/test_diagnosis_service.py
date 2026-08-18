@@ -340,6 +340,7 @@ def test_start_recheck_of_a_never_identified_plant_acquires_a_species(recheck_se
     satisfied both ``identify_plant``'s idempotency guard and the router's skip — so a
     plant whose first diagnosis never identified it could never acquire a species."""
     from agent.schemas import (
+        Hypotheses,
         ImageQuality,
         IPMTier,
         PlantCheck,
@@ -386,9 +387,10 @@ def test_start_recheck_of_a_never_identified_plant_acquires_a_species(recheck_se
         ]
     )
     # No prior diagnosis exists, so compare_progress returns new_problem and the run
-    # rejoins the full chain: differential, then roadmap.
+    # rejoins the full chain: hypothesise, differential, then roadmap.
     chat = ScriptedStructuredModel(
         [
+            Hypotheses(doc_ids=["overwatering"], reasoning="scripted"),
             _differential_for_recheck(),
             Roadmap(
                 steps=[

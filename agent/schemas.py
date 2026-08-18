@@ -66,6 +66,20 @@ class SpeciesGuess(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class Hypotheses(BaseModel):
+    """Disorders worth looking up, named from the symptoms before reading the corpus.
+
+    Ids rather than free text, drawn from a list supplied in the prompt, so each one
+    is a document that can be fetched directly. The point of the step is to reach
+    documents that similarity search ranks too low to return — measured at 16th, 17th
+    and 21st of 43 for three nutrient cases — which requires naming them, not
+    describing them.
+    """
+
+    doc_ids: list[str] = Field(default_factory=list, max_length=8)
+    reasoning: str = ""
+
+
 class ImageQuality(BaseModel):
     usable: bool
     problem: str | None = None
