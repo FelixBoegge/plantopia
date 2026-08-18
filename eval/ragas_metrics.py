@@ -90,28 +90,6 @@ def _empty_scores(total: int) -> RagasScores:
     )
 
 
-def _scores_from_result(result: Any) -> RagasScores:
-    """Build ``RagasScores`` from a Ragas ``EvaluationResult``.
-
-    Counts non-NaN cells per metric column directly off the dataframe rather than
-    trusting a summary the library provides, because the dataframe is the one
-    place a swallowed per-cell failure is still visible.
-    """
-    frame = result.to_pandas()
-    total = len(frame)
-    scores: dict[str, float | None] = {}
-    counts: dict[str, dict[str, int]] = {}
-    for name in METRIC_NAMES:
-        if name not in frame.columns:
-            scores[name] = None
-            counts[name] = {"scored": 0, "total": total}
-            continue
-        column = frame[name]
-        counts[name] = {"scored": int(column.notna().sum()), "total": total}
-        scores[name] = _as_float(column.mean())
-    return RagasScores(scores=scores, counts=counts)
-
-
 def judge_llm() -> LangchainLLMWrapper:
     """The reasoning model, wrapped for Ragas's judge-LLM metrics.
 
@@ -189,6 +167,87 @@ def to_ragas_rows(runs: list[CaseRun], corpus: Sequence[Chunk] = ()) -> list[dic
     ]
 
 
+# Two workers rather than Ragas's default of sixteen, and rather than the four this
+# used to run. The cells that came back NaN were not being throttled or timed out —
+# a probe with raise_exceptions=True caught openai.APIConnectionError, connections
+# dying under sustained concurrency. Fewer of them in flight means fewer to lose.
+_MAX_WORKERS = 2
+
+# One scoring pass, then one more over whatever came back NaN. A second attempt is
+# worth making because the failures are transport-level and independent between
+# calls; a third has diminishing returns against a judge that is genuinely refusing.
+_PASSES = 2
+
+_METRICS = {
+    "context_precision": context_precision,
+    "context_recall": context_recall,
+    "faithfulness": faithfulness,
+    "answer_relevancy": answer_relevancy,
+}
+
+
+def _score_one_metric(
+    name: str,
+    rows: list[dict[str, Any]],
+    *,
+    llm: Any,
+    embeddings: Any,
+    run_config: RunConfig,
+) -> list[float | None]:
+    """Every row's score for a single metric, retrying the cells that come back NaN.
+
+    Returns one entry per row in ``rows``, ``None`` where no score was obtained.
+
+    Scoring one metric at a time, rather than handing Ragas all four at once, keeps
+    each ``evaluate`` call short and its failures its own: the previous shape put
+    roughly 280 judge calls for 28 cases into a single long-running call, where
+    connection failures accumulated across the whole run and every metric lost most
+    of its cells. Retries here are per cell, so a second pass re-submits only the
+    handful that failed rather than paying for the whole metric again.
+    """
+    scores: list[float | None] = [None] * len(rows)
+    pending = list(range(len(rows)))
+
+    for attempt in range(1, _PASSES + 1):
+        if not pending:
+            break
+        try:
+            result = evaluate(
+                EvaluationDataset.from_list([rows[index] for index in pending]),
+                metrics=[_METRICS[name]],
+                llm=llm,
+                embeddings=embeddings,
+                run_config=run_config,
+                show_progress=False,
+            )
+            column = result.to_pandas()[name]
+        except Exception as exc:  # noqa: BLE001 — a metric failure is data, not a crash
+            logger.warning("ragas %s failed on attempt %d: %s", name, attempt, exc)
+            break
+
+        still_pending = []
+        for position, row_index in enumerate(pending):
+            value = _as_float(column.iloc[position])
+            if value is None:
+                still_pending.append(row_index)
+            else:
+                scores[row_index] = value
+
+        if still_pending and attempt < _PASSES:
+            logger.info(
+                "ragas %s: %d of %d cells unscored after attempt %d, retrying those",
+                name,
+                len(still_pending),
+                len(rows),
+                attempt,
+            )
+        pending = still_pending
+
+    if pending:
+        logger.warning("ragas %s: %d of %d cells never scored", name, len(pending), len(rows))
+    return scores
+
+
 def evaluate_runs(
     runs: list[CaseRun],
     *,
@@ -199,30 +258,31 @@ def evaluate_runs(
     """Score runs with Ragas, returning ``None`` for any metric that could not run.
 
     A metric failure is recorded rather than raised: one metric erroring must not
-    discard the accuracy numbers from a run that cost real money (spec §5). The
-    returned counts let a reader tell a complete mean from one that silently
-    averaged over fewer cases than were submitted.
+    discard the accuracy numbers from a run that cost real money (spec §5). Each
+    metric is now scored independently, so one metric collapsing costs only its own
+    column rather than the whole evaluation. The returned counts let a reader tell a
+    complete mean from one that silently averaged over fewer cases than were
+    submitted.
     """
     rows = to_ragas_rows(runs, corpus)
     if not rows:
         logger.warning("no scorable rows: every run failed or retrieved nothing")
         return _empty_scores(total=0)
 
-    try:
-        result = evaluate(
-            EvaluationDataset.from_list(rows),
-            metrics=[context_precision, context_recall, faithfulness, answer_relevancy],
-            llm=llm,
-            embeddings=embeddings,
-            # OpenRouter's latency spikes exceed Ragas's 180-second default under its
-            # default 16-way concurrency, and the result is NaN cells rather than an
-            # error. Fewer workers and a longer timeout avoid that.
-            run_config=RunConfig(timeout=300, max_workers=4),
+    # 300s rather than Ragas's 180s default: OpenRouter's latency spikes exceed it.
+    run_config = RunConfig(timeout=300, max_workers=_MAX_WORKERS)
+
+    scores: dict[str, float | None] = {}
+    counts: dict[str, dict[str, int]] = {}
+    for name in METRIC_NAMES:
+        values = _score_one_metric(
+            name, rows, llm=llm, embeddings=embeddings, run_config=run_config
         )
-        return _scores_from_result(result)
-    except Exception as exc:  # noqa: BLE001 — a metric failure is data, not a crash
-        logger.warning("ragas evaluation failed: %s", exc)
-        return _empty_scores(total=len(rows))
+        scored = [value for value in values if value is not None]
+        counts[name] = {"scored": len(scored), "total": len(rows)}
+        scores[name] = sum(scored) / len(scored) if scored else None
+
+    return RagasScores(scores=scores, counts=counts)
 
 
 def _as_float(value: Any) -> float | None:

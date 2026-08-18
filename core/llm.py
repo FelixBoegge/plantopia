@@ -35,6 +35,13 @@ def build_chat_model(
         temperature=settings.default_temperature if temperature is None else temperature,
         api_key=settings.openrouter_api_key,
         base_url=settings.openrouter_base_url,
+        # The client's own retry layer, raised from its default of 2. These are
+        # transport failures rather than refusals: a probe of the Ragas judge
+        # recorded the client retrying, exhausting the budget, and raising
+        # APIConnectionError — no 429, no timeout, just a connection that died under
+        # sustained concurrency. Retrying is the whole remedy, and it costs nothing
+        # on a call that would have succeeded.
+        max_retries=settings.model_max_retries,
         default_headers={
             "HTTP-Referer": settings.app_url,
             "X-Title": settings.app_title,

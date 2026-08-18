@@ -82,6 +82,12 @@ class Settings(BaseSettings):
 
     default_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 
+    # Above the OpenAI client's default of 2. Connections to OpenRouter drop under
+    # sustained concurrency, and a probe of the Ragas judge caught the client
+    # retrying three times and then surfacing APIConnectionError — which cost that
+    # evaluation most of its cells, and would cost a real diagnosis its result.
+    model_max_retries: int = Field(default=6, ge=0, le=20)
+
 
 @lru_cache
 def get_settings() -> Settings:

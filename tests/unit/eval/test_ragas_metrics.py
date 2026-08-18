@@ -177,30 +177,111 @@ def test_a_raising_evaluate_call_returns_nulls_not_an_error(monkeypatch):
     assert all(result.counts[name] == {"scored": 0, "total": 1} for name in METRIC_NAMES)
 
 
-def test_counts_are_derived_from_non_nan_cells_per_column():
+class _FakeResult:
+    def __init__(self, frame: pd.DataFrame) -> None:
+        self._frame = frame
+
+    def to_pandas(self) -> pd.DataFrame:
+        return self._frame
+
+
+def test_counts_are_derived_from_non_nan_cells_per_metric(monkeypatch):
     """Ragas swallows individual judge-call failures and turns them into NaN rather
-    than raising, so the only way to know a metric silently averaged over fewer
-    cases is to count the NaNs in its column (spec §5)."""
-    frame = pd.DataFrame(
-        {
-            "context_precision": [0.8, 0.9, 0.7],
-            "context_recall": [0.5, float("nan"), 0.9],
-            "faithfulness": [1.0, 1.0, 1.0],
-            "answer_relevancy": [float("nan"), float("nan"), float("nan")],
-        }
+    than raising, so the only way to know a metric silently averaged over fewer cases
+    is to count the NaNs (spec §5)."""
+    columns = {
+        "context_precision": [0.8, 0.9, 0.7],
+        "context_recall": [0.5, float("nan"), 0.9],
+        "faithfulness": [1.0, 1.0, 1.0],
+        "answer_relevancy": [float("nan"), float("nan"), float("nan")],
+    }
+
+    def _fake_evaluate(dataset, metrics, **kwargs):
+        name = metrics[0].name
+        # Every attempt returns the same cells, so the NaNs never resolve.
+        values = [v for v in columns[name] if v == v] if len(dataset) < 3 else columns[name]
+        return _FakeResult(pd.DataFrame({name: values or [float("nan")] * len(dataset)}))
+
+    monkeypatch.setattr(ragas_metrics, "evaluate", _fake_evaluate)
+
+    result = evaluate_runs(
+        [_run(case_id="a"), _run(case_id="b"), _run(case_id="c")],
+        llm=object(),
+        embeddings=object(),
     )
-
-    class _FakeResult:
-        def to_pandas(self):
-            return frame
-
-    result = ragas_metrics._scores_from_result(_FakeResult())
 
     assert isinstance(result, RagasScores)
     assert result.counts["context_precision"] == {"scored": 3, "total": 3}
-    assert result.counts["context_recall"] == {"scored": 2, "total": 3}
     assert result.counts["faithfulness"] == {"scored": 3, "total": 3}
+    assert result.scores["answer_relevancy"] is None
     assert result.counts["answer_relevancy"] == {"scored": 0, "total": 3}
 
-    assert result.scores["context_recall"] == pytest.approx((0.5 + 0.9) / 2)
-    assert result.scores["answer_relevancy"] is None
+
+def test_a_cell_that_comes_back_nan_is_retried(monkeypatch):
+    """The failures are transport-level — a probe caught openai.APIConnectionError
+    under concurrency, not a refusal — so the same cell submitted again usually
+    succeeds. Only the cells that failed are re-submitted; paying for the whole
+    metric again would multiply the cost of an evaluation that already runs into
+    dollars.
+    """
+    submissions: list[tuple[str, int]] = []
+
+    def _fake_evaluate(dataset, metrics, **kwargs):
+        name = metrics[0].name
+        rows = len(dataset)
+        submissions.append((name, rows))
+        if name != "faithfulness":
+            return _FakeResult(pd.DataFrame({name: [1.0] * rows}))
+        first_attempt = sum(1 for n, _ in submissions if n == name) == 1
+        values = [0.5, float("nan")] if first_attempt else [0.9]
+        return _FakeResult(pd.DataFrame({name: values}))
+
+    monkeypatch.setattr(ragas_metrics, "evaluate", _fake_evaluate)
+
+    result = evaluate_runs(
+        [_run(case_id="a"), _run(case_id="b")], llm=object(), embeddings=object()
+    )
+
+    assert result.counts["faithfulness"] == {"scored": 2, "total": 2}
+    assert result.scores["faithfulness"] == pytest.approx((0.5 + 0.9) / 2)
+    assert ("faithfulness", 1) in submissions, "the retry must re-submit only the failed cell"
+
+
+def test_each_metric_is_scored_in_its_own_call(monkeypatch):
+    """One evaluate() call per metric, not one call carrying all four.
+
+    The previous shape put roughly 280 judge calls for 28 cases into a single
+    long-running call, where connection failures accumulated across the whole run
+    and every metric lost most of its cells.
+    """
+    seen: list[tuple[str, ...]] = []
+
+    def _fake_evaluate(dataset, metrics, **kwargs):
+        seen.append(tuple(m.name for m in metrics))
+        return _FakeResult(pd.DataFrame({metrics[0].name: [1.0] * len(dataset)}))
+
+    monkeypatch.setattr(ragas_metrics, "evaluate", _fake_evaluate)
+
+    evaluate_runs([_run()], llm=object(), embeddings=object())
+
+    assert seen == [(name,) for name in METRIC_NAMES]
+
+
+def test_one_metric_collapsing_does_not_cost_the_others(monkeypatch):
+    """A metric that raises outright loses its own column and nothing else — the
+    accuracy numbers from a run that cost real money must survive it (spec §5)."""
+
+    def _fake_evaluate(dataset, metrics, **kwargs):
+        name = metrics[0].name
+        if name == "context_precision":
+            raise RuntimeError("judge call blew up")
+        return _FakeResult(pd.DataFrame({name: [0.75] * len(dataset)}))
+
+    monkeypatch.setattr(ragas_metrics, "evaluate", _fake_evaluate)
+
+    result = evaluate_runs([_run()], llm=object(), embeddings=object())
+
+    assert result.scores["context_precision"] is None
+    assert result.counts["context_precision"] == {"scored": 0, "total": 1}
+    assert result.scores["faithfulness"] == pytest.approx(0.75)
+    assert result.counts["faithfulness"] == {"scored": 1, "total": 1}

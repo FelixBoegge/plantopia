@@ -103,3 +103,20 @@ def test_provider_routing_restriction_is_preserved():
     model = build_chat_model(model="test/model")
 
     assert model.extra_body["provider"] == {"require_parameters": True}
+
+
+def test_models_retry_transport_failures_beyond_the_client_default():
+    """The OpenAI client defaults to two retries, which is not enough here.
+
+    A probe of the Ragas judge with raise_exceptions=True recorded the client
+    retrying and then surfacing openai.APIConnectionError — no 429 and no timeout,
+    just a connection dying under sustained concurrency. Those failures cost that
+    evaluation most of its cells, and the same transient would cost a real diagnosis
+    the result its owner paid for.
+    """
+    from core.llm import build_chat_model
+
+    model = build_chat_model(model="test/model")
+
+    assert model.max_retries == get_settings().model_max_retries
+    assert model.max_retries > 2
