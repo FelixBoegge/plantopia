@@ -143,6 +143,43 @@ def _retriever():
     return ChromaRetriever(vectorstore, None)
 
 
+def _run_main_set(
+    cases: list[GoldenCase], profile_block: str
+) -> tuple[list[CaseRun], list[str]]:
+    """Run every case once, giving a failed case one second attempt.
+
+    A case can fail for reasons that have nothing to do with the diagnosis — a dropped
+    connection, a structured-output parse that came back malformed once. Those are
+    independent between attempts, so a single retry usually lands, and a run that
+    spends an hour and a dollar should not report a case as unanswerable because one
+    HTTP request died.
+
+    The retry gets a fresh thread id rather than resuming: the first attempt's
+    checkpoint may hold the state that failed, and resuming into it would reproduce the
+    failure rather than escape it.
+
+    Which cases needed two attempts is returned, not swallowed. A retry that quietly
+    rescues a case would hide exactly the flakiness worth knowing about — three cases
+    needing a second attempt is a different report from none, even when both end at 28
+    of 28, so the ids go into the results file (spec §5's rule that a failure must stay
+    visible, applied to a failure that was recovered).
+    """
+    runs: list[CaseRun] = []
+    retried: list[str] = []
+
+    for index, case in enumerate(cases):
+        run = _run_one(case, index, profile_block)
+        if run.error is not None:
+            logger.warning("case %s failed (%s) — retrying once", case.id, run.error)
+            retried.append(case.id)
+            run = _run_one(case, f"retry-{index}", profile_block)
+            if run.error is not None:
+                logger.error("case %s failed twice: %s", case.id, run.error)
+        runs.append(run)
+
+    return runs, retried
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Plantopia evaluation harness.")
     parser.add_argument("--stability-cases", type=int, default=8)
@@ -169,7 +206,7 @@ def main() -> None:
 
     # Build one Deps and one graph per case: the gate and vision tiers are scripted
     # from the case itself (eval/scripted.py), so they cannot be shared.
-    runs = [_run_one(case, index, profile_block) for index, case in enumerate(cases)]
+    runs, retried = _run_main_set(cases, profile_block)
 
     subset = cases[: args.stability_cases]
     stability_case_ids = [case.id for case in subset]
@@ -218,6 +255,9 @@ def main() -> None:
         # ids are whichever sort first among the golden set, so naming them lets a
         # reader see which categories the repeated cases did (and did not) cover.
         "stability_case_ids": stability_case_ids,
+        # Cases that failed once and were given a second attempt. Empty is the good
+        # answer; a non-empty list means the run was flakier than "0 failed" suggests.
+        "retried_cases": retried,
         "near_misses": near_misses(runs, {case.id: case for case in cases}),
         "cases": [_case_row(run) for run in runs],
     }
