@@ -50,6 +50,57 @@ def test_empty_query_list_returns_nothing(chroma_retriever):
     assert chroma_retriever.search([], k=5) == []
 
 
+def test_search_returns_one_passage_per_disorder(chroma_retriever):
+    """k slots must describe k candidates.
+
+    Sections of one document used to compete with each other for slots: a measured run
+    had every nutrient case retrieve six passages covering only four disorders, with a
+    broadly-worded distractor holding three of them and the correct answer holding one.
+    """
+    results = chroma_retriever.search(["yellowing lower leaves, soil stays wet"], k=6)
+
+    doc_ids = [p.doc_id for p in results]
+    assert len(doc_ids) == len(set(doc_ids))
+
+
+def test_search_still_fills_k_despite_the_cap(chroma_retriever):
+    """Collapsing to one passage per document throws away most of what a query
+    returns, so the query must over-fetch or k would rarely be reached."""
+    assert len(chroma_retriever.search(["yellowing leaves"], k=6)) == 6
+
+
+def test_sections_for_fetches_by_id_without_searching(chroma_retriever):
+    section = "Look-alikes and how to tell them apart"
+
+    results = chroma_retriever.sections_for(["root-rot", "overwatering"], [section])
+
+    assert {(p.doc_id, p.section) for p in results} == {
+        ("root-rot", section),
+        ("overwatering", section),
+    }
+
+
+def test_sections_for_scores_zero_because_nothing_ranked_it(chroma_retriever):
+    """These passages were looked up, not matched. A similarity score for them would
+    be fiction, and nothing filters retrieved passages on score."""
+    results = chroma_retriever.sections_for(["root-rot"], ["Symptoms"])
+
+    assert [p.score for p in results] == [0.0]
+
+
+def test_sections_for_skips_ids_that_do_not_exist(chroma_retriever):
+    """A document missing an optional section is a normal state, not an error."""
+    results = chroma_retriever.sections_for(
+        ["root-rot", "no-such-disorder"], ["Symptoms", "No Such Section"]
+    )
+
+    assert [(p.doc_id, p.section) for p in results] == [("root-rot", "Symptoms")]
+
+
+def test_sections_for_with_nothing_asked_returns_nothing(chroma_retriever):
+    assert chroma_retriever.sections_for([], ["Symptoms"]) == []
+
+
 def test_retriever_surfaces_the_lookalike_section(chroma_retriever):
     results = chroma_retriever.search(["how do I tell root rot from overwatering"], k=8)
     sections = {p.section for p in results}

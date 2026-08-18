@@ -17,12 +17,32 @@ from agent.schemas import ImageRef, Passage
 from core.embeddings import ImageEmbedder
 from knowledge.ingest import Chunk
 
+# How many sections a corpus document has, and so the factor by which a query must
+# over-fetch to still find k distinct disorders once each document keeps only one
+# passage. See ``knowledge/ingest.py``'s REQUIRED_SECTIONS.
+_PER_DOC_SECTIONS = 7
+
 
 class Retriever(Protocol):
     """What the enrich node needs from retrieval."""
 
-    def search(self, queries: Sequence[str], k: int) -> list[Passage]:
-        """Return the best ``k`` passages across every query, best first."""
+    def search(
+        self, queries: Sequence[str], k: int, *, sections: Sequence[str] | None = None
+    ) -> list[Passage]:
+        """Return the best ``k`` passages across every query, best first.
+
+        At most one passage per disorder, so ``k`` slots describe ``k`` candidates.
+        ``sections`` restricts which sections may match at all; ``None`` allows any.
+        """
+        ...
+
+    def sections_for(self, doc_ids: Sequence[str], sections: Sequence[str]) -> list[Passage]:
+        """Fetch named sections of named documents directly, by id rather than by score.
+
+        For material a caller knows it wants once a document is in contention, which
+        similarity search will not reliably surface on its own — see
+        ``tools.knowledge.search_plant_knowledge``.
+        """
         ...
 
     @property
@@ -90,14 +110,68 @@ class ChromaRetriever:
         self._store = vectorstore
         self._image_embedder = image_embedder
 
-    def search(self, queries: Sequence[str], k: int) -> list[Passage]:
+    def search(
+        self, queries: Sequence[str], k: int, *, sections: Sequence[str] | None = None
+    ) -> list[Passage]:
+        """The best passage from each of the ``k`` best-matching disorders.
+
+        One passage per disorder, deliberately. Sections of the same document compete
+        with each other for slots otherwise, and a document whose language is broad
+        enough to match almost anything — ``insufficient-light``, ``poor-drainage``,
+        ``salt-buildup`` — takes two or three of the six, crowding out other candidates
+        entirely. A measured run had every nutrient case retrieve six passages covering
+        only four disorders, a distractor holding three of them and the correct answer
+        holding one: a differential built from that reads the crowder as the
+        better-supported explanation, because it is better represented.
+
+        ``sections`` restricts what may match. Callers should restrict it, because some
+        sections describe *other* disorders in order to contrast with them, and so act
+        as attractors for exactly the wrong query — ``phosphorus-deficiency``'s
+        look-alikes section outscored ``nitrogen-deficiency``'s own symptoms on a
+        nitrogen query, because it recites nitrogen's symptoms to distinguish them.
+        """
         best: dict[tuple[str, str], Passage] = {}
+        # Over-fetch, because collapsing to one passage per disorder discards most of
+        # what one query returns. Bounded by how many sections a document can offer.
+        per_query = k * (len(sections) if sections else _PER_DOC_SECTIONS)
+        where = {"section": {"$in": list(sections)}} if sections else None
 
         for query in queries:
-            for document, score in self._store.similarity_search_with_relevance_scores(query, k=k):
+            results = self._store.similarity_search_with_relevance_scores(
+                query, k=per_query, filter=where
+            )
+            for document, score in results:
                 self._keep_best(best, document, score)
 
         return self._ranked(best, k)
+
+    def sections_for(self, doc_ids: Sequence[str], sections: Sequence[str]) -> list[Passage]:
+        """Named sections of named documents, fetched by id.
+
+        A lookup rather than a search: ids are ``"{doc_id}::{section}"`` by
+        construction in ``build_vectorstore``, so this costs no embedding call and
+        cannot miss a section for ranking below something else. Ids that do not exist
+        are skipped — a corpus document without an optional section is a normal state.
+
+        Scored 0.0, because these passages were not ranked and a similarity score for
+        them would be fiction. Nothing filters on the score of retrieved passages; the
+        one consumer, ``tools.web_search.retrieval_was_weak``, reads the maximum, which
+        the searched passages already set.
+        """
+        wanted = [f"{doc_id}::{section}" for doc_id in doc_ids for section in sections]
+        if not wanted:
+            return []
+
+        found = self._store.get(ids=wanted, include=["metadatas", "documents"])
+        return [
+            Passage(
+                doc_id=metadata["doc_id"],
+                section=metadata["section"],
+                text=text,
+                score=0.0,
+            )
+            for metadata, text in zip(found["metadatas"], found["documents"], strict=True)
+        ]
 
     @property
     def supports_image_search(self) -> bool:
@@ -139,4 +213,21 @@ class ChromaRetriever:
 
     @staticmethod
     def _ranked(best: dict[tuple[str, str], Passage], k: int) -> list[Passage]:
-        return sorted(best.values(), key=lambda p: p.score, reverse=True)[:k]
+        """The best ``k`` passages, at most one per disorder.
+
+        Scores across nutrient cases sit within about 0.03 of each other, so which
+        disorder wins is close to arbitrary; what is not arbitrary is how many slots
+        each one occupies. Capping at one per document turns ``k`` passages into ``k``
+        distinct candidates.
+        """
+        ordered = sorted(best.values(), key=lambda p: p.score, reverse=True)
+        kept: list[Passage] = []
+        seen: set[str] = set()
+        for passage in ordered:
+            if passage.doc_id in seen:
+                continue
+            kept.append(passage)
+            seen.add(passage.doc_id)
+            if len(kept) == k:
+                break
+        return kept

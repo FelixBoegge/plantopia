@@ -37,16 +37,28 @@ class _StubRetriever:
         passages: list[Passage],
         image_passages: list[Passage] | None = None,
         supports_image_search: bool = True,
+        discriminators: list[Passage] | None = None,
     ):
         self.passages = passages
         self.image_passages = image_passages or []
         self.supports_image_search = supports_image_search
+        # What sections_for returns. Empty by default: most tests here are about the
+        # image path, weather and escalation, and care nothing for the look-alikes
+        # sections search_plant_knowledge appends to the shortlist.
+        self.discriminators = discriminators or []
         self.queries: list[list[str]] = []
         self.image_calls: list[int] = []
+        self.section_calls: list[tuple[list[str], list[str]]] = []
+        self.section_filters: list[list[str] | None] = []
 
-    def search(self, queries, k):
+    def search(self, queries, k, *, sections=None):
         self.queries.append(list(queries))
+        self.section_filters.append(list(sections) if sections else None)
         return self.passages[:k]
+
+    def sections_for(self, doc_ids, sections):
+        self.section_calls.append((list(doc_ids), list(sections)))
+        return self.discriminators
 
     def search_by_image(self, images, k):
         self.image_calls.append(len(images))
