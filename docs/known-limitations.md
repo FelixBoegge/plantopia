@@ -1,8 +1,13 @@
 # Known limitations and carried work
 
-Phase 1 shipped with these known gaps. Each was raised during review, judged non-blocking,
-and deliberately carried rather than silently dropped. They are recorded here so the next
-person to touch this code — including future me — inherits the reasoning, not just the code.
+Every gap this project shipped with, from Phase 1 onward. Each was raised during review,
+judged non-blocking, and deliberately carried rather than silently dropped. They are
+recorded here so the next person to touch this code — including future me — inherits the
+reasoning, not just the code.
+
+Rows are struck through and dated when resolved rather than deleted: what a fix cost, and
+which diagnosis of the problem turned out to be wrong, is usually worth more than the fact
+that it is closed. The dated sections after the tables are the run-by-run record.
 
 Grouped by whether they can bite a user, a maintainer, or nobody yet.
 
@@ -20,6 +25,7 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | U6 | **`calcium-deficiency` omits blossom-end rot**, the most recognisable calcium symptom in fruiting plants. | The corpus deliberately skews houseplant/ornamental; the document is correct for that scope. | Add a section if the corpus ever grows toward edibles. |
 | U7 | **~~Rejected and retake paths do not rotate `thread_id`.~~** *Resolved 2026-08-12 — added `_rotate_thread()` helper called on both rejected and retake branches in ui/pages/diagnose.py.* State from the abandoned attempt stayed in the checkpoint and merged into the retry. **Amended 2026-08-12 (whole-branch review):** the first fix covered only the wizard. The re-check entry point derived its thread id as `recheck-{plant_id}-{latest_diagnosis_id}`, and neither a rejection nor a retake writes a diagnosis — so that id never changed and a second attempt resumed the abandoned run's checkpoint, the same bug class in the other entry point. `ui/pages/plant_detail.py` now appends a `recheck_attempt` counter that `_rotate_recheck_thread()` increments on both branches. | Fixed by rotating thread_id on both paths, in both entry points. | ✓ Complete |
 | U8 | **The upload-rejection message interpolates the model's description raw**, producing "This looks like A screenshot of a web form…., not a plant." — capitalised mid-sentence, with the description's own full stop left in. Seen on the first live run. | Cosmetic; the message is still comprehensible and the rejection itself is correct. | Lowercase the first character and strip trailing punctuation before interpolating, in the rejection copy. |
+| U9 | **A diagnosis can come back with no candidates at all.** `natural-senescence-old-leaf-yellowing` produced an empty differential on the 2026-08-19 run, having been top-1 on the run before — the second time that same case has returned nothing across the runs recorded here. This is the model declining to answer rather than answering wrongly, which is the better failure of the two, but the owner still gets a run they paid and waited for and no differential at the end of it. | Recorded rather than fixed, because it was found by the evaluation rather than reported by a user, and nothing in the retrieval rework addresses it. It is visible in the score as a top-1 *and* top-3 miss, so it is not hiding. | Find out which it is first: a refusal the confidence floor is producing, a structured-output failure being swallowed, or the model genuinely finding no candidate it can argue for. The `other` category holds only two cases, so one of them is fifty points of that category — its 50.0% top-1 in `eval/REPORT.md` is this case and nothing else. |
 
 ---
 
@@ -45,9 +51,11 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | M16 | **Chat context and its checkpoint file both grow without bound.** Giving the chat agent a real checkpointer (`a62944f`) means every `send` replays the *entire* conversation history to the model — token cost per turn grows linearly with thread length, and a long enough thread eventually exceeds the model's context window. The checkpointer's own SQLite file (`{db_path}.chat-checkpoints`, wired in `ui/bootstrap.py`'s `get_chat_service`) is never pruned, the same shape of issue as M15 but for chat threads instead of diagnosis runs. | Conversation memory was the point of the fix; no thread in testing has come close to either limit. | Summarise or drop older turns before they reach the model (e.g. keep only the last *N* exchanges, or periodically compact with a summarisation call), and delete or archive old chat threads' checkpoint rows the way M15 proposes for diagnosis threads. |
 | M17 | **Chat token usage and cost are not tracked.** The `messages` table has no usage columns, and adding them would require the project's first schema migration — against the property Phase 2 deliberately preserved by building the whole schema up front. Diagnosis runs *are* tracked (`M12`). | Chat spend is small next to a vision-plus-reasoning diagnosis, and the Medium 1 claim is satisfied by diagnosis cost. Recorded rather than left silent. | Add `token_usage_json`/`cost_usd` to `messages` together with an `ALTER TABLE` migration path in `data/db.py`, and give `ChatService` the same thread-scoped collector `DiagnosisService` uses. |
 | M18 | **A run that spends tokens but produces no differential records nothing at all.** `agent/nodes/persist.py` returns early when `state.differential is None`, so a diagnosis that burned gate, vision and reasoning calls and then failed to produce a differential writes no row — and therefore no `token_usage_json` or `cost_usd` either. `M12` is fixed for diagnoses that *succeed*. The cost badge not rendering on that path (`ui/pages/diagnose.py`) is the visible half of the same gap, not a separate issue. | The early return is correct as persistence — there is no diagnosis to store, and inventing a row with a null differential would put a broken record in the timeline that the owner cannot act on. Spend on failed runs is the smaller loss. | Either write an observation-only row for a failed run, or record the run's usage somewhere that is not the `diagnoses` table. The collector already has the numbers (`config["configurable"]["usage_collector"]`); only the destination is missing. |
-| M19 | **The evaluation measures reasoning and retrieval only — the vision layer is structurally invisible to it.** Golden cases supply symptoms as text and are injected past `identify_plant` and `assess_symptoms`, so no metric in `eval/REPORT.md` says anything about species identification or symptom extraction from a photograph. An image-based golden set was considered and deliberately deferred. | The metrics Ragas provides are retrieval-and-generation metrics that cannot see vision regardless, and licence-checked, *reliably labelled* photographs are hardest to source exactly where the agent is weakest (nutrient deficiencies, whose visual diagnosis is genuinely ambiguous even for an expert). A mislabelled golden image yields a confidently wrong metric, which is worse than an absent one. | Build an image-based golden set as its own spec. The stability evidence below makes vision the prime suspect for the instability recorded in [First live run](#first-live-run), so this is the measurement most worth buying next — but note it would not address the nutrient weakness, which occurs with perfect symptom input. |
-| M20 | **Roughly half of every Ragas judge call fails, so the four RAG metrics are means over 13–18 of 28 cases.** Measured on the 2026-08-14 run: **51 of 112 judge jobs failed** — 39 `APIConnectionError`, 12 `TimeoutError` — against OpenRouter, *already* at `RunConfig(timeout=300, max_workers=4)` rather than Ragas's 180s/16-worker defaults. The failure rate is invisible in the scores themselves because Ragas emits NaN for a failed cell and `pandas.mean` skips it; `eval/report.py` discloses the per-metric counts precisely so this cannot hide again. Top-1/top-3 accuracy and the stability figures are unaffected — they are computed by `eval/metrics.py` from the pipeline runs, which had a 0% failure rate across both runs. | The disclosure is the important half, and it is in place: a reader sees "13 of 28 scored" and knows not to over-read the number. Chasing the transport failure is a separate problem from measuring the agent, and the metrics that matter most for diagnosis quality do not depend on the judge. | Drop `max_workers` further (2, or 1) and measure whether the failure rate falls — 39 connection errors at only 4 concurrent workers suggests rate limiting surfacing as dropped connections rather than genuine timeouts. Failing that, add per-cell retry around the judge call, or run the judge against a provider that is not the same restricted key the pipeline is already saturating. Until then, treat cross-run comparisons of the RAG metrics with care: two runs may score overlapping but different subsets, which is why faithfulness moved 56.8% → 47.5% between the 2026-08-13 and 2026-08-14 runs without anything in the agent changing. |
-| M21 | **The Ragas judge failure rate is far higher than `M20` records.** Gate 2 scored only **4, 4, 2 and 5 of 28 cases** across context precision, context recall, faithfulness and answer relevancy respectively. Gate 1 managed 17, 20, 11 and 16. A "Faithfulness 90.9%" computed over two cases is not a measurement. The disclosure added earlier is doing its job — the numbers are visibly qualified — but the underlying transport failure is worse than one run suggested. Cross-run comparison of the RAG metrics is unsafe. | Same as `M20`: the per-metric counts are shown alongside every score, so nobody reads Gate 2's numbers as unqualified. The transport failure, not the diagnosis pipeline, is what degraded. | Same remedies as `M20`, now with more urgency: at 2–5 of 28 cases scored, several Gate 2 RAG figures are barely more than a judge's opinion on a handful of rows. |
+| M19 | **The evaluation measures reasoning and retrieval only — the vision layer is structurally invisible to it.** Golden cases supply symptoms as text and are injected past `identify_plant` and `assess_symptoms`, so no metric in `eval/REPORT.md` says anything about species identification or symptom extraction from a photograph. An image-based golden set was considered and deliberately deferred. | The metrics Ragas provides are retrieval-and-generation metrics that cannot see vision regardless, and licence-checked, *reliably labelled* photographs are hardest to source exactly where the agent is weakest (nutrient deficiencies, whose visual diagnosis is genuinely ambiguous even for an expert). A mislabelled golden image yields a confidently wrong metric, which is worse than an absent one. | Build an image-based golden set as its own spec. The stability evidence below makes vision the prime suspect for the instability recorded in [First live run](#first-live-run), so this is the measurement most worth buying next. ~~Note it would not address the nutrient weakness, which occurs with perfect symptom input.~~ *Amended 2026-08-19 — that caveat has expired: the nutrient weakness was closed by [the retrieval rework](#full-ragas-coverage-and-the-retrieval-rework-2026-08-18--19) without touching vision, so this is now the only major measurement gap left rather than one of two.* |
+| M20 | **~~Roughly half of every Ragas judge call fails, so the four RAG metrics are means over 13–18 of 28 cases.~~** *Resolved 2026-08-18 — every metric now scores 28 of 28. See [Full Ragas coverage, and the retrieval rework](#full-ragas-coverage-and-the-retrieval-rework-2026-08-18--19).* Measured on the 2026-08-14 run: **51 of 112 judge jobs failed** — 39 `APIConnectionError`, 12 `TimeoutError` — against OpenRouter, *already* at `RunConfig(timeout=300, max_workers=4)` rather than Ragas's 180s/16-worker defaults. The failure rate is invisible in the scores themselves because Ragas emits NaN for a failed cell and `pandas.mean` skips it; `eval/report.py` discloses the per-metric counts precisely so this cannot hide again. Top-1/top-3 accuracy and the stability figures are unaffected — they are computed by `eval/metrics.py` from the pipeline runs, which had a 0% failure rate across both runs. | The disclosure is the important half, and it is in place: a reader sees "13 of 28 scored" and knows not to over-read the number. Chasing the transport failure is a separate problem from measuring the agent, and the metrics that matter most for diagnosis quality do not depend on the judge. | ✓ Complete — but note that the diagnosis in this column was wrong, and a probe is what corrected it. Rate limiting was ruled out (no 429s), as were timeouts (Ragas's 300s ceiling was never reached) and malformed rows (three metrics scored every row of the same data). Connections were simply dying under sustained concurrency, and `raise_exceptions=False` turned each death into a silent NaN. Four changes fixed it: the model client retries six times rather than the OpenAI default of two — applied application-wide, since the same transient would cost a real diagnosis its result; Ragas runs two workers rather than four; **each metric gets its own `evaluate()` call**, which was the structural fault, because ~280 judge calls in one long-running call let failures accumulate across every metric, heaviest first — exactly the 2/4/4/5 pattern; and NaN cells are re-submitted once, which is cheap because failures are independent between calls. |
+| M21 | **~~The Ragas judge failure rate is far higher than `M20` records.~~** *Resolved 2026-08-18 with `M20`.* Gate 2 scored only **4, 4, 2 and 5 of 28 cases** across context precision, context recall, faithfulness and answer relevancy respectively. Gate 1 managed 17, 20, 11 and 16. A "Faithfulness 90.9%" computed over two cases is not a measurement. The disclosure added earlier is doing its job — the numbers are visibly qualified — but the underlying transport failure is worse than one run suggested. Cross-run comparison of the RAG metrics is unsafe. | Same as `M20`: the per-metric counts are shown alongside every score, so nobody reads Gate 2's numbers as unqualified. The transport failure, not the diagnosis pipeline, is what degraded. | ✓ Complete. Worth keeping for the lesson in what it cost to read those numbers: faithfulness fell from 90.9% to 64.6% once every row scored, and the 90.9% was the mean of **two cells**. The flattering figure was the artefact; the lower one is the measurement. No RAG figure recorded before 2026-08-18 is comparable with one recorded after. |
+| M22 | **Context precision no longer scores the same passage set as the other three metrics.** It is computed over the passages *similarity ranked* only, while recall, faithfulness and answer relevancy still see everything the model read. Hypothesis-driven retrieval roughly doubled the contexts per row, and at ~50s per judge call fourteen contexts need some 700s of a row's own work against Ragas's 300s per-row deadline — so the metric timed out on every row and scored 0 of 28. The ceiling went to 2400s *and* the context set narrowed; either fixes it alone. | Deliberate, not a shortcut. Context precision asks what fraction of retrieved material was relevant, which is a question about *ranking* — and the look-alikes sections and the documents `hypothesise` named were fetched by id, on purpose, with no ranking to judge. Scoring a look-alikes section as a retrieval miss would mark down a mechanism working exactly as designed: it describes other disorders deliberately. All four metrics still report the same case total, so the narrower context set cannot be mistaken for fewer cases submitted. | Nothing, unless the metric's meaning drifts out of view. It answers "how well did similarity search rank" and not "how good was the material the model read" — those were the same question before `hypothesise` and are not now. Read it next to context recall, which does still cover everything. |
+| M23 | **The tail of the differential is less stable than its head.** Candidate-set churn rose from 19.2% to ~22–23% over the same runs in which top-1 agreement rose to 100%: the leading diagnosis is now perfectly repeatable across five runs of byte-identical input, while the second and third candidates move around more than they used to. | The conclusion is what the owner acts on, and it is the half that got steadier. Recorded because the direction is worth watching rather than celebrating — a stable top-1 sitting on a less stable rationale is a weaker result than the headline suggests. | Nothing yet; it needs another run or two to say whether this is a trend or a wobble. If it holds, the question is whether `hypothesise`'s shortlist varies between repeats and drags the tail with it — logging the shortlist per repeat would answer that directly. |
 
 ---
 
@@ -57,7 +65,7 @@ Not limitations — decisions, recorded in [`PLAN.md`](../PLAN.md) §4.3 and §1
 
 - **No reference-image corpus.** Image-to-image matching would likely beat cross-modal text matching for visually distinctive disorders, but sourcing licensed photographs for 43 disorders is a larger content job than the text corpus, and public plant datasets skew heavily to crop leaf pathology while barely covering the watering, light and nutrient problems that dominate houseplant failures. Revisit once the evaluation harness can measure whether it actually helps.
 - **No authentication, no product recommendations, no notifications, no community features.**
-- **The learned user profile (Phase 4, `PLAN.md` §11.3)** is planned, not missing. Everything else once listed in this bullet is now built: Phase 2 (plant profiles UI, the re-check flow, the chat agent, treatment feedback) and all of Phase 3, including the Ragas evaluation harness, metrics, report renderer, CLI and the in-app Evaluation page (`ui/pages/evaluation.py`), not just LangSmith tracing and cost display.
+- ~~**The learned user profile (Phase 4, `PLAN.md` §11.3)** is planned, not missing.~~ *Built 2026-08-15.* Every phase planned for this project has now shipped: Phase 2 (plant profiles UI, the re-check flow, the chat agent, treatment feedback), all of Phase 3 (the Ragas evaluation harness, metrics, report renderer, CLI and the in-app Evaluation page, not just LangSmith tracing and cost display), and Phase 4's learned profile — durable facts extracted from diagnoses and chat, injected as priors, with their own page at `ui/pages/profile.py`. Nothing in this file is now waiting on a planned phase; the open rows are open on their own merits.
 
 ---
 
@@ -194,6 +202,80 @@ without pulling the leading diagnosis toward water in any category. That is what
 **The bound, stated plainly:** 28 cases, 4 of them watering. This says the effect did not
 reach the top candidate — not that no effect exists. Do not read it as though the hazard
 is closed.
+
+### Full Ragas coverage, and the retrieval rework (2026-08-18 / 19)
+
+Two independent problems were open at the end of Phase 4: the nutrient category failed at
+33.3% on *both* top-1 and top-3, and half the Ragas judge calls were dying (`M20`, `M21`).
+Both are now closed, and the order matters — the instrument was fixed first, because
+measuring the retrieval change against a broken judge would have proved nothing.
+
+**The nutrient failure was never a corpus gap, and only partly a ranking one.** Three
+changes to what `diagnose` is handed came first. Only sections describing a disorder
+*itself* can earn a retrieved slot, because a look-alikes section recites the symptoms of
+the disorders it rules out and is therefore an attractor for exactly the wrong query — on a
+nitrogen case, `phosphorus-deficiency`'s look-alikes section scored 0.517 against
+`nitrogen-deficiency`'s own symptoms at 0.508. One passage per disorder, so *k* slots
+describe *k* candidates rather than letting a broadly-worded document take three of six
+— every nutrient case had been retrieving six passages covering four disorders, the
+distractor holding three and the answer holding one, which reads to the model as the
+distractor being better supported, because it is better represented. And each shortlisted
+disorder contributes its look-alikes section fetched *by id*, since that is the material
+that discriminates between candidates and it can never win on similarity against the
+symptom sections it would have to outrank.
+
+That took the correct document into the shortlist in 23 of 28 cases and did **not** fix
+nutrient, which is the useful part of the result: with the pipeline's real queries the
+correct document sat at rank 16, 17, 21, 24 and 35 of 43 in the five failing cases. Raising
+*k* from 6 to 15 moved nothing. No cap or reordering reaches rank 35.
+
+**What fixed it was giving up on rank.** The clue was a case that already passed —
+`mealybugs`, diagnosed correctly with its reference document at rank 35. The model's own
+knowledge was outperforming the retriever, so `hypothesise` asks it to *name* the disorders
+worth reading about from the ids the corpus holds, and `enrich` fetches those directly.
+Correct document in front of the model: **28 of 28**. Nutrient went 33.3% → 66.7% → 83.3%
+top-1 and 33.3% → 83.3% → 100% top-3 across the two runs that followed, and phosphorus
+deficiency — absent from the differential entirely one run earlier — became top-1. Headline
+top-1 rose 75.0% → 89.3%.
+
+Three cautions on that result:
+
+- **It is a lopsided-profile run.** Both figures come from `--profile overwaterer`, and no
+  neutral run has been made since `hypothesise` landed. The 75.0% → 89.3% comparison is
+  clean because both sides are `overwaterer`, but the current `empty` baseline is unmeasured.
+- **The light category is not comparable across this boundary.** `insufficient-light-etiolation`
+  was rewritten (`a9afa54`) because it contradicted the corpus it tested against: it expected
+  `insufficient-light` for "stem stretched with widely spaced leaves", which both corpus
+  documents call etiolation in as many words. It was also unwinnable as a pair with its
+  sibling case — near-identical symptoms, opposite ground truth, each listing the other as
+  `also_acceptable`, so no system takes top-1 on both except by guessing. Rewriting a case the
+  pipeline *fails* deserves stating plainly: it was not a fix for the score, and the light
+  category now measures a different case.
+- **Headline accuracy was flat between the last two runs** (89.3%/96.4% both times) because
+  `natural-senescence` moved the other way and returned an empty differential — now `U9`.
+
+**The judge failures were not what `M20` guessed.** No 429s, no timeouts, no malformed
+rows; connections were dying under sustained concurrency and `raise_exceptions=False` was
+turning each into a silent NaN. The structural fault was putting ~280 judge calls into one
+`evaluate()` call, where failures accumulated across every metric heaviest-first — which is
+precisely the 2/4/4/5 pattern Gate 2 showed. Per-metric calls, a six-retry client budget,
+two workers, and a re-submit pass for NaN cells took every metric to 28 of 28. The cost of
+having read the old numbers: faithfulness "90.9%" was the mean of two cells and is 64.6%
+when every row scores. Runtime roughly doubled to two hours, which is the price of the lower
+concurrency.
+
+**A failed case now gets one retry** (`d52db99`), on a fresh thread rather than resuming —
+the first attempt's checkpoint may hold the state that failed. Which cases needed a second
+attempt is recorded in the results file, because a retry that quietly rescued a case would
+hide exactly the flakiness worth knowing about. Both runs above needed none, so their
+"0 failed" is genuine rather than rescued.
+
+**What this did not touch.** `M19` still holds: the golden set injects past the vision
+layer, so none of these numbers say anything about species identification or symptom
+extraction. That was the prime suspect for the instability in [First live
+run](#first-live-run) before this work and remains so after it — with the nutrient weakness
+now largely closed, an image-based golden set is the clear next measurement rather than one
+of two competing candidates.
 
 ## Two plan defects caught during implementation
 

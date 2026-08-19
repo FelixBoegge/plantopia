@@ -23,8 +23,11 @@ answers, the way a clinician takes a history.
 - **Extracts symptoms with their position** on the plant — interveinal yellowing and
   leaf-tip yellowing have different causes
 - **Pauses to ask you two to four questions** chosen for your specific case
-- **Retrieves grounding knowledge** from a curated corpus of 43 disorder documents,
-  escalating to web search only when the corpus falls short
+- **Reasons before it retrieves.** It shortlists the disorders worth reading about *by
+  name*, then fetches those documents from a curated corpus of 43 rather than hoping
+  similarity search ranks them — which took the correct document from reaching the
+  model in 23 of 28 golden cases to 28 of 28
+- **Escalates to web search** only when the corpus falls short
 - **Fetches recent weather** for outdoor plants — a late frost is often the diagnosis
 - **Returns a differential**, not a single answer: two or three ranked candidates,
   each with supporting evidence, contradicting evidence, and a test you can run in
@@ -32,19 +35,24 @@ answers, the way a clinician takes a history.
 - **Builds a dated treatment plan**, least invasive first
 - **Warns about contagion** if the problem can spread to your other plants
 - **Says when it cannot tell**, instead of guessing
-- **Remembers every plant.** The My Plants grid shows a health badge and pending
-  roadmap steps per plant; the Plant detail page shows its full diagnosis history.
+- **Remembers every plant.** The My Plants grid shows each plant's own photograph, a
+  health badge and its pending roadmap steps; the Plant detail page shows its full
+  diagnosis history. A plant is named from the identification the agent made, which you
+  can confirm or overwrite.
 - **Learns about you, not just your plants.** Durable facts extracted from diagnoses
   and chat — *"tends to overwater"*, *"lives in Berlin"* — are injected as priors into
-  later runs, each shown on My Plants with its source, confidence and last-confirmed
-  date, and forgettable with one click.
+  later runs. The **What we've learned** page lists each one with its source, confidence
+  and last-confirmed date, and forgets any of them on one click — a record of inferences a
+  system holds about a person belongs somewhere reachable, not folded under a grid of
+  plants.
 - **Re-checks progress.** Upload a new photo of a known plant and get a verdict —
   improving, static, worsening, or a new problem — against the prior diagnosis,
   without repeating the clarifying questions: roadmap-step completion already
   answers what was tried.
 - **Asks for feedback** once you've actually tried a step, not before.
-- **Answers follow-up questions in a chat scoped to one plant**, and can flag when a
-  described symptom is different enough to warrant a fresh look.
+- **Answers follow-up questions in a chat scoped to one plant**, naming the sources each
+  reply consulted on the reply itself, and can flag when a described symptom is
+  different enough to warrant a fresh look.
 
 ## Getting started
 
@@ -160,17 +168,29 @@ unchanged; with it, every graph run is traced under the configured project.
 photos ──▶ guard_input ──▶ quality_check ──▶ identify_plant ──▶ assess_symptoms
               │                  │                                     │
         not a plant         too blurry                                 ▼
-              ▼                  ▼                              gather_context
-            stop               stop                          ══ interrupt() ══
-                                                                       │
+              ▼                  ▼                            select_questions
+            stop               stop                                    │
+                                                                       ▼
+                                                              gather_context
+                                                           ══ interrupt() ══
                              ┌─────────────────────────────────────────┘
                              ▼
-                          enrich ── knowledge base (always)
+                       hypothesise ── name the disorders worth reading about
+                             │
+                             ▼
+                          enrich ── knowledge base (the shortlist, fetched by name)
                              │   ├─ weather        (outdoor plants only)
                              │   └─ web search     (only if retrieval is weak)
                              ▼
                         diagnose ──▶ check_contagion ──▶ build_roadmap ──▶ persist
 ```
+
+A re-check of a known plant is the same graph on a different route: `quality_check`
+sends it straight to `assess_symptoms`, skipping identification, and `compare_progress`
+then either revises the existing roadmap or escalates into the full differential —
+through `hypothesise`, so an escalating re-check reads the same shortlist a first
+diagnosis would. [`docs/agent-graph.md`](docs/agent-graph.md) has both graphs drawn from
+the code itself, so they cannot quietly disagree with it.
 
 **Two agent architectures, deliberately.** The diagnosis pipeline is an explicit
 LangGraph state machine, because two orderings must be guaranteed: identification
@@ -183,11 +203,24 @@ is consulted first. Web search fires only when the best retrieval score falls be
 threshold or the species could not be identified — the case where the corpus may
 simply not cover this plant. Web results are labelled as such in the UI.
 
+**Why a model names the disorders before retrieval runs.** Similarity search answers
+"which corpus text resembles this description", which is not the question "what could be
+wrong with this plant". On the nutrient cases the two came apart badly: the owner's words
+(*"faded to a flat, dull yellow"*) and the corpus's (*"uniform pale green or yellow, veins
+included"*) are not near neighbours, and the correct document sat at rank 16, 17 and 21 of
+43 — far enough down that no reordering of six results reaches it. The `hypothesise` node
+asks the model to name candidates from the list of ids the corpus actually holds, and
+`enrich` fetches those by name. Rank stops mattering once you can look something up by
+name. It is a shortlist for *reading*, never a conclusion: nothing there writes to the
+differential, and `diagnose` is free to reject every hypothesis it offered. If the call
+fails the pipeline falls back to similarity search alone.
+
 **Memory.** Short-term state lives in a LangGraph SQLite checkpointer, which is what
 lets the graph pause for your answers and survive a page reload. Long-term memory is
-the application's own SQLite tables — plants, observations, diagnoses, roadmap steps —
-which is what makes contagion triage possible today and the follow-up flow possible in
-Phase 2.
+the application's own SQLite tables — plants, observations, diagnoses, roadmap steps and
+learned facts about the owner — which is what makes contagion triage, the re-check flow
+and the learned profile possible. Chat keeps its own checkpoint file, separate from the
+diagnosis one: the two graphs have separate lifetimes.
 
 ## Safety
 
@@ -199,21 +232,43 @@ Phase 2.
   a dose for a chemical product
 - Below a confidence threshold, the agent says it cannot tell and names the evidence
   that would resolve the question
+- Every chat reply names the sources it consulted, on the reply rather than behind a
+  click, and the agent is told to admit when it answered from its own knowledge instead of
+  a lookup — a grounded answer should be distinguishable from an ungrounded one at a
+  glance. An empty lookup points it at web search rather than back at its memory
 
 ## Development
 
 ```bash
-uv run pytest                    # unit + graph tests, no network, a few seconds
+uv run pytest                    # unit + graph tests, no network, ~1 minute
 uv run pytest -m ui --no-cov     # Streamlit AppTest page tests
-uv run pytest --cov              # coverage, gated at 85%
 uv run ruff check . && uv run ruff format .
 ```
 
-Unit tests make **no LLM calls and no network calls**. Models arrive through
-`core/llm.py`, which tests replace with a scripted fake; HTTP is mocked at the
-transport layer with `respx`. Tests assert on structure and control flow, never on
-generated prose — model output is not deterministic enough to assert on, even at
-temperature 0.
+953 tests, 95% coverage, gated at 85%. Unit tests make **no LLM calls and no network
+calls**. Models arrive through `core/llm.py`, which tests replace with a scripted fake;
+HTTP is mocked at the transport layer with `respx`. Tests assert on structure and control
+flow, never on generated prose — model output is not deterministic enough to assert on,
+even at temperature 0.
+
+**Run the `ui` tier separately whenever you touch a page or component.** `ui/pages/*`,
+`ui/components/*` and `ui/bootstrap.py` are omitted from coverage, because counting
+untestable wiring as a gap made the gate trip on unrelated changes. They are meaningfully
+tested — just in the `-m ui` tier, which the gated run deselects. So the gate cannot catch
+an untested page; only that second command can.
+
+### Opening the graphs in LangGraph Studio
+
+```bash
+uv run langgraph dev --studio-url https://eu.smith.langchain.com
+```
+
+Serves both graphs from `langgraph.json` on `http://127.0.0.1:2024` and renders them in
+Studio, where you can run a thread, stop at the interrupt, inspect state at every step and
+fork from any point. `--studio-url` is not optional: this project's LangSmith key is on the
+**EU** instance and the CLI defaults to the US one, where it silently shows nothing.
+`langgraph dev` loads `.env`, so running a thread there costs real money — looking at the
+diagram does not. See [`docs/agent-graph.md`](docs/agent-graph.md) for the details.
 
 ### Evaluation
 
@@ -228,6 +283,28 @@ byte-identical input. It takes several minutes and makes real, billed model call
 it is never invoked by the test suite or by the app itself. It writes a timestamped
 JSON file to `eval/results/` and a human-readable `eval/REPORT.md`.
 
+Where it currently stands, over 28 golden cases (2026-08-19, `overwaterer` profile — see
+`--profile` below):
+
+| Metric | Score |
+|---|---|
+| Top-1 diagnostic accuracy | 89.3% |
+| Top-3 diagnostic accuracy | 96.4% |
+| Top-1 agreement on byte-identical input | 100.0% |
+
+Every category reaches 100% at top-3 except `other`, which is two cases. Of the three
+top-1 misses, one landed on a disorder its own case listed as a confusable neighbour.
+Reasoning before retrieval (`hypothesise`) is what moved top-1 from 75.0% to 89.3%, and
+took nutrient deficiencies — the category that used to fail at 33.3% on *both* top-1 and
+top-3 — to 100% at top-3.
+
+All four Ragas metrics now score all 28 rows. Earlier runs lost roughly half the judge
+calls to dropped connections and averaged over whatever survived, so figures from before
+that fix are not comparable with these. `eval/REPORT.md` carries the full table, the
+per-metric row counts, and a **What this does not measure** section — the short version
+being that golden cases inject symptoms as text, so none of these numbers say anything
+about the vision layer.
+
 ```bash
 uv run python -m eval.run_eval --profile overwaterer
 ```
@@ -240,6 +317,12 @@ the profile moves diagnosis rather than just trusting that it does. It defaults 
 and a deliberately lopsided one changes candidates and clarifying questions on a
 minority of cases without pulling any category's top diagnosis toward the biased
 disorder.
+
+Both of those gates predate `hypothesise`, and no neutral-profile run has been made since
+it landed — so the table above is a lopsided-profile run, and the 75.0% → 89.3% lift is
+measured between two `overwaterer` runs rather than against the `empty` baseline. That
+keeps the comparison clean but leaves the current neutral figure unmeasured; an `empty` run
+is the cheapest thing to do next.
 
 The **Evaluation** page in the app renders whatever the newest file in `eval/results/`
 contains; it only reads that file and never runs the harness itself. Before the first
@@ -255,24 +338,32 @@ the shipped app never imports them.
 |---|---|
 | `ui/` | Streamlit pages and components — rendering only |
 | `services/` | The boundary the UI calls |
-| `agent/` | Graph, nodes, state, schemas, prompts |
+| `agent/` | Both graphs, nodes, state, schemas, prompts |
 | `tools/` | The seven function tools |
 | `knowledge/` | Disorder corpus, ingestion, retrieval |
 | `data/` | SQLite schema and repositories |
-| `core/` | Config, model factory, guards, image handling |
+| `core/` | Config, model factory, guards, image handling, cost, tracing |
+| `eval/` | Golden set, harness, metrics, report renderer |
+| `tests/` | `unit/`, `graph/` and `ui/` tiers |
+| `docs/` | Graph diagrams, code tour, plans, limitations |
 
 ## Known limitations
 
-- Diagnostic accuracy has not yet been measured against labelled ground truth; that
-  is Phase 3
+- **The vision layer is unmeasured.** Golden cases supply symptoms as text and are
+  injected past `identify_plant` and `assess_symptoms`, so no number in `eval/REPORT.md`
+  says anything about species identification or symptom extraction from a photograph.
+  Diagnosis is stable on byte-identical *text*; the one badly unstable run on record
+  differed in its photographs, which makes vision the prime suspect and the measurement
+  most worth buying next
 - The corpus covers common houseplant and small-garden disorders. Unusual species fall
   back to web search and generic physiology, with lower confidence
 - Single user, no authentication — this runs locally
 - Photographs cannot show root condition, so root disorders always depend on the
   confirming test rather than the image
-- The application has not yet been run against a live OpenRouter key — every test uses
-  scripted fake models by design, so the model slugs and the multimodal embeddings
-  request shape are unverified against the real API
+- **Chat context grows without bound.** Every turn replays the whole conversation to the
+  model, and neither checkpoint file is ever pruned. Chat token usage is not tracked at all
+- Uploads are not downscaled before they reach the vision model, which is the main reason
+  a diagnosis leaves ~100 MB of checkpoint blobs behind
 
 A fuller accounting — every gap raised in review, why it was carried, and what fixing it
 would take — is in [`docs/known-limitations.md`](docs/known-limitations.md).
@@ -280,5 +371,9 @@ would take — is in [`docs/known-limitations.md`](docs/known-limitations.md).
 ## Design documents
 
 - [`PLAN.md`](PLAN.md) — full design and decisions log
+- [`docs/agent-graph.md`](docs/agent-graph.md) — both graphs, drawn from the code, and how
+  to open them in LangGraph Studio
+- [`docs/code-tour.md`](docs/code-tour.md) — a reading order through the codebase
 - [`docs/plans/`](docs/plans/) — implementation plans
 - [`docs/known-limitations.md`](docs/known-limitations.md) — carried work and non-goals
+- [`eval/REPORT.md`](eval/REPORT.md) — the newest evaluation run in full
