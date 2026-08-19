@@ -1,0 +1,29 @@
+id: insufficient-light-reverting-variegation
+category: light
+plant:
+  name: "Living room rubber plant"
+  species: "Ficus elastica 'Tineke'"
+  location_kind: indoor
+species_confidence: 0.72
+symptoms:
+  overall_vigor: declining
+  soil_condition: "normal moisture, drains fine"
+  symptoms:
+    - description: "the leaves it has put out this year have come through plain green, with none of the cream edging the older ones still have"
+      position: new_growth
+      severity: monitor
+    - description: "those newer leaves are noticeably smaller than the ones lower down, and the whole plant has tilted over towards the window"
+      position: whole_plant
+      severity: monitor
+    - description: "two of the bottom leaves went yellow over a few weeks and came away when I touched them"
+      position: lower_leaves
+      severity: monitor
+answers:
+  light_hours: "it sits in the corner away from the window, so not much — an hour of weak light at most"
+  watering_frequency: "every couple of weeks when the top feels dry"
+  drainage: "drains freely, nothing sits in the saucer"
+  fertiliser: "fed it in spring with a general houseplant feed"
+default_answer: "not observed"
+ground_truth: insufficient-light
+also_acceptable:
+  - nitrogen-deficiency
