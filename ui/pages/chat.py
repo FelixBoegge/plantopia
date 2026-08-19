@@ -11,6 +11,7 @@ import streamlit as st
 
 from ui import bootstrap
 from ui.components._recheck_state import clear_recheck_state
+from ui.components.tool_calls import render_tool_calls
 
 # Which plant's chat last escalated, if any. Scoped by plant id rather than a bare
 # boolean so the handoff offer cannot follow the user onto a different plant's chat.
@@ -35,22 +36,10 @@ if plant is None:
 st.title(f"💬 Chat about {plant.name}")
 
 
-def _render_tool_calls(tool_calls: list[dict]) -> None:
-    """Show what the agent looked up, collapsed by default (design spec §5)."""
-    with st.expander(f"Tool calls ({len(tool_calls)})"):
-        for call in tool_calls:
-            st.markdown(f"**{call.get('name', 'unknown tool')}**")
-            if call.get("args"):
-                st.caption(", ".join(f"{k}: {v}" for k, v in call["args"].items()))
-            if call.get("result"):
-                st.caption(call["result"])
-
-
 for message in service.history(plant_id):
     with st.chat_message(message.role):
         st.write(message.content)
-        if message.tool_calls:
-            _render_tool_calls(message.tool_calls)
+        render_tool_calls(message.tool_calls)
 
 prompt = st.chat_input("Ask about this plant")
 if prompt:
@@ -58,8 +47,7 @@ if prompt:
         st.write(prompt)
     with st.spinner("Thinking…"):
         turn = service.send(plant_id, prompt)
-    with st.chat_message("assistant"):
-        st.write(turn.reply)
+
     # Recorded rather than rendered inline, so the handoff below survives the rerun a
     # button click causes. Re-evaluated every turn: if the newest answer no longer
     # escalates, the offer goes away with it.
@@ -67,6 +55,13 @@ if prompt:
         st.session_state[_ESCALATION_KEY] = plant_id
     else:
         st.session_state.pop(_ESCALATION_KEY, None)
+
+    # Rerun rather than render the reply here. ``send`` has already persisted the turn
+    # along with its tool calls, so the history loop above draws it complete with its
+    # provenance — where an inline render showed the answer with no sources, and the
+    # sources only appeared later, on whatever rerun the owner happened to trigger
+    # next. One rendering path, and nothing about a turn arrives late.
+    st.rerun()
 
 # Deliberately outside the ``if prompt:`` block above. Clicking a button is its own
 # rerun, and on that rerun ``st.chat_input`` returns None — a button rendered only

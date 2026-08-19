@@ -189,9 +189,14 @@ def test_persisted_tool_calls_render_collapsibly(monkeypatch, make_deps, db, now
     at.run()
 
     assert not at.exception
-    assert any("Tool calls" in e.label for e in at.expander)
-    assert any("lookup_plant_care_profile" in m.value for m in at.markdown)
-    assert any("full sun" in c.value for c in at.caption)
+    # The summary sits outside the expander: provenance that only appears once clicked
+    # is provenance most readers never see.
+    assert any("Consulted" in c.value and "Species care profile" in c.value for c in at.caption)
+    assert any("looked up" in e.label for e in at.expander)
+    # Named as the owner would name it, not as the function is named.
+    assert any("Species care profile" in m.value for m in at.markdown)
+    assert not any("lookup_plant_care_profile" in m.value for m in at.markdown)
+    assert any("Basil" in c.value for c in at.caption)
 
 
 def _escalating_chat_service(db, now, make_deps, plant_id):
