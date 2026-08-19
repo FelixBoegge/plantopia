@@ -50,6 +50,13 @@ RESULTS = {
 }
 
 
+def _copy() -> dict:
+    """A deep-ish copy of RESULTS, so a test can mutate one key safely."""
+    import copy
+
+    return copy.deepcopy(RESULTS)
+
+
 def test_headline_metrics_appear():
     report = render_report(RESULTS)
 
@@ -255,3 +262,54 @@ def test_zero_near_misses_is_plural():
     report = render_report(zero_misses)
 
     assert "0 top-1 misses landed" in report
+
+
+class TestRetryDisclosure:
+    """"0 failed" cannot distinguish a run where nothing went wrong from one where
+    three cases failed and were rescued, and those are different reports about the same
+    pipeline (spec §5's rule that a failure stays visible, applied to a recovered one).
+    """
+
+    def test_a_clean_run_says_so_explicitly(self):
+        results = _copy()
+        results["retried_cases"] = []
+
+        report = render_report(results)
+
+        assert "No case needed a second attempt." in report
+
+    def test_rescued_cases_are_named(self):
+        results = _copy()
+        results["retried_cases"] = ["aphids-clustered-new-growth-hibiscus", "rust-orange-pustules"]
+
+        report = render_report(results)
+
+        assert "2 cases failed on the first attempt" in report
+        assert "`aphids-clustered-new-growth-hibiscus`" in report
+        assert "`rust-orange-pustules`" in report
+
+    def test_one_rescued_case_reads_as_singular(self):
+        results = _copy()
+        results["retried_cases"] = ["rust-orange-pustules"]
+
+        assert "1 case failed on the first attempt" in render_report(results)
+
+    def test_an_older_results_file_says_the_answer_is_unknown(self):
+        """Silence would look identical to a clean run, and this field did not always
+        exist."""
+        results = _copy()
+        results.pop("retried_cases", None)
+
+        report = render_report(results)
+
+        assert "predates retry tracking" in report
+        assert "No case needed a second attempt." not in report
+
+
+def test_context_precision_names_the_set_it_was_scored_over():
+    """It is scored over the passages similarity ranked, not everything the diagnosis
+    read. Runs before hypothesis-driven retrieval used every context, so an unlabelled
+    number invites comparing two different denominators."""
+    report = render_report(_copy())
+
+    assert "Context precision (ranked passages only)" in report

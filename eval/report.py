@@ -4,6 +4,13 @@ from typing import Any
 
 _NOT_MEASURED = "_not measured_"
 
+# Context precision is scored over the passages similarity ranked, not everything the
+# diagnosis read (``eval/ragas_metrics.py::evaluate_runs``). Said in the table itself
+# because the basis changed: figures from runs before hypothesis-driven retrieval were
+# computed over every context, so an unlabelled number here invites a comparison
+# between two different denominators.
+_PRECISION_BASIS = "(ranked passages only)"
+
 
 def _pct(value: Any) -> str:
     if value is None:
@@ -34,6 +41,29 @@ def _ragas_cell(value: Any, counts: dict[str, Any] | None) -> str:
 
 def _plural(count: int, singular: str, plural: str) -> str:
     return singular if count == 1 else plural
+
+
+def _retry_note(retried: list[str] | None) -> str:
+    """State whether any case needed a second attempt to produce its result.
+
+    "0 failed" alone cannot distinguish a run where nothing went wrong from one where
+    three cases failed and were rescued — and those are different reports about the
+    same pipeline. A clean run says so explicitly rather than staying silent, because
+    silence is what an older results file (which has no such field) also looks like.
+    """
+    if retried is None:
+        return (
+            "_This run predates retry tracking, so whether any case needed a second "
+            "attempt is unknown._"
+        )
+    if not retried:
+        return "No case needed a second attempt."
+    names = ", ".join(f"`{case_id}`" for case_id in retried)
+    return (
+        f"**{len(retried)} {_plural(len(retried), 'case', 'cases')} failed on the first "
+        f"attempt and succeeded on a retry:** {names}. The scores above are from the "
+        "successful attempts, so a run that needed rescuing does not read as a clean one."
+    )
 
 
 def _usage_rows(provenance: dict[str, Any]) -> list[str]:
@@ -98,7 +128,7 @@ def render_report(results: dict) -> str:
         "|---|---|",
         f"| Top-1 diagnostic accuracy | {_pct(accuracy['top1'])} |",
         f"| Top-3 diagnostic accuracy | {_pct(accuracy['top3'])} |",
-        f"| Context precision | "
+        f"| Context precision {_PRECISION_BASIS} | "
         f"{_ragas_cell(ragas['context_precision'], ragas_counts.get('context_precision'))} |",
         f"| Context recall | "
         f"{_ragas_cell(ragas['context_recall'], ragas_counts.get('context_recall'))} |",
@@ -112,6 +142,8 @@ def render_report(results: dict) -> str:
         f"{results.get('near_misses', 0)} top-1 "
         f"{_plural(results.get('near_misses', 0), 'miss', 'misses')} landed on a disorder "
         "the case listed as a confusable neighbour.",
+        "",
+        _retry_note(results.get("retried_cases")),
         "",
         "## By category",
         "",

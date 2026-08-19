@@ -22,12 +22,14 @@ Generated 2026-08-18T18:34:51.880391+00:00 by `uv run python -m eval.run_eval`.
 |---|---|
 | Top-1 diagnostic accuracy | 89.3% |
 | Top-3 diagnostic accuracy | 96.4% |
-| Context precision | _not measured_ (0 of 28 scored) |
+| Context precision (ranked passages only) | _not measured_ (0 of 28 scored) |
 | Context recall | 94.6% |
 | Faithfulness | 69.8% |
 | Answer relevancy | 59.2% |
 
 28 cases scored, of which **0 failed** and are counted in the denominator rather than dropped. 1 top-1 miss landed on a disorder the case listed as a confusable neighbour.
+
+No case needed a second attempt.
 
 ## By category
 
