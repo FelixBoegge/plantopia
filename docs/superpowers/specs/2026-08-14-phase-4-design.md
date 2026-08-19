@@ -25,7 +25,7 @@ inaccurate.
 |---|---|
 | Chat token/cost tracking (`M17`) | **Out.** It needs the project's first schema migration. `user_profile` already exists, so this phase needs no migration — folding `M17` in would import that cost for an unrelated feature. |
 | The nutrient reasoning weakness | **Out as work, in as a constraint.** The evaluation report records nutrient at 33.3% top-1. This phase must not make it worse, which §4's gate checks. |
-| Ragas judge reliability (`M20`) | **Out.** Tracked in the owner's `TODO.md`. |
+| Ragas judge reliability (`M20`) | **Out.** A transport problem against OpenRouter, separate from measuring the agent. |
 | Plant-specific history in the profile | **Out by decision.** `PLAN.md` §11.3's third example ("the Monstera had spider mites in March") is already recorded exactly by `DiagnosisRepository.list_for_plant`, and the chat agent's `get_plant_journal` tool already reads it. Storing a model's paraphrase would create a second, lossier source of truth that can contradict the first. |
 | Editing or manually adding facts | **Out.** §5 ships a read-and-delete view. A manual-entry form is a second write path and a validation surface for a signal the extraction already captures when the owner states it aloud. |
 
@@ -319,7 +319,8 @@ No test makes a network call. The two gates in §4.3 are acceptance criteria rat
 - **`M17` chat cost tracking** — still needs the first migration, and now has a stronger case: `M16`
   records that chat replays the entire thread every turn, so a long conversation may cost more than
   the diagnosis it discusses.
-- **`M20` Ragas judge reliability** — roughly half of judge calls fail; in the owner's `TODO.md`.
+- **`M20` Ragas judge reliability** — roughly half of judge calls fail, which is a transport problem
+  against OpenRouter rather than anything the agent does.
 - **The nutrient reasoning weakness** — 33.3% top-1 with the ground-truth document retrieved at rank
   1–2. The only measured quality defect in the project, and unaddressed by this phase.
 - **`M15`/`M16` checkpoint growth** — the diagnosis checkpoint file reached 337 MB against a 94 KB

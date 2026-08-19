@@ -22,6 +22,4 @@ data/uploads/
 .langgraph_api/
 
 # Personal documents to track progress and what to do
-MANUAL_TEST.md
 MY_QUESTION.md
-TODO.md
