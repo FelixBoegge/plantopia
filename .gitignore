@@ -20,3 +20,8 @@ data/uploads/
 # Local state for `langgraph dev` — the API server's in-memory store, checkpointed
 # to disk between restarts. Machine-local scratch, like the uploads directory.
 .langgraph_api/
+
+# Personal documents to track progress and what to do
+MANUAL_TEST.md
+MY_QUESTION.md
+TODO.md
