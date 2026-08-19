@@ -7,7 +7,7 @@ metrics can see (spec §3.1).
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
@@ -55,6 +55,18 @@ class CaseRun:
     situation: str
     usage: UsageSnapshot | None
     error: str | None = None
+
+    # The subset of ``contexts`` that similarity search actually ranked, as opposed to
+    # the sections fetched by id — the look-alikes attached to each candidate, and the
+    # documents ``hypothesise`` named. Both arrive with a score of 0.0 because nothing
+    # ranked them, which is what separates the two here.
+    #
+    # Kept apart for context precision, which asks what fraction of retrieved material
+    # was relevant. That is a question about ranking, and material deliberately fetched
+    # has no ranking to judge: a look-alikes section describes *other* disorders by
+    # design, so scoring it as a retrieval hit would mark down a mechanism working
+    # exactly as intended. Recall and faithfulness still see everything the model saw.
+    ranked_contexts: list[str] = field(default_factory=list)
 
 
 def _answers_for(case: GoldenCase, questions: list[Question]) -> dict[str, str]:
@@ -128,6 +140,7 @@ def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_
             result = started
 
         situation = _situation(case, answers_given)
+        retrieved = result.get("retrieved") or []
 
         differential = result.get("differential")
         if differential is None:
@@ -139,7 +152,8 @@ def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_
             category=case.category,
             candidates=[candidate.disorder_id for candidate in differential.candidates],
             reasoning=differential.reasoning,
-            contexts=[passage.text for passage in result.get("retrieved") or []],
+            contexts=[passage.text for passage in retrieved],
+            ranked_contexts=[passage.text for passage in retrieved if passage.score > 0],
             questions_asked=questions_asked,
             situation=situation,
             usage=collector.snapshot(),

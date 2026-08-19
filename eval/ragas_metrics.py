@@ -141,7 +141,9 @@ def _reference(ground_truth: str, lookup: dict[str, dict[str, str]]) -> str:
     return f"{entry['name']}: {entry['symptoms']}"
 
 
-def to_ragas_rows(runs: list[CaseRun], corpus: Sequence[Chunk] = ()) -> list[dict[str, Any]]:
+def to_ragas_rows(
+    runs: list[CaseRun], corpus: Sequence[Chunk] = (), *, ranked_only: bool = False
+) -> list[dict[str, Any]]:
     """Map completed runs to Ragas' evaluation-sample shape.
 
     Runs that failed, or that retrieved nothing, are excluded rather than scored as
@@ -153,13 +155,17 @@ def to_ragas_rows(runs: list[CaseRun], corpus: Sequence[Chunk] = ()) -> list[dic
     question this replaced. ``reference`` is the ground-truth document's name and
     Symptoms text, built from ``corpus`` via one lookup for the whole call rather
     than one load per row.
+
+    ``ranked_only`` narrows ``retrieved_contexts`` to the passages similarity actually
+    ranked, for context precision — see ``CaseRun.ranked_contexts`` for why, and
+    ``evaluate_runs`` for which metric gets which.
     """
     lookup = _corpus_lookup(corpus)
     return [
         {
             "user_input": run.situation,
             "response": run.reasoning,
-            "retrieved_contexts": list(run.contexts),
+            "retrieved_contexts": list(run.ranked_contexts if ranked_only else run.contexts),
             "reference": _reference(run.ground_truth, lookup),
         }
         for run in runs
@@ -177,6 +183,15 @@ _MAX_WORKERS = 2
 # worth making because the failures are transport-level and independent between
 # calls; a third has diminishing returns against a judge that is genuinely refusing.
 _PASSES = 2
+
+# Ragas applies this as a deadline for scoring one *row*, not one call
+# (ragas/metrics/base.py wraps single_turn_ascore in asyncio.wait_for). A row's clock
+# therefore runs while the whole batch queues behind the worker limit, so the ceiling
+# has to cover the batch rather than the row's own work. context_precision makes one
+# judge call per retrieved context: at 28 rows and roughly fourteen contexts each,
+# that is ~390 calls sharing two workers, and the 300s that sufficed for six contexts
+# at four workers timed out every row of a run that cost real money.
+_ROW_TIMEOUT_SECONDS = 2400
 
 _METRICS = {
     "context_precision": context_precision,
@@ -263,20 +278,32 @@ def evaluate_runs(
     column rather than the whole evaluation. The returned counts let a reader tell a
     complete mean from one that silently averaged over fewer cases than were
     submitted.
+
+    Context precision alone is scored over the passages similarity *ranked*, not
+    everything the model read. It asks what fraction of retrieved material was
+    relevant, which is a question about ranking; the look-alikes sections and the
+    documents ``hypothesise`` named were fetched deliberately and have no ranking to
+    judge. It is also the one metric whose cost scales with the number of contexts —
+    one judge call each — and feeding it every passage timed out all 28 rows of a run
+    that cost real money, twice.
     """
     rows = to_ragas_rows(runs, corpus)
     if not rows:
         logger.warning("no scorable rows: every run failed or retrieved nothing")
         return _empty_scores(total=0)
 
-    # 300s rather than Ragas's 180s default: OpenRouter's latency spikes exceed it.
-    run_config = RunConfig(timeout=300, max_workers=_MAX_WORKERS)
+    ranked_rows = to_ragas_rows(runs, corpus, ranked_only=True)
+    run_config = RunConfig(timeout=_ROW_TIMEOUT_SECONDS, max_workers=_MAX_WORKERS)
 
     scores: dict[str, float | None] = {}
     counts: dict[str, dict[str, int]] = {}
     for name in METRIC_NAMES:
         values = _score_one_metric(
-            name, rows, llm=llm, embeddings=embeddings, run_config=run_config
+            name,
+            ranked_rows if name == "context_precision" else rows,
+            llm=llm,
+            embeddings=embeddings,
+            run_config=run_config,
         )
         scored = [value for value in values if value is not None]
         counts[name] = {"scored": len(scored), "total": len(rows)}

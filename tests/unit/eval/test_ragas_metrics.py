@@ -285,3 +285,51 @@ def test_one_metric_collapsing_does_not_cost_the_others(monkeypatch):
     assert result.counts["context_precision"] == {"scored": 0, "total": 1}
     assert result.scores["faithfulness"] == pytest.approx(0.75)
     assert result.counts["faithfulness"] == {"scored": 1, "total": 1}
+
+
+def test_context_precision_is_scored_over_ranked_material_only(monkeypatch):
+    """Precision asks what fraction of *retrieved* material was relevant, which is a
+    question about ranking. Look-alikes sections and hypothesised documents were
+    fetched deliberately and have no ranking to judge — scoring a look-alikes section
+    as a retrieval miss would mark down a mechanism working as designed.
+
+    It is also the only metric whose cost scales with the context count, at one judge
+    call each, and feeding it everything timed out all 28 rows of a real run twice.
+    """
+    submitted: dict[str, list[list[str]]] = {}
+
+    def _fake_evaluate(dataset, metrics, **kwargs):
+        name = metrics[0].name
+        submitted[name] = [sample.retrieved_contexts for sample in dataset.samples]
+        return _FakeResult(pd.DataFrame({name: [1.0] * len(dataset)}))
+
+    monkeypatch.setattr(ragas_metrics, "evaluate", _fake_evaluate)
+
+    run = _run(
+        contexts=["ranked passage", "fetched look-alikes"],
+        ranked_contexts=["ranked passage"],
+    )
+    evaluate_runs([run], llm=object(), embeddings=object())
+
+    assert submitted["context_precision"] == [["ranked passage"]]
+    for name in ("context_recall", "faithfulness", "answer_relevancy"):
+        assert submitted[name] == [["ranked passage", "fetched look-alikes"]], (
+            f"{name} must see everything the model saw"
+        )
+
+
+def test_counts_report_the_same_total_for_every_metric(monkeypatch):
+    """Precision scoring a narrower context set must not make it look as though fewer
+    cases were submitted to it."""
+
+    def _fake_evaluate(dataset, metrics, **kwargs):
+        name = metrics[0].name
+        return _FakeResult(pd.DataFrame({name: [1.0] * len(dataset)}))
+
+    monkeypatch.setattr(ragas_metrics, "evaluate", _fake_evaluate)
+
+    result = evaluate_runs(
+        [_run(contexts=["a", "b"], ranked_contexts=["a"])], llm=object(), embeddings=object()
+    )
+
+    assert {result.counts[name]["total"] for name in METRIC_NAMES} == {1}
