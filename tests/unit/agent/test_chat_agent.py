@@ -212,3 +212,89 @@ def test_a_raising_profile_read_does_not_break_the_chat_turn(make_deps, sample_p
     prompt = build_chat_system_prompt(make_deps(profile_facts=_boom), sample_plant)
 
     assert "Plant:" in prompt
+
+
+class TestDeadEndsNameTheNextStep:
+    """A tool result the model reads is a place to steer it.
+
+    Observed with strawberries: the care-profile list has nothing for them, the tool
+    said only "no baseline care profile is known", and the agent answered from its own
+    training data rather than searching. A miss that names the next tool is the cheapest
+    available fix — no extra model call, no prompt the model might skim past.
+    """
+
+    def _tool(self, deps, plant_id, name):
+        from agent.chat_agent import _make_tools
+
+        tools, _ = _make_tools(deps, plant_id)
+        return next(t for t in tools if t.name == name)
+
+    def test_a_care_profile_miss_points_at_the_web_search(self, make_deps, sample_plant):
+        tool = self._tool(
+            make_deps(care_profile=lambda species: None), sample_plant, "lookup_plant_care_profile"
+        )
+
+        result = tool.invoke({"species": "Fragaria x ananassa"})
+
+        assert "web_search_plant_info" in result
+        assert "houseplants only" in result, "a miss must not read as 'nothing is known'"
+
+    def test_an_empty_knowledge_base_points_at_the_web_search(self, make_deps, sample_plant):
+        """The corpus holds disorders only, so a care question finding nothing there is
+        expected rather than a dead end."""
+
+        class _Empty:
+            def search(self, queries, k, *, sections=None):
+                return []
+
+            def sections_for(self, doc_ids, sections):
+                return []
+
+        tool = self._tool(make_deps(retriever=_Empty()), sample_plant, "search_plant_knowledge")
+
+        result = tool.invoke({"query": "how do I care for strawberries"})
+
+        assert "web_search_plant_info" in result
+        assert "disorders only" in result
+
+    def test_an_empty_web_search_asks_for_the_admission_instead(self, make_deps, sample_plant):
+        """The web is the last resort, so this one has no further tool to name. It asks
+        the agent to say the answer is unsourced, which is what the provenance panel
+        cannot show on its own."""
+        tool = self._tool(make_deps(web_search=lambda q: []), sample_plant, "web_search_plant_info")
+
+        result = tool.invoke({"query": "strawberry care"})
+
+        assert "own knowledge" in result
+        assert "tell the owner" in result
+
+
+class TestGroundingInstructions:
+    """The prompt said nothing about which tool suits which question, so a broad care
+    question went to the care-profile lookup and stopped there."""
+
+    def test_the_prompt_sends_broad_care_questions_to_the_web(self, make_deps, sample_plant):
+        from agent.chat_agent import build_chat_system_prompt
+
+        prompt = build_chat_system_prompt(make_deps(), sample_plant)
+
+        assert "web search" in prompt.lower()
+        assert "An empty result is not an answer." in prompt
+
+    def test_the_prompt_requires_owning_up_to_an_unsourced_answer(self, make_deps, sample_plant):
+        """It pairs with the provenance panel: a reply with no sources listed should say
+        it was not looked up, rather than looking indistinguishable from one that was."""
+        from agent.chat_agent import build_chat_system_prompt
+
+        prompt = build_chat_system_prompt(make_deps(), sample_plant)
+
+        assert "your own knowledge" in prompt
+
+    def test_the_prompt_still_forbids_re_searching_what_it_has(self, make_deps, sample_plant):
+        """Pushing towards tools must not turn into searching the same thing every turn:
+        the web search costs money and latency."""
+        from agent.chat_agent import build_chat_system_prompt
+
+        prompt = build_chat_system_prompt(make_deps(), sample_plant)
+
+        assert "Do not re-search" in prompt
