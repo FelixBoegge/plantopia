@@ -1,6 +1,6 @@
 # Evaluation report
 
-Generated 2026-08-18T18:34:51.880391+00:00 by `uv run python -m eval.run_eval`.
+Generated 2026-08-19T10:51:29.255352+00:00 by `uv run python -m eval.run_eval`.
 
 ## Run provenance
 
@@ -13,8 +13,8 @@ Generated 2026-08-18T18:34:51.880391+00:00 by `uv run python -m eval.run_eval`.
 | Corpus documents | 43 |
 | Golden-set size | 28 |
 | Profile | `overwaterer` |
-| Total tokens | 386,964 in / 60,256 out (447,220 total) |
-| Total cost | $1.5345 |
+| Total tokens | 388,397 in / 61,048 out (449,445 total) |
+| Total cost | $1.5444 |
 
 ## Headline metrics
 
@@ -22,10 +22,10 @@ Generated 2026-08-18T18:34:51.880391+00:00 by `uv run python -m eval.run_eval`.
 |---|---|
 | Top-1 diagnostic accuracy | 89.3% |
 | Top-3 diagnostic accuracy | 96.4% |
-| Context precision (ranked passages only) | _not measured_ (0 of 28 scored) |
-| Context recall | 94.6% |
-| Faithfulness | 69.8% |
-| Answer relevancy | 59.2% |
+| Context precision (ranked passages only) | 54.5% |
+| Context recall | 98.2% |
+| Faithfulness | 74.4% |
+| Answer relevancy | 58.2% |
 
 28 cases scored, of which **0 failed** and are counted in the denominator rather than dropped. 1 top-1 miss landed on a disorder the case listed as a confusable neighbour.
 
@@ -38,8 +38,8 @@ No case needed a second attempt.
 | environmental | 4 | 100.0% | 100.0% |
 | fungal | 4 | 100.0% | 100.0% |
 | light | 3 | 66.7% | 100.0% |
-| nutrient | 6 | 66.7% | 83.3% |
-| other | 2 | 100.0% | 100.0% |
+| nutrient | 6 | 83.3% | 100.0% |
+| other | 2 | 50.0% | 50.0% |
 | pest | 5 | 100.0% | 100.0% |
 | watering | 4 | 100.0% | 100.0% |
 
@@ -50,8 +50,8 @@ No case needed a second attempt.
 | Measure | Value |
 |---|---|
 | Top-1 agreement | 100.0% |
-| Candidate-set churn | 23.2% |
-| Clarifying-question drift | 59.2% |
+| Candidate-set churn | 21.7% |
+| Clarifying-question drift | 58.3% |
 
 Churn is mean pairwise Jaccard distance between candidate sets: 0% identical, 100% disjoint. Question drift is the same measure over the clarifying questions asked, reported separately because those are model-generated — without it, question variance would read as diagnostic instability.
 
