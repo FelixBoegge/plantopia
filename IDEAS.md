@@ -1,0 +1,3 @@
+- create fullstack web app with FastAPI backend, React frontend and postgres/ pgvector databases
+- add authentication, so app gets multi-user friendly
+- better identifcaction of plants. We will build a list of all possible plants and crops, then pull images from each plant, embed them, so that you have a knowledge base of how plants look like and we can do similarity searches between user input and the knowledge base. This should increase the identification reliablility.
