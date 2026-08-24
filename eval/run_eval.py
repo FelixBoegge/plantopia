@@ -143,9 +143,7 @@ def _retriever():
     return ChromaRetriever(vectorstore, None)
 
 
-def _run_main_set(
-    cases: list[GoldenCase], profile_block: str
-) -> tuple[list[CaseRun], list[str]]:
+def _run_main_set(cases: list[GoldenCase], profile_block: str) -> tuple[list[CaseRun], list[str]]:
     """Run every case once, giving a failed case one second attempt.
 
     A case can fail for reasons that have nothing to do with the diagnosis — a dropped

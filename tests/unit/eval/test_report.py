@@ -265,7 +265,7 @@ def test_zero_near_misses_is_plural():
 
 
 class TestRetryDisclosure:
-    """"0 failed" cannot distinguish a run where nothing went wrong from one where
+    """ "0 failed" cannot distinguish a run where nothing went wrong from one where
     three cases failed and were rescued, and those are different reports about the same
     pipeline (spec §5's rule that a failure stays visible, applied to a recovered one).
     """
