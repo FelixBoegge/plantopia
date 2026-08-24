@@ -2,7 +2,7 @@
 
 Enabled by configuration alone. LangChain's tracer reads process environment
 variables, so this module sets them rather than threading a callback through the
-graph — which is the property ``PLAN.md`` §15 chose LangSmith for: every graph
+graph — which is the property LangSmith was chosen for: every graph
 node, tool call, retrieval and model call appears in a trace with no wiring.
 
 Absent a key this is a no-op, following the ``tavily_api_key`` precedent so that a

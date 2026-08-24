@@ -4,9 +4,10 @@ A guided reading of the Plantopia codebase, in the order that makes it comprehen
 rather than the order the folders happen to list. Written alongside a walkthrough
 starting 2026-08-10.
 
-Companion documents: [`PLAN.md`](../PLAN.md) is the specification this was built
-against, and [`known-limitations.md`](known-limitations.md) records what was carried
-rather than fixed.
+Companion documents: [`project_brief_Sprint4.md`](../project_brief_Sprint4.md) is the
+assignment this was built against, and [`known-limitations.md`](known-limitations.md)
+records what was carried rather than fixed. The sprint-4 plan this tour cites — the
+specification written from that assignment — is no longer kept in the repository.
 
 **Contents**
 
@@ -1601,7 +1602,7 @@ deliberately breaks that pattern:
 
 ```python
 """A ReAct loop (``langchain.agents.create_agent``), not a fixed graph — follow-up
-conversation has no predictable shape, unlike the diagnosis pipeline (PLAN.md §5.1)."""
+conversation has no predictable shape, unlike the diagnosis pipeline."""
 ```
 
 Free-form conversation has no fixed sequence to guarantee, so the tradeoff §1.4 named
@@ -1959,8 +1960,8 @@ itself a committed artefact (`eval/REPORT.md`) rather than only code. That chang
 
 ### 8.1 One callback seam, two consumers
 
-`PLAN.md` §15 asks for two things — LangSmith tracing, and a per-diagnosis cost figure —
-and describes them as separate work. They are not. In LangChain both are **callbacks**,
+The sprint-4 plan asks for two things — LangSmith tracing, and a per-diagnosis cost
+figure — and describes them as separate work. They are not. In LangChain both are **callbacks**,
 so both attach at the same point, and the entire observability half of this phase is a
 question of getting one object to the right place.
 
@@ -1994,7 +1995,7 @@ governs `cost_usd`, which stays `None` unless a provider actually reported a cos
 `_saw_cost` flag exists for exactly that distinction, and the cost badge (§8.2) honours
 it by rendering tokens alone rather than a fabricated `$0.00`.
 
-**Where the number comes from is a departure from the plan.** `PLAN.md` §15 specified a
+**Where the number comes from is a departure from the plan.** The plan specified a
 configured price table. `core/llm.py` instead asks OpenRouter to report what it charged:
 
 ```python
@@ -2153,7 +2154,7 @@ one writes no row — and therefore no usage. `M12` is fixed for diagnoses that 
 
 ### 8.3 The golden set, and a harness that drives the real graph
 
-`PLAN.md` §16 proposed a golden set built from PlantVillage-style photographs. `eval/`
+The plan proposed a golden set built from PlantVillage-style photographs. `eval/`
 does not do that, and the reasoning is the most consequential design decision in the
 phase.
 
@@ -2400,7 +2401,7 @@ development, and it is tested as its own case.
 The harness ran twice: once with the synthetic Ragas inputs described in §8.4, once after
 they were fixed. The second run's report is committed at `eval/REPORT.md`.
 
-**Accuracy is reproducible, and failure is concentrated exactly where `PLAN.md` §16
+**Accuracy is reproducible, and failure is concentrated exactly where the plan
 guessed it would be.** Top-1 75.0% and top-3 82.1% came out *identical* across two
 independent runs at temperature 0.2, with an identical per-category breakdown:
 
@@ -2420,7 +2421,7 @@ from the differential entirely** rather than mis-ranked.
 are.** For `calcium-deficiency` the ground-truth document was retrieved at rank 1 and the
 model still omitted the cause; for `nitrogen-deficiency`, rank 2. The correct evidence was
 in front of it. This is a reasoning and ranking weakness — which also means neither a
-larger corpus nor the reference-image set `PLAN.md` §10.5 contemplates would address it.
+larger corpus nor the reference-image set the plan contemplates would address it.
 `natural-senescence` appears in the top four retrieved documents for five of the six
 nutrient cases, and an old leaf yellowing is exactly what a deficiency looks like.
 
@@ -2474,9 +2475,9 @@ because they echoed the corpus's own words. None of them would have crashed anyt
 
 ## 9. Phase 4: the learned user profile
 
-The last unshipped claim in `PLAN.md` §20, and the first feature this project could
-*prove* did no harm — because Phase 3 left behind a harness and a 75.0% baseline to
-measure against.
+The last unshipped claim in the plan's optional-task table, and the first feature this
+project could *prove* did no harm — because Phase 3 left behind a harness and a 75.0%
+baseline to measure against.
 
 The idea is small: remember durable facts about the **owner** — "waters on a schedule",
 "lives in Berlin" — and let them shift priors on later diagnoses. Most of the engineering
@@ -2653,7 +2654,7 @@ result is bounded rather than conclusive — 28 cases, four of them watering —
 documentation says so, instead of reading the identical scores as proof the hazard is
 closed.
 
-This closes the Phase 4 tour, and with it the optional-task table: `PLAN.md` §20 no longer
+This closes the Phase 4 tour, and with it the optional-task table: the plan no longer
 claims anything that has not shipped. The recurring lesson from §8 held here too, in a
 sharper form. Every defect worth catching this phase was a *correct-looking* thing: a
 threshold that could never fire, a guard covering half its surface, a required schema field

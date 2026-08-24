@@ -13,7 +13,7 @@ CORPUS = Path("knowledge/corpus")
 
 
 def test_the_golden_set_is_large_enough():
-    """PLAN.md §16 specifies 25-30 cases."""
+    """The golden set is specified at 25-30 cases."""
     assert 25 <= len(load_cases(GOLDEN_SET)) <= 30
 
 

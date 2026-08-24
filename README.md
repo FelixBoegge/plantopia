@@ -370,7 +370,8 @@ would take — is in [`docs/known-limitations.md`](docs/known-limitations.md).
 
 ## Design documents
 
-- [`PLAN.md`](PLAN.md) — full design and decisions log
+- [`project_brief_Sprint4.md`](project_brief_Sprint4.md) — the sprint-4 assignment
+  this was built against
 - [`docs/agent-graph.md`](docs/agent-graph.md) — both graphs, drawn from the code, and how
   to open them in LangGraph Studio
 - [`docs/code-tour.md`](docs/code-tour.md) — a reading order through the codebase

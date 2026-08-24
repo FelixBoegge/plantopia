@@ -2,7 +2,7 @@
 
 Cases are text, not photographs. Every Ragas metric except top-1/top-3 is a
 retrieval-and-generation metric that cannot see the vision layer, and the public
-leaf-disease datasets ``PLAN.md`` §16 proposed are crop pathology while this corpus
+leaf-disease datasets originally proposed are crop pathology while this corpus
 is houseplant disorders — so scoring against them would measure corpus scope rather
 than agent quality (spec §3.1). The price is that vision accuracy goes unmeasured,
 which the report states rather than hides.

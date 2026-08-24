@@ -1,7 +1,7 @@
 """The plant-scoped chat agent.
 
 A ReAct loop (``langchain.agents.create_agent``), not a fixed graph — follow-up
-conversation has no predictable shape, unlike the diagnosis pipeline (PLAN.md §5.1).
+conversation has no predictable shape, unlike the diagnosis pipeline.
 """
 
 import logging

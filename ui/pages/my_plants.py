@@ -1,4 +1,4 @@
-"""The My Plants grid — the home surface (PLAN.md §12)."""
+"""The My Plants grid — the home surface."""
 
 import streamlit as st
 

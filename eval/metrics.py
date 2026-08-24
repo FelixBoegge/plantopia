@@ -57,8 +57,7 @@ def top3_hit(run: CaseRun) -> bool:
     """Was the ground truth anywhere in the top three?
 
     Reported alongside top-1 because the gap between them locates the weakness: a
-    high top-3 with a mediocre top-1 says ranking is the problem, not retrieval
-    (``PLAN.md`` §16).
+    high top-3 with a mediocre top-1 says ranking is the problem, not retrieval.
     """
     return bool(_accepted(run) & {_normalise_id(c) for c in run.candidates[:3]})
 
