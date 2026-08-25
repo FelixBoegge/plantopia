@@ -50,26 +50,61 @@ class Event:
 class Subscription:
     """One watcher's view of one run.
 
-    A queue rather than a callback: the reader is an SSE handler on an event loop and the
-    writer is a worker thread, and a callback would run the handler's work on the worker's
-    thread.
+    Two ways to receive, because there are two kinds of reader. A blocking one calls
+    ``next`` and waits on the queue. An asynchronous one passes ``on_event`` and is handed
+    each event directly on the publisher's thread — which is what an SSE handler wants, so
+    it can hop the event onto its own loop with ``call_soon_threadsafe`` rather than tying
+    up a thread per watcher waiting on a queue.
+
+    ``on_event`` must not block and must not raise. It runs on the worker's thread, in the
+    middle of somebody's diagnosis.
     """
 
-    def __init__(self, run_id: UUID) -> None:
+    def __init__(self, run_id: UUID, on_event=None, on_close=None) -> None:
         self.run_id = run_id
         self._events: Queue[Event | None] = Queue(maxsize=SUBSCRIBER_BACKLOG)
+        self._closed = False
+        self._on_event = on_event
+        self._on_close = on_close
 
     def deliver(self, event: Event) -> bool:
-        """Hand an event over. Returns whether it fitted."""
+        """Hand an event over. Returns whether it was taken.
+
+        Never blocks either way: a watcher who has stopped reading must not be able to hold
+        up the worker publishing this.
+        """
+        if self._on_event is not None:
+            try:
+                self._on_event(event)
+            except Exception:  # pragma: no cover - a watcher's problem, not the worker's
+                logger.exception("a subscriber's callback raised; dropping the event")
+                return False
+            return True
+
         try:
             self._events.put_nowait(event)
         except Full:
             return False
         return True
 
+    @property
+    def closed(self) -> bool:
+        """Whether there will be anything more.
+
+        A reader needs this because ``next`` answers ``None`` for both "nothing happened
+        yet" and "nothing will happen again", and those call for opposite responses: wait
+        again, or stop.
+        """
+        return self._closed
+
     def close(self) -> None:
         """Wake the reader so it can stop, rather than waiting for an event that will not
         come."""
+        self._closed = True
+        if self._on_close is not None:
+            with suppress(Exception):  # pragma: no cover - the reader is going away anyway
+                self._on_close()
+            return
         # A backlog full at close is one already being drained; the reader will notice the
         # run has finished without needing this.
         with suppress(Full):
@@ -94,8 +129,8 @@ class EventBus:
         self._subscribers: dict[UUID, set[Subscription]] = defaultdict(set)
         self._lock = Lock()
 
-    def subscribe(self, run_id: UUID) -> Subscription:
-        subscription = Subscription(run_id)
+    def subscribe(self, run_id: UUID, *, on_event=None, on_close=None) -> Subscription:
+        subscription = Subscription(run_id, on_event=on_event, on_close=on_close)
         with self._lock:
             self._subscribers[run_id].add(subscription)
         return subscription

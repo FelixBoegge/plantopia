@@ -25,13 +25,13 @@
 ## 4. Events
 
 - [x] 4.1 Add the node-name mapping and assert it is total; verify a test enumerating every node in both graphs and failing on one without a description, plus a test that an unmapped node yields a neutral event rather than its own name.
-- [ ] 4.2 Persist each node update as a `run_events` row before publishing it; verify tests for sequence numbers increasing within a run, for two concurrent runs not interleaving, and that a row exists for every event a subscriber saw.
-- [ ] 4.3 `GET /runs/{id}/events` as SSE, replaying from the beginning then following live; verify a test that a client opening mid-run receives the earlier events before the later ones.
-- [ ] 4.4 Honour `Last-Event-ID`, delivering only events after it; verify tests for reconnecting mid-run and for reconnecting after the run finished, where the stream closes rather than waiting.
-- [ ] 4.5 Send keep-alive traffic on an idle stream; verify tests that it is sent within the configured interval and that it does not reach the client as an event.
-- [ ] 4.6 Deliver a terminal event for `completed`, `failed` and `cancelled`, then close; verify a test per status that the stream ends with a statement rather than a dropped connection.
-- [ ] 4.7 Refuse another owner's stream with 404 and deliver no events; verify a test asserting both.
-- [ ] 4.8 Keep blocking work off the event loop — replay reads in a threadpool, live delivery from the bus only; verify a test that the loop remains responsive to a second request while a long run streams.
+- [x] 4.2 Persist each node update as a `run_events` row before publishing it; verify tests for sequence numbers increasing within a run, for two concurrent runs not interleaving, and that a row exists for every event a subscriber saw.
+- [x] 4.3 `GET /runs/{id}/events` as SSE, replaying from the beginning then following live; verify a test that a client opening mid-run receives the earlier events before the later ones.
+- [x] 4.4 Honour `Last-Event-ID`, delivering only events after it; verify tests for reconnecting mid-run and for reconnecting after the run finished, where the stream closes rather than waiting.
+- [x] 4.5 Send keep-alive traffic on an idle stream; verify tests that it is sent within the configured interval and that it does not reach the client as an event.
+- [x] 4.6 Deliver a terminal event for `completed`, `failed` and `cancelled`, then close; verify a test per status that the stream ends with a statement rather than a dropped connection.
+- [x] 4.7 Refuse another owner's stream with 404 and deliver no events; verify a test asserting both.
+- [x] 4.8 Keep blocking work off the event loop — replay reads in a threadpool, live delivery from the bus only; verify a test that the loop remains responsive to a second request while a long run streams.
 
 ## 5. The interrupt
 

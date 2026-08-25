@@ -103,6 +103,22 @@ class _NotWired:
         )
 
 
+@pytest.fixture(autouse=True)
+def _a_fresh_sse_exit_event():
+    """Reset ``sse_starlette``'s module-level shutdown event between tests.
+
+    It is an ``asyncio.Event`` created on first use and bound to whichever loop was running
+    then. One process, one loop, so this never matters in production — but every
+    ``TestClient`` starts a new loop, and the second streaming test in a run would otherwise
+    fail with "bound to a different event loop" rather than for any reason of its own.
+    """
+    from sse_starlette.sse import AppStatus
+
+    AppStatus.should_exit_event = None
+    yield
+    AppStatus.should_exit_event = None
+
+
 @pytest.fixture
 def api_settings():
     """Settings for a test application.

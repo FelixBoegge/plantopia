@@ -8,12 +8,13 @@ gets back is a run to watch, never a result to wait for.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, File, Form, Header, Request, UploadFile, status
 
-from api import converters
-from api.dependencies import BlobStoreDep, RunServiceDep, SettingsDep
+from api import converters, streaming
+from api.dependencies import BlobStoreDep, RunServiceDep, SessionDep, SettingsDep
 from api.schemas import AnswersIn, RunOut
 from core.images import store_upload
+from runs.bus import bus
 from services.run_service import StartRequest
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -93,3 +94,44 @@ def cancel_run(run_id: UUID, service: RunServiceDep) -> None:
     could leave a half-written checkpoint, which is a worse trade than a few cents.
     """
     service.cancel(run_id)
+
+
+@router.get("/{run_id}/events")
+async def stream_events(
+    run_id: UUID,
+    request: Request,
+    service: RunServiceDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+):
+    """Follow a run as it works.
+
+    Replays what has already happened, then follows live on the same connection — including
+    across the pause for clarifying questions, which is a gap between two publishes rather
+    than the end of anything.
+
+    A client reconnecting sends `Last-Event-ID` and receives only what it missed. That is
+    what makes a reload or a dropped tunnel cost nothing: the owner has already paid for
+    this run and waited for it.
+    """
+    after = streaming.last_seen(last_event_id)
+    service.get(run_id)  # 404 for a stranger before a single event is read
+
+    def _replay(since: int):
+        return service.events(run_id, after=since)
+
+    response = await streaming.stream_run(
+        request=request,
+        run_id=run_id,
+        bus=bus,
+        replay=_replay,
+        after=after,
+        keepalive_seconds=settings.run_keepalive_seconds,
+    )
+
+    # Hand the connection back before streaming. A stream lives for minutes, and the
+    # dependency that opened this session will not close it until the response completes —
+    # which would tie up a pooled connection for every watcher, on top of one per run.
+    session.close()
+    return response

@@ -39,6 +39,7 @@ ROUTES = [
     ("runs.get", "GET", "/api/v1/runs/{run_id}", None),
     ("runs.answer", "POST", "/api/v1/runs/{run_id}/answers", {"answers": {"watering": "daily"}}),
     ("runs.cancel", "DELETE", "/api/v1/runs/{run_id}", None),
+    ("runs.events", "GET", "/api/v1/runs/{run_id}/events", None),
 ]
 
 
