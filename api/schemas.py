@@ -196,3 +196,27 @@ class ResetConfirmIn(BaseModel):
 
     token: str = Field(min_length=1)
     password: str
+
+
+class RunOut(BaseModel):
+    """A run as a client sees it.
+
+    ``status`` is the contract. A client branches on it and never infers one from silence,
+    which is why every field that could be mistaken for a status — a finish time, a
+    diagnosis — is optional and none of them is the source of truth.
+    """
+
+    id: UUID
+    plant_id: UUID | None
+    kind: str
+    status: Literal["queued", "running", "awaiting_answers", "completed", "failed", "cancelled"]
+    created_at: datetime
+    finished_at: datetime | None
+    diagnosis_id: UUID | None
+    error: str | None
+
+
+class AnswersIn(BaseModel):
+    """The answers a paused run asked for, keyed by the question keys it sent."""
+
+    answers: dict[str, str]

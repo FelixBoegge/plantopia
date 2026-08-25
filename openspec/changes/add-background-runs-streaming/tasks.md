@@ -15,16 +15,16 @@
 
 ## 3. Starting a run
 
-- [ ] 3.1 `POST /runs` creating a run for an owner's plant and queueing it; verify tests that the response is immediate, carries an identifier and a status, and carries no diagnosis.
-- [ ] 3.2 Refuse a run naming another owner's plant with 404 and create nothing; verify a test asserting both halves.
-- [ ] 3.3 Apply the quota guard and the daily cap before the run is created; verify tests that a refused run makes no model call, leaves no run record, and does not count towards the allowance that refused it.
-- [ ] 3.4 `GET /runs/{id}` and `GET /runs`; verify tests for the fields a run carries, for most-recent-first ordering, and for another owner's run answering 404 rather than 403.
-- [ ] 3.5 Run the diagnosis graph on the executor, advancing `queued` → `running` → `completed` and recording the diagnosis produced; verify a test driving a whole run with scripted models and asserting the terminal status and the diagnosis identifier.
-- [ ] 3.6 Record a failed run as `failed` with a description that exposes no internal detail; verify tests that a raising node produces `failed` and that neither an exception message nor a module name reaches the client.
+- [x] 3.1 `POST /runs` creating a run for an owner's plant and queueing it; verify tests that the response is immediate, carries an identifier and a status, and carries no diagnosis.
+- [x] 3.2 Refuse a run naming another owner's plant with 404 and create nothing; verify a test asserting both halves.
+- [x] 3.3 Apply the quota guard and the daily cap before the run is created; verify tests that a refused run makes no model call, leaves no run record, and does not count towards the allowance that refused it.
+- [x] 3.4 `GET /runs/{id}` and `GET /runs`; verify tests for the fields a run carries, for most-recent-first ordering, and for another owner's run answering 404 rather than 403.
+- [x] 3.5 Run the diagnosis graph on the executor, advancing `queued` → `running` → `completed` and recording the diagnosis produced; verify a test driving a whole run with scripted models and asserting the terminal status and the diagnosis identifier.
+- [x] 3.6 Record a failed run as `failed` with a description that exposes no internal detail; verify tests that a raising node produces `failed` and that neither an exception message nor a module name reaches the client.
 
 ## 4. Events
 
-- [ ] 4.1 Add the node-name mapping and assert it is total; verify a test enumerating every node in both graphs and failing on one without a description, plus a test that an unmapped node yields a neutral event rather than its own name.
+- [x] 4.1 Add the node-name mapping and assert it is total; verify a test enumerating every node in both graphs and failing on one without a description, plus a test that an unmapped node yields a neutral event rather than its own name.
 - [ ] 4.2 Persist each node update as a `run_events` row before publishing it; verify tests for sequence numbers increasing within a run, for two concurrent runs not interleaving, and that a row exists for every event a subscriber saw.
 - [ ] 4.3 `GET /runs/{id}/events` as SSE, replaying from the beginning then following live; verify a test that a client opening mid-run receives the earlier events before the later ones.
 - [ ] 4.4 Honour `Last-Event-ID`, delivering only events after it; verify tests for reconnecting mid-run and for reconnecting after the run finished, where the stream closes rather than waiting.
@@ -61,7 +61,7 @@
 ## 8. Spend, and closing the gaps
 
 - [ ] 8.1 Record tokens and cost when a run reaches any terminal status, including cancelled and swept; verify tests for completed, failed, cancelled and swept, and that a provider reporting no cost leaves unknown rather than zero.
-- [ ] 8.2 Delete `tests/unit/services/test_limits_are_not_wired_yet.py` and the note in `services/limits.py`; verify the suite is green with both gone and that the guard is genuinely called by a run.
+- [x] 8.2 Delete `tests/unit/services/test_limits_are_not_wired_yet.py` and the note in `services/limits.py`; verify the suite is green with both gone and that the guard is genuinely called by a run.
 - [ ] 8.3 Confirm the evaluation harness still calls the graph directly rather than going through runs; verify a test asserting it, so the accuracy baseline cannot drift through this change.
 - [ ] 8.4 Strike `M29` as resolved with today's date, and record the in-process bus alongside `M28` as one constraint on the deployment rather than two; verify identifiers and dates against the file's conventions.
 - [ ] 8.5 Update the README: starting a diagnosis, watching it, answering it, and the one-process constraint; verify every command runs as written against a live server, including the interrupt and the resume.

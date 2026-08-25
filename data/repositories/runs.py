@@ -185,6 +185,14 @@ class RunRepository:
         """Whether a stop has been asked for. Read by the worker between nodes."""
         return bool(self._session.scalar(select(Run.cancel_requested).where(Run.id == run_id)))
 
+    def status_of(self, run_id: UUID) -> str | None:
+        """A run's status without an owner.
+
+        Worker-side, like ``advance``: ownership was established at the door and the worker
+        carries a run id, not a person.
+        """
+        return self._session.scalar(select(Run.status).where(Run.id == run_id))
+
     def mark_usage_recorded(self, run_id: UUID) -> bool:
         """Claim the right to record this run's usage, once.
 

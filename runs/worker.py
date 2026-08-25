@@ -1,0 +1,302 @@
+"""What happens on the pool's thread.
+
+**This module owns the graph's generators; the SSE handler owns the connection.** They meet
+at the bus and nowhere else, and that indirection is load-bearing rather than tidy. A spike
+established why: `graph.stream(...)` *ends* at the interrupt. A handler streaming the
+generator straight to the response would close the connection halfway through every
+diagnosis that stops to ask a question — which is all of them. Here, the pause is two
+submissions to the pool, and to a watcher it is simply a gap between two publishes.
+
+**A run's session belongs to the run.** The request that started it is long gone by the
+time this executes, and its session with it. Each pass opens its own and closes it.
+
+**Every exit records what was spent.** Completed, failed or cancelled: the money left when
+the model was called, not when a result arrived, and a quota that only sees successes is
+one somebody can exhaust by failing.
+"""
+
+import logging
+from datetime import UTC, datetime
+from uuid import UUID
+
+from langgraph.types import Command
+
+from agent.wiring import build_deps, open_session
+from core.config import Settings
+from core.cost import UsageCollector
+from data.engine import transaction
+from data.repositories import runs as run_status
+from data.repositories.runs import RunRepository
+from data.repositories.usage import UsageRepository
+from runs import steps
+from runs.bus import Event, EventBus
+from services import limits
+
+logger = logging.getLogger(__name__)
+
+# What a client is told when a run fails. Deliberately the same sentence whatever broke:
+# an exception message can carry a query, a filename, or a fragment of somebody's data.
+FAILURE = "The run could not be completed. Nothing was saved; you can try again."
+TIMED_OUT = "The run stopped responding and was ended. You can try again."
+
+
+class RunCancelledError(Exception):
+    """Raised inside the stream loop when a stop has been asked for.
+
+    An exception rather than a return, because it has to unwind out of the middle of a
+    generator that is otherwise going to keep producing nodes.
+    """
+
+
+def execute(
+    *,
+    run_id: UUID,
+    user_id: UUID,
+    thread_id: str,
+    initial_state,
+    settings: Settings,
+    bus: EventBus,
+    resume=None,
+    session_factory=None,
+    build_graph=None,
+) -> None:
+    """Drive one pass of a run: from the start, or from where it paused.
+
+    Called on a pool thread. Never raises: a failure here has nowhere to go but a log, so
+    it becomes a ``failed`` run and a terminal event instead.
+
+    ``session_factory`` and ``build_graph`` default to the real thing and exist to be
+    replaced. They are not test scaffolding bolted on: they are the same two seams a real
+    worker process would need, and having them means this function can be driven end to
+    end against scripted models without a single patch.
+    """
+    session = (session_factory or (lambda: open_session(settings)))()
+    runs = RunRepository(session)
+    collector = UsageCollector()
+
+    try:
+        now = datetime.now(UTC)
+        started = runs.advance(
+            run_id,
+            expected=run_status.QUEUED if resume is None else run_status.AWAITING_ANSWERS,
+            to=run_status.RUNNING,
+            now=now,
+        )
+        session.commit()
+        if not started:
+            # Cancelled between being queued and being picked up, or answered twice. The
+            # run is somebody else's business now.
+            logger.info("run %s was not in a state to start; leaving it alone", run_id)
+            return
+
+        _drive(
+            run_id=run_id,
+            user_id=user_id,
+            thread_id=thread_id,
+            initial_state=initial_state,
+            resume=resume,
+            settings=settings,
+            session=session,
+            runs=runs,
+            bus=bus,
+            collector=collector,
+            build_graph=build_graph,
+        )
+    except RunCancelledError:
+        _finish(
+            runs, session, bus, run_id, to=run_status.CANCELLED, kind=steps.CANCELLED, detail={}
+        )
+    except Exception:
+        logger.exception("run %s failed", run_id)
+        _finish(
+            runs,
+            session,
+            bus,
+            run_id,
+            to=run_status.FAILED,
+            kind=steps.FAILED,
+            detail={"detail": FAILURE},
+            error=FAILURE,
+        )
+    finally:
+        _record_usage(session, runs, run_id=run_id, user_id=user_id, collector=collector)
+        session.close()
+
+
+def _drive(
+    *,
+    run_id: UUID,
+    user_id: UUID,
+    thread_id: str,
+    initial_state,
+    resume,
+    settings: Settings,
+    session,
+    runs: RunRepository,
+    bus: EventBus,
+    collector: UsageCollector,
+    build_graph=None,
+) -> None:
+    """One pass of the graph, publishing as it goes."""
+    graph = (build_graph or _real_graph)(session=session, user_id=user_id, settings=settings)
+
+    config = {
+        "configurable": {"thread_id": thread_id, "usage_collector": collector},
+        "callbacks": [collector],
+    }
+    payload = Command(resume=resume) if resume is not None else initial_state
+
+    interrupted = False
+    for update in graph.stream(payload, config, stream_mode="updates"):
+        if runs.cancel_requested(run_id):
+            raise RunCancelledError
+
+        for node, value in update.items():
+            if node == "__interrupt__":
+                interrupted = True
+                _pause(runs, session, bus, run_id, value)
+                break
+            _publish_step(runs, session, bus, run_id, node)
+
+        if interrupted:
+            return
+
+    _complete(runs, session, bus, run_id, graph=graph, config=config)
+
+
+def _real_graph(*, session, user_id: UUID, settings: Settings):
+    """The diagnosis graph, on this run's session and this owner's profile.
+
+    Built per run rather than per process: it closes over repositories bound to a session,
+    and a session outlives neither the run nor the thread it belongs to.
+    """
+    from agent.checkpoints import build_checkpointer, checkpointer_url
+    from agent.diagnosis_graph import build_diagnosis_graph
+
+    deps = build_deps(
+        user_id=user_id,
+        profile_facts=_profile_facts(session, user_id),
+        settings=settings,
+        session=session,
+    )
+    return build_diagnosis_graph(deps, build_checkpointer(checkpointer_url(settings)))
+
+
+def _publish_step(runs, session, bus, run_id, node: str) -> None:
+    """Record one node's completion, then tell whoever is watching.
+
+    Persisted first, always. Publishing first would mean a client receiving an event the
+    database does not have, and a reconnect replaying a shorter history than the one
+    already on screen.
+    """
+    step = steps.step_for(node)
+    payload = {"step": step.id, "description": step.description}
+    with transaction(session):
+        sequence = runs.append_event(run_id, kind=steps.STEP, payload=payload, now=_now())
+    bus.publish(Event(run_id=run_id, sequence=sequence, kind=steps.STEP, payload=payload))
+
+
+def _pause(runs, session, bus, run_id, interrupts) -> None:
+    """The graph stopped to ask. That is a status, not a failure."""
+    questions = _questions_from(interrupts)
+    payload = {"questions": questions}
+    with transaction(session):
+        runs.advance(
+            run_id, expected=run_status.RUNNING, to=run_status.AWAITING_ANSWERS, now=_now()
+        )
+        sequence = runs.append_event(run_id, kind=steps.QUESTIONS, payload=payload, now=_now())
+    bus.publish(Event(run_id=run_id, sequence=sequence, kind=steps.QUESTIONS, payload=payload))
+
+
+def _complete(runs, session, bus, run_id, *, graph, config) -> None:
+    """The graph finished. Record what it produced and close the stream."""
+    state = graph.get_state(config).values
+    diagnosis_id = state.get("diagnosis_id")
+    payload = {"diagnosis_id": str(diagnosis_id) if diagnosis_id else None}
+
+    with transaction(session):
+        runs.advance(
+            run_id,
+            expected=run_status.RUNNING,
+            to=run_status.COMPLETED,
+            now=_now(),
+            diagnosis_id=diagnosis_id,
+        )
+        sequence = runs.append_event(run_id, kind=steps.COMPLETED, payload=payload, now=_now())
+    bus.publish(Event(run_id=run_id, sequence=sequence, kind=steps.COMPLETED, payload=payload))
+    bus.close_run(run_id)
+
+
+def _finish(runs, session, bus, run_id, *, to: str, kind: str, detail: dict, error=None) -> None:
+    """End a run that did not finish on its own, and say so on the stream.
+
+    Rolls back first: whatever was in flight when this was reached is not something to
+    commit alongside the failure.
+    """
+    session.rollback()
+    with transaction(session):
+        moved = runs.advance(run_id, expected=run_status.UNFINISHED, to=to, now=_now(), error=error)
+        sequence = runs.append_event(run_id, kind=kind, payload=detail, now=_now()) if moved else 0
+    if moved:
+        bus.publish(Event(run_id=run_id, sequence=sequence, kind=kind, payload=detail))
+    bus.close_run(run_id)
+
+
+def _record_usage(session, runs, *, run_id: UUID, user_id: UUID, collector) -> None:
+    """Write what this pass spent, once.
+
+    Claimed conditionally, so a worker finishing and the sweeper giving up on the same run
+    cannot both record it — which would charge an owner twice for one diagnosis.
+
+    Only for a pass that reached a terminal status. The first half of an interrupted run
+    has spent real money, but recording it at the pause and again after the resume would
+    count one run twice; the collector is scoped to the thread, so the pass that finishes
+    reports the whole thing.
+    """
+    snapshot = collector.snapshot()
+    try:
+        session.rollback()
+        with transaction(session):
+            status = runs.status_of(run_id)
+            if status not in run_status.TERMINAL:
+                return
+            if not runs.mark_usage_recorded(run_id):
+                return
+            UsageRepository(session).record(
+                user_id,
+                kind=limits.DIAGNOSIS,
+                usage=snapshot,
+                succeeded=status == run_status.COMPLETED,
+                now=_now(),
+            )
+    except Exception:  # pragma: no cover - accounting must never break a finished run
+        logger.exception("could not record usage for run %s", run_id)
+
+
+def _profile_facts(session, user_id: UUID):
+    """The owner's learned profile, rendered for prompts.
+
+    Built here rather than passed in because it belongs to this run's session, which the
+    request that started the run does not share. No gate model: rendering existing facts
+    reads the table and nothing else — the model is only for deciding what to learn, which
+    happens on the chat path.
+    """
+    from data.repositories.profile import ProfileRepository
+    from services.profile_service import ProfileService
+
+    service = ProfileService(
+        user_id=user_id, repo=ProfileRepository(session), gate_model=None, now=_now
+    )
+    return service.facts_for_prompt
+
+
+def _questions_from(interrupts) -> list[dict]:
+    """The questions an interrupt carries, as plain data."""
+    if not interrupts:
+        return []
+    value = interrupts[0].value if hasattr(interrupts[0], "value") else interrupts[0]
+    return list(value.get("questions", []))
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)

@@ -36,6 +36,9 @@ ROUTES = [
     ("care.mark_step", "PATCH", "/api/v1/roadmap-steps/{step_id}", {"status": "done"}),
     ("care.feedback", "POST", "/api/v1/diagnoses/{diagnosis_id}/feedback", {"rating": 5}),
     ("photos.get", "GET", "/api/v1/photos/{key}", None),
+    ("runs.get", "GET", "/api/v1/runs/{run_id}", None),
+    ("runs.answer", "POST", "/api/v1/runs/{run_id}/answers", {"answers": {"watering": "daily"}}),
+    ("runs.cancel", "DELETE", "/api/v1/runs/{run_id}", None),
 ]
 
 

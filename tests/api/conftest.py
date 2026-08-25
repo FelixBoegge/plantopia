@@ -33,6 +33,7 @@ from data.repositories.messages import MessageRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.roadmap import RoadmapRepository
+from data.repositories.runs import RunRepository
 from identity.tokens import issue_access_token
 from services.plant_service import PlantService
 from tests.secrets import TEST_JWT_SECRET
@@ -227,4 +228,10 @@ def seeded(db, owner):
         "step_id": step_ids[0],
         "message_id": message_id,
         "photo_key": photo_key,
+        # Left queued. The run endpoints check ownership before status, so a stranger gets
+        # 404 rather than the 409 this run's status would earn its owner — which is the
+        # ordering the tenancy table depends on and the reason it is worth stating here.
+        "run_id": RunRepository(db).create(
+            owner, plant_id=plant_id, kind="diagnosis", thread_id=f"{owner}:diagnose:seed", now=NOW
+        ),
     }

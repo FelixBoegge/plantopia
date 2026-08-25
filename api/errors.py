@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from api.dependencies import NotSignedInError, SessionExpiredError
 from api.rate_limit import RateLimitedError
+from core.guards import UploadRejected
 from data.repositories.errors import RecordNotFoundError
 from identity.accounts import (
     AuthenticationError,
@@ -27,7 +28,9 @@ from identity.accounts import (
     VerificationError,
 )
 from identity.sessions import SessionError
+from runs.executor import QueueFullError
 from services.limits import DailyCapReachedError, QuotaExceededError
+from services.run_service import RunConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,8 @@ TYPE_SESSION_EXPIRED = "https://plantopia.example/problems/session-expired"
 TYPE_QUOTA_EXCEEDED = "https://plantopia.example/problems/quota-exceeded"
 TYPE_DAILY_CAP = "https://plantopia.example/problems/daily-cap-reached"
 TYPE_RATE_LIMITED = "https://plantopia.example/problems/rate-limited"
+TYPE_CONFLICT = "https://plantopia.example/problems/conflict"
+TYPE_BUSY = "https://plantopia.example/problems/too-busy"
 
 
 def problem(
@@ -74,6 +79,52 @@ def register(app: FastAPI) -> None:
             title="Not found",
             detail="No such resource.",
         )
+
+    @app.exception_handler(UploadRejected)
+    def _bad_upload(request: Request, exc: UploadRejected) -> JSONResponse:
+        """A photograph that is not one, or is too large.
+
+        The reason is safe to return: it is written by ``core/guards.py`` for a person to
+        read, and says nothing about the request beyond what the person just sent.
+        """
+        return problem(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            type_=TYPE_INVALID_REQUEST,
+            title="That photograph could not be used",
+            detail=exc.reason,
+        )
+
+    @app.exception_handler(RunConflictError)
+    def _conflict(request: Request, exc: RunConflictError) -> JSONResponse:
+        """The request is fine; its timing is not.
+
+        Answering a run that is no longer waiting, cancelling one that has finished. 409
+        rather than 400 because there is nothing to correct and nothing to retry — the
+        world moved.
+        """
+        return problem(
+            status_code=status.HTTP_409_CONFLICT,
+            type_=TYPE_CONFLICT,
+            title="That is no longer possible",
+            detail=str(exc),
+        )
+
+    @app.exception_handler(QueueFullError)
+    def _too_busy(request: Request, exc: QueueFullError) -> JSONResponse:
+        """More runs are waiting than the queue holds.
+
+        Its own type, and not a quota: this is the only one of the three refusals that
+        clears on its own in a minute, so it is the only one where "try again shortly" is
+        the right thing to tell somebody.
+        """
+        response = problem(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            type_=TYPE_BUSY,
+            title="Too many runs at once",
+            detail="Plantopia is working through a queue. Try again in a minute.",
+        )
+        response.headers["Retry-After"] = "60"
+        return response
 
     @app.exception_handler(QuotaExceededError)
     def _quota(request: Request, exc: QuotaExceededError) -> JSONResponse:

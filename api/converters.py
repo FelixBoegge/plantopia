@@ -15,6 +15,7 @@ from api.schemas import (
     PlantSummaryOut,
     ProfileFactOut,
     RoadmapStepOut,
+    RunOut,
 )
 from data.repositories.diagnoses import DiagnosisRecord
 from data.repositories.messages import MessageRecord
@@ -130,4 +131,23 @@ def plant_detail(detail: PlantDetail) -> PlantDetailOut:
         diagnoses=[diagnosis(d) for d in detail.diagnoses],
         roadmap_steps=[roadmap_step(s) for s in detail.roadmap_steps],
         feedback_due=detail.feedback_due,
+    )
+
+
+def run(record) -> RunOut:
+    """A run record as the wire shape.
+
+    ``thread_id``, ``cancel_requested`` and ``usage_recorded`` are deliberately absent:
+    they are how the worker and the sweeper talk to each other, and a client that could
+    see a thread id could resume somebody's paid run.
+    """
+    return RunOut(
+        id=record.id,
+        plant_id=record.plant_id,
+        kind=record.kind,
+        status=record.status,
+        created_at=record.created_at,
+        finished_at=record.finished_at,
+        diagnosis_id=record.diagnosis_id,
+        error=record.error,
     )

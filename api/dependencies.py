@@ -13,10 +13,12 @@ the owner itself.
 """
 
 from collections.abc import Iterator
+from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Header, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from agent.wiring import build_deps, now_utc, open_session
@@ -31,10 +33,15 @@ from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.profile import ProfileRepository
 from data.repositories.roadmap import RoadmapRepository
+from data.repositories.runs import RunRepository
+from data.repositories.usage import UsageRepository
 from identity.tokens import TokenExpiredError, TokenInvalidError, read_access_token
+from runs.bus import bus
+from runs.executor import RunExecutor, ThreadPoolRunExecutor
 from services.chat_service import ChatService
 from services.plant_service import PlantService
 from services.profile_service import ProfileService
+from services.run_service import RunService
 
 
 def settings_dep() -> Settings:
@@ -169,6 +176,58 @@ def blob_store(session: SessionDep) -> BlobStore:
 
 
 BlobStoreDep = Annotated[BlobStore, Depends(blob_store)]
+
+
+def run_service(session: SessionDep, owner: OwnerDep, settings: SettingsDep) -> RunService:
+    """One owner's runs.
+
+    The executor and the bus are process-wide singletons rather than per-request objects:
+    a pool built per request would be a pool of one that nothing ever reuses, and a bus
+    built per request would publish to nobody, because the watcher subscribed on a
+    different one.
+    """
+    return RunService(
+        user_id=owner,
+        tier=_tier_of(session, owner),
+        runs=RunRepository(session),
+        plants=PlantRepository(session),
+        usage=UsageRepository(session),
+        executor=executor_for(settings),
+        bus=bus,
+        settings=settings,
+        now=now_utc,
+    )
+
+
+RunServiceDep = Annotated[RunService, Depends(run_service)]
+
+
+def _tier_of(session: Session, owner: UUID) -> str:
+    """Which allowance applies to this person.
+
+    Read per request rather than carried in the token: a tier change should take effect on
+    the next run, and a tier baked into a token takes effect whenever that token happens to
+    expire.
+    """
+    from data.models import User
+
+    return session.scalar(select(User.tier).where(User.id == owner)) or "free"
+
+
+def executor_for(settings: Settings) -> RunExecutor:
+    """The process's pool.
+
+    One per (size, limit) rather than one absolutely, so a test constructing an application
+    with a different pool size gets its own instead of silently inheriting one. Keyed on
+    those two scalars because ``Settings`` is not hashable — and because they are what
+    actually determines a pool.
+    """
+    return _pool_for(settings.run_pool_size, settings.run_queue_limit)
+
+
+@lru_cache(maxsize=4)
+def _pool_for(pool_size: int, queue_limit: int) -> RunExecutor:
+    return ThreadPoolRunExecutor(pool_size=pool_size, queue_limit=queue_limit)
 
 
 def chat_service(session: SessionDep, owner: OwnerDep, settings: SettingsDep) -> ChatService:

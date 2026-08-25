@@ -26,6 +26,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "uuid6>=2025.0.1",
     "uvicorn>=0.52.1",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]

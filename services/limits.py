@@ -14,12 +14,8 @@ refusal has to be distinguishable from the other.
 Both refuse *before* any model call. A guard that runs afterwards has already spent the
 money it was there to protect.
 
-**Nothing calls ``check`` yet.** The endpoints that start a run do not exist — diagnosis and
-recheck arrive with the change that makes runs background and streams them — so this module
-is complete, tested, and unreached. That is deliberate rather than forgotten: writing the
-guard against a synchronous endpoint built to be deleted would have meant writing the
-wiring twice. The change that adds those endpoints carries wiring this in as a task, and
-``UsageRepository.record`` is what it calls on the way out.
+``services/run_service.start`` calls ``check`` before a run row exists, and
+``runs/worker`` calls ``UsageRepository.record`` on the way out of every terminal status.
 """
 
 from dataclasses import dataclass

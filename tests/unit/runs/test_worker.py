@@ -1,0 +1,309 @@
+"""A whole run, driven end to end against scripted models.
+
+No LLM call, no network, and no patching: the worker takes its session and its graph as
+arguments, which is the same seam a real worker process would need.
+
+This is where the spike's finding is held. The graph's generator ends at the interrupt, so
+the pause here is two calls to ``execute`` — and everything a client sees of it comes from
+the bus, which is what lets one connection span both.
+"""
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+import pytest
+from langgraph.checkpoint.memory import MemorySaver
+from sqlalchemy import select
+
+from agent.diagnosis_graph import build_diagnosis_graph
+from agent.state import DiagnosisState
+from agent.threads import diagnosis_thread
+from core.config import Settings
+from data.models import UsageEvent
+from data.repositories import runs as run_status
+from data.repositories.runs import RunRepository
+from runs import steps, worker
+from runs.bus import EventBus
+from tests.runs import make_run
+from tests.secrets import TEST_JWT_SECRET
+
+ANSWERS = {"watering": "every other day", "drainage": "No drainage holes"}
+
+
+@pytest.fixture
+def settings():
+    return Settings(_env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET)
+
+
+@pytest.fixture
+def scripted_graph(make_deps, pipeline_models):
+    """A real diagnosis graph with scripted models behind it.
+
+    In-memory checkpointer: these runs pause and resume within one test, and a Postgres
+    checkpoint per test would be litter with no reader.
+    """
+    gate, vision, chat = pipeline_models
+    deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
+    graph = build_diagnosis_graph(deps, MemorySaver())
+
+    def _build(**_):
+        return graph
+
+    return _build
+
+
+@pytest.fixture
+def bus():
+    return EventBus()
+
+
+@dataclass(frozen=True)
+class _Started:
+    """A run, as plain values.
+
+    Deliberately not the ORM object. The worker owns the session it is given and rolls it
+    back on a failure, which expires every instance attached to it — so a test holding a
+    ``Run`` across ``execute`` reads a detached one afterwards, and fails for a reason that
+    has nothing to do with what it was asserting.
+    """
+
+    id: object
+    user_id: object
+    thread_id: str
+
+
+def _run_and_state(db, owner, sample_images, *, status=None):
+    thread_id = diagnosis_thread(owner)
+    run = make_run(db, owner, status=status or run_status.QUEUED, thread_id=thread_id)
+    started = _Started(id=run.id, user_id=run.user_id, thread_id=run.thread_id)
+    db.commit()
+    state = DiagnosisState(images=sample_images, plant_name="Kitchen basil", location_kind="indoor")
+    return started, state
+
+
+def _execute(run, state, *, settings, bus, graph, db, resume=None):
+    worker.execute(
+        run_id=run.id,
+        user_id=run.user_id,
+        thread_id=run.thread_id,
+        initial_state=state,
+        settings=settings,
+        bus=bus,
+        resume=resume,
+        session_factory=lambda: db,
+        build_graph=graph,
+    )
+
+
+def test_a_run_reaches_the_interrupt_and_waits(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    assert RunRepository(db).get(owner, run.id).status == run_status.AWAITING_ANSWERS
+
+
+def test_the_pause_carries_the_questions(db, owner, sample_images, settings, bus, scripted_graph):
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    events = RunRepository(db).events(owner, run.id)
+    asking = [event for event in events if event.kind == steps.QUESTIONS]
+    assert len(asking) == 1
+    assert {question["key"] for question in asking[0].payload["questions"]} >= {"watering"}
+
+
+def test_answering_completes_the_run(db, owner, sample_images, settings, bus, scripted_graph):
+    """The second pass, which the spike proved continues the same thread rather than
+    starting again."""
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    finished = RunRepository(db).get(owner, run.id)
+    assert finished.status == run_status.COMPLETED
+    assert finished.diagnosis_id is not None
+    assert finished.finished_at is not None
+
+
+def test_a_completed_run_names_the_diagnosis_it_produced(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    from data.models import Diagnosis
+
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    diagnosis_id = RunRepository(db).get(owner, run.id).diagnosis_id
+    assert db.get(Diagnosis, diagnosis_id) is not None
+
+
+def test_every_step_becomes_an_event(db, owner, sample_images, settings, bus, scripted_graph):
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    events = RunRepository(db).events(owner, run.id)
+    assert [event.sequence for event in events] == list(range(1, len(events) + 1))
+    assert events[-1].kind == steps.COMPLETED
+
+
+def test_the_sequence_continues_across_the_pause(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """One connection spans both halves, so the numbers it sees must not restart."""
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    before = [event.sequence for event in RunRepository(db).events(owner, run.id)]
+
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+    after = [event.sequence for event in RunRepository(db).events(owner, run.id)]
+
+    assert after[: len(before)] == before
+    assert after[len(before)] == before[-1] + 1
+
+
+def test_no_event_names_a_node(db, owner, sample_images, settings, bus, scripted_graph):
+    """A client rendering `identify_plant` is a client coupled to a function name."""
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    rendered = str([event.payload for event in RunRepository(db).events(owner, run.id)])
+    for node in steps.STEPS:
+        assert node not in rendered
+
+
+def test_a_watcher_receives_the_events_as_they_happen(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    run, state = _run_and_state(db, owner, sample_images)
+    watcher = bus.subscribe(run.id)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    received = []
+    while (event := watcher.next(timeout=0.1)) is not None:
+        received.append(event)
+    assert [event.kind for event in received][-1] == steps.QUESTIONS
+
+
+def test_a_failing_graph_produces_a_failed_run(db, owner, sample_images, settings, bus):
+    def _explodes(**_):
+        raise RuntimeError("the vision provider returned nonsense")
+
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=_explodes, db=db)
+
+    assert RunRepository(db).get(owner, run.id).status == run_status.FAILED
+
+
+def test_a_failure_tells_the_client_nothing_about_what_broke(
+    db, owner, sample_images, settings, bus
+):
+    """An exception message can carry a query, a filename, or a fragment of somebody's
+    data. The same sentence goes out whatever happened."""
+
+    def _explodes(**_):
+        raise RuntimeError("psycopg: SELECT secrets FROM somewhere WHERE id = 42")
+
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=_explodes, db=db)
+
+    failed = RunRepository(db).get(owner, run.id)
+    assert failed.error == worker.FAILURE
+    assert "psycopg" not in failed.error
+    assert "SELECT" not in failed.error
+
+
+def test_a_failure_is_announced_on_the_stream(db, owner, sample_images, settings, bus):
+    def _explodes(**_):
+        raise RuntimeError("no")
+
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=_explodes, db=db)
+
+    events = RunRepository(db).events(owner, run.id)
+    assert events[-1].kind == steps.FAILED
+
+
+def test_a_completed_run_records_what_it_spent(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    recorded = db.scalars(select(UsageEvent).where(UsageEvent.user_id == owner)).all()
+    assert len(recorded) == 1
+    assert recorded[0].succeeded is True
+
+
+def test_a_paused_run_records_nothing_yet(db, owner, sample_images, settings, bus, scripted_graph):
+    """Recording at the pause and again after the resume would count one run twice."""
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    assert db.scalars(select(UsageEvent).where(UsageEvent.user_id == owner)).all() == []
+
+
+def test_a_failed_run_records_what_it_spent_before_failing(db, owner, sample_images, settings, bus):
+    """A quota that only sees successes is one somebody can exhaust by failing."""
+
+    def _explodes(**_):
+        raise RuntimeError("no")
+
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=_explodes, db=db)
+
+    recorded = db.scalars(select(UsageEvent).where(UsageEvent.user_id == owner)).all()
+    assert len(recorded) == 1
+    assert recorded[0].succeeded is False
+
+
+def test_a_run_that_is_not_queued_is_left_alone(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """Cancelled between being queued and being picked up. The worker must not start it."""
+    run, state = _run_and_state(db, owner, sample_images, status=run_status.CANCELLED)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    assert RunRepository(db).get(owner, run.id).status == run_status.CANCELLED
+    assert RunRepository(db).events(owner, run.id) == []
+
+
+def test_a_cancellation_stops_the_run_between_nodes(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """Cooperative, checked before each node. The step in flight finishes; no later one
+    begins."""
+    run, state = _run_and_state(db, owner, sample_images)
+    RunRepository(db).request_cancel(owner, run.id)
+    db.commit()
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    assert RunRepository(db).get(owner, run.id).status == run_status.CANCELLED
+
+
+def test_the_clock_used_is_the_real_one(db, owner, sample_images, settings, bus, scripted_graph):
+    """The worker stamps events itself rather than taking a clock, because it runs long
+    after the request that started it. Asserted so the choice is visible."""
+    run, state = _run_and_state(db, owner, sample_images)
+    before = datetime.now(UTC)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    events = RunRepository(db).events(owner, run.id)
+    assert events[0].occurred_at >= before
