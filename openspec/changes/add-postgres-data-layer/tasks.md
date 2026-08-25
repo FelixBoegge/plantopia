@@ -16,7 +16,7 @@
 
 - [x] 3.1 Add pytest fixtures that create the schema once per session against the compose database and wrap each test in a transaction rolled back at teardown; verify two tests writing the same natural key both pass in either execution order.
 - [x] 3.2 Add a `pgvector` extension fixture and a corpus-loading fixture for retriever tests; verify a smoke test that stores and queries one vector.
-- [ ] 3.3 Document `docker compose up -d db` as a prerequisite in the README's Development section and retire the "no network calls" claim, keeping the no-LLM-calls claim explicit; verify by reading the section back against what the suite now does.
+- [x] 3.3 Document `docker compose up -d db` as a prerequisite in the README's Development section and retire the "no network calls" claim, keeping the no-LLM-calls claim explicit; verify by reading the section back against what the suite now does.
 
 ## 4. Repositories with enforced tenancy
 
@@ -24,7 +24,7 @@
 - [x] 4.2 Rewrite `ObservationRepository` and `DiagnosisRepository` the same way; verify ported tests plus cross-owner cases on `list_for_plant` and `latest_for_plant`.
 - [x] 4.3 Rewrite `RoadmapRepository` and `FeedbackRepository`; verify ported tests, the `M10` rowcount `ValueError` on an unknown step id is preserved, and marking another owner's step raises rather than silently succeeding.
 - [x] 4.4 Rewrite the profile and message repositories including `profile_cursors`; verify ported tests plus a test that the same fact for two owners is two rows. Found during implementation: two integer-id assumptions travel with this. `services/profile_service.py` reads `cursor_for(plant_id) or 0` — a sentinel that cannot exist for a UUID — and both the cursor comparison and `MessageRepository.list_for_plant`'s `ORDER BY id` rely on identifiers being chronological. Order by `created_at, id` and compare the cursor on an explicit `None` instead of leaning on UUIDv7's ordering, which ties arbitrarily within a millisecond.
-- [ ] 4.5 Add a table-driven tenancy test that walks every public repository method taking a record identifier and asserts a foreign owner is refused; verify it fails when a `user_id` filter is deliberately removed from one method.
+- [x] 4.5 Add a table-driven tenancy test that walks every public repository method taking a record identifier and asserts a foreign owner is refused; verify it fails when a `user_id` filter is deliberately removed from one method. Verified 2026-08-25: removing the filter from `PlantRepository.get` and `_owned` failed 5 tests, naming each leaking method; restored afterwards and confirmed byte-identical to the committed file.
 - [x] 4.6 Seed a single owner at startup and thread its id from `ui/bootstrap.py` through `services/` into the repositories; verify `uv run pytest -m ui --no-cov` passes and Streamlit still completes a diagnosis end to end.
 
 ## 5. Blob storage
