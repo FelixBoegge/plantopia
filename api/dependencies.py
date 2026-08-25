@@ -16,10 +16,11 @@ from collections.abc import Iterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from agent.wiring import build_deps, now_utc, open_session
+from api import rate_limit
 from core.blobs import BlobStore, PostgresBlobStore
 from core.config import Settings, get_settings
 from core.mail import Mailer, build_mailer
@@ -70,6 +71,18 @@ def mailer_dep(settings: SettingsDep) -> Mailer:
 
 
 MailerDep = Annotated[Mailer, Depends(mailer_dep)]
+
+
+def rate_limited(request: Request, settings: SettingsDep) -> None:
+    """Refuse a source that has called a cheap-to-hammer endpoint too often.
+
+    Declared as a dependency rather than middleware so that which endpoints are limited is
+    visible where they are defined, instead of in a path list somewhere else that drifts.
+    """
+    rate_limit.limit(request, settings)
+
+
+RateLimited = Depends(rate_limited)
 
 
 class NotSignedInError(Exception):

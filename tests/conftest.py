@@ -41,6 +41,20 @@ def _test_env(monkeypatch):
     monkeypatch.setenv("PLANTOPIA_JWT_SECRET", TEST_JWT_SECRET)
 
 
+@pytest.fixture(autouse=True)
+def _a_clean_rate_limit_window():
+    """Rate-limit counters are process state, shared by every test in the run.
+
+    Without this the suite hits the limit partway through and several dozen unrelated tests
+    start answering 429 — a failure whose cause is nowhere near where it shows up.
+    """
+    from api.rate_limit import window
+
+    window.forget()
+    yield
+    window.forget()
+
+
 @pytest.fixture
 def db(pg_session):  # noqa: F811 — the fixture name is the parameter name
     """A session on the test database, rolled back when the test ends.

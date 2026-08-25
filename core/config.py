@@ -129,6 +129,11 @@ class Settings(BaseSettings):
     # together may spend in a day. A diagnosis costs roughly five cents; open
     # registration without either of these is an unmetered bill with a signup form.
     monthly_run_allowance: int = Field(default=20, ge=1)
+
+    # Per-tier overrides of the allowance above, so introducing a paid tier is a
+    # configuration change rather than a code one. A tier absent from here gets the
+    # default: an unrecognised tier should be an ordinary account, not a locked one.
+    tier_allowances: dict[str, int] = Field(default_factory=dict)
     daily_spend_cap_usd: float = Field(default=5.0, gt=0)
 
     # Per-source limits on the three unauthenticated endpoints that are cheap to hammer.

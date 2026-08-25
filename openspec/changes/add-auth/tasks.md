@@ -46,12 +46,12 @@
 
 ## 7. Spend control
 
-- [ ] 7.1 Record tokens and cost per run in `usage_events`, including runs that fail after spending; verify tests for a successful run, a failed one, and a provider reporting no cost — where unknown must stay distinguishable from zero.
-- [ ] 7.2 Add the quota guard reading the owner's tier; verify tests for a run below the allowance proceeding, one at the allowance being refused before any model call, the period rolling over, and a second tier applying without a code change.
-- [ ] 7.3 Add the global daily spend cap; verify tests that it refuses every run including for owners with allowance left, that its refusal is distinguishable from a personal quota, and that a new day clears it.
-- [ ] 7.4 Add per-IP rate limits on register, login and reset; verify tests for ordinary use passing, hammering being refused with a retry-after, and the refusal not differing for registered versus unregistered addresses.
-- [ ] 7.5 Give each refusal its own machine-readable type in the problem-details shape; verify a test asserting all four — personal quota, global cap, rate limit, unauthenticated — are mutually distinguishable.
-- [ ] 7.6 Record that nothing calls the quota guard yet, because run endpoints do not exist, and add wiring it in as a task of the change that introduces them; verify the note reads accurately against what is actually wired.
+- [x] 7.1 Record tokens and cost per run in `usage_events`, including runs that fail after spending; verify tests for a successful run, a failed one, and a provider reporting no cost — where unknown must stay distinguishable from zero.
+- [x] 7.2 Add the quota guard reading the owner's tier; verify tests for a run below the allowance proceeding, one at the allowance being refused before any model call, the period rolling over, and a second tier applying without a code change.
+- [x] 7.3 Add the global daily spend cap; verify tests that it refuses every run including for owners with allowance left, that its refusal is distinguishable from a personal quota, and that a new day clears it.
+- [x] 7.4 Add per-IP rate limits on register, login and reset; verify tests for ordinary use passing, hammering being refused with a retry-after, and the refusal not differing for registered versus unregistered addresses.
+- [x] 7.5 Give each refusal its own machine-readable type in the problem-details shape; verify a test asserting all four — personal quota, global cap, rate limit, unauthenticated — are mutually distinguishable.
+- [x] 7.6 Record that nothing calls the quota guard yet, because run endpoints do not exist, and add wiring it in as a task of the change that introduces them; verify the note reads accurately against what is actually wired.
 
 ## 8. Closing the gaps
 

@@ -547,9 +547,9 @@ and tasks.
 | # | Change | Est. | Covers |
 |---|---|---|---|
 | 1 | `add-postgres-data-layer` | ~30h | §4 entire, including the pgvector retriever and §9.3's parity gate |
-| 2 | `add-http-api-and-auth` | ~30h | §5, plus email verification, reset, quotas, spend cap, the consent record |
-| 3 | `add-background-runs-streaming` | ~15h | §6 entire |
-| 4 | `add-react-frontend` | ~50h | §7, closing with the deletion of Streamlit and the `ui` test tier |
+| 2 | `add-http-api` then `add-auth` | ~30h | §5, plus email verification, reset, quotas, spend cap, the consent record. Split in two on the way: the API surface first, authentication second |
+| 3 | `add-background-runs-streaming` | ~15h | §6 entire, **plus wiring `services/limits.check` into the run endpoints and `UsageRepository.record` into their completion** — the guard and the recording were built with the auth change and are deliberately unreached until there is a run to guard |
+| 4 | `add-react-frontend` | ~50h | §7. Streamlit and the `ui` test tier were already deleted with the auth change, where the seeded owner they resolved through disappeared |
 | 5 | `add-plantnet-identification` | ~10h | §14.1 — one flow, so the typed name and the three-way choice ride with it |
 | 6 | `add-image-metadata-capture` | ~7h | §14.2 |
 | 7 | `add-granular-weather` | ~9h | §14.3 |

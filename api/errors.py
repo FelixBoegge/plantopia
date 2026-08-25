@@ -18,6 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api.dependencies import NotSignedInError, SessionExpiredError
+from api.rate_limit import RateLimitedError
 from data.repositories.errors import RecordNotFoundError
 from identity.accounts import (
     AuthenticationError,
@@ -26,6 +27,7 @@ from identity.accounts import (
     VerificationError,
 )
 from identity.sessions import SessionError
+from services.limits import DailyCapReachedError, QuotaExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ TYPE_INTERNAL = "https://plantopia.example/problems/internal-error"
 TYPE_INVALID_LINK = "https://plantopia.example/problems/invalid-link"
 TYPE_UNAUTHENTICATED = "https://plantopia.example/problems/unauthenticated"
 TYPE_SESSION_EXPIRED = "https://plantopia.example/problems/session-expired"
+TYPE_QUOTA_EXCEEDED = "https://plantopia.example/problems/quota-exceeded"
+TYPE_DAILY_CAP = "https://plantopia.example/problems/daily-cap-reached"
+TYPE_RATE_LIMITED = "https://plantopia.example/problems/rate-limited"
 
 
 def problem(
@@ -69,6 +74,55 @@ def register(app: FastAPI) -> None:
             title="Not found",
             detail="No such resource.",
         )
+
+    @app.exception_handler(QuotaExceededError)
+    def _quota(request: Request, exc: QuotaExceededError) -> JSONResponse:
+        """This account has used its allowance.
+
+        The numbers travel as fields rather than inside the sentence, so an interface can
+        render "18 of 20 used, resets on the 1st" without parsing prose.
+        """
+        return problem(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            type_=TYPE_QUOTA_EXCEEDED,
+            title="Monthly allowance reached",
+            detail="This account has used its runs for the current period.",
+            limit=exc.limit,
+            used=exc.used,
+            resets_at=exc.resets_at.isoformat(),
+        )
+
+    @app.exception_handler(DailyCapReachedError)
+    def _daily_cap(request: Request, exc: DailyCapReachedError) -> JSONResponse:
+        """Everybody together has reached the day's spend.
+
+        Its own type because the person can do nothing about it, and telling them to wait
+        for their monthly period would be advice that does not apply.
+        """
+        return problem(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            type_=TYPE_DAILY_CAP,
+            title="Temporarily unavailable",
+            detail="Plantopia has reached its spending limit for today. Try again tomorrow.",
+            resets_at=exc.resets_at.isoformat(),
+        )
+
+    @app.exception_handler(RateLimitedError)
+    def _rate_limited(request: Request, exc: RateLimitedError) -> JSONResponse:
+        """Too many attempts from one source.
+
+        ``Retry-After`` as well as the field, because it is the header a client library
+        already knows how to obey.
+        """
+        response = problem(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            type_=TYPE_RATE_LIMITED,
+            title="Too many attempts",
+            detail="Too many attempts from this source. Wait and try again.",
+            retry_after_seconds=exc.retry_after_seconds,
+        )
+        response.headers["Retry-After"] = str(exc.retry_after_seconds)
+        return response
 
     @app.exception_handler(NotSignedInError)
     def _not_signed_in(request: Request, exc: NotSignedInError) -> JSONResponse:

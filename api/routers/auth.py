@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Response, status
 
 from api import cookies
-from api.dependencies import MailerDep, SessionDep, SettingsDep
+from api.dependencies import MailerDep, RateLimited, SessionDep, SettingsDep
 from api.schemas import LoginIn, RegisterIn, ResetConfirmIn, ResetRequestIn, SessionOut, VerifyIn
 from identity import accounts, sessions
 
@@ -21,7 +21,7 @@ RefreshCookie = Annotated[str | None, Cookie(alias=cookies.NAME)]
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/register", status_code=status.HTTP_202_ACCEPTED, dependencies=[RateLimited])
 def register(
     body: RegisterIn, session: SessionDep, settings: SettingsDep, mailer: MailerDep
 ) -> dict:
@@ -48,7 +48,7 @@ def verify(body: VerifyIn, session: SessionDep) -> None:
     accounts.verify(session, presented=body.token)
 
 
-@router.post("/login", response_model=SessionOut)
+@router.post("/login", response_model=SessionOut, dependencies=[RateLimited])
 def login(
     body: LoginIn, response: Response, session: SessionDep, settings: SettingsDep
 ) -> SessionOut:
@@ -109,7 +109,7 @@ def logout(
     cookies.clear(response, settings=settings)
 
 
-@router.post("/reset/request", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/reset/request", status_code=status.HTTP_202_ACCEPTED, dependencies=[RateLimited])
 def request_reset(
     body: ResetRequestIn, session: SessionDep, settings: SettingsDep, mailer: MailerDep
 ) -> dict:
