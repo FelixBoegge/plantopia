@@ -1,6 +1,7 @@
 """The diagnosis wizard."""
 
 import logging
+from uuid import UUID
 
 import streamlit as st
 
@@ -60,7 +61,7 @@ def _needs_reset() -> bool:
     return bool(st.session_state.get("arrived_on_page")) and st.session_state.stage == "result"
 
 
-def _name_plant(plant_id: int | None, name: str) -> None:
+def _name_plant(plant_id: UUID | None, name: str) -> None:
     """Give the newly created plant the name chosen at the questions step.
 
     A rename after the fact, rather than a name threaded through the service and the

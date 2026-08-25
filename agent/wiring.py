@@ -12,9 +12,13 @@ Nothing here caches. Callers decide that: ``ui/bootstrap.py`` wraps these in
 """
 
 import logging
-import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import lru_cache
+from uuid import UUID
+
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import Session
 
 from agent.deps import Deps
 from core.config import Settings, get_settings
@@ -25,7 +29,8 @@ from core.llm import (
     build_reasoning_model,
     build_vision_model,
 )
-from data.db import apply_schema, connect
+from data.engine import build_engine, build_sessions, transaction
+from data.models import User
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
@@ -46,25 +51,56 @@ def now_utc() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def open_database(settings: Settings | None = None) -> sqlite3.Connection:
-    """A connection to the project database, with the schema applied.
+@lru_cache(maxsize=4)
+def _engine_for(url: str) -> Engine:
+    """One connection pool per URL, shared by every caller in the process.
 
-    Each caller opens its own, as the bootstrap accessors always have:
-    ``data.db.transaction``'s write lock is module-level rather than per-connection,
-    so writes through different connections still serialise against each other.
+    The SQLite version opened a separate connection per caller and relied on a
+    module-level write lock to keep them from treading on each other. A pool makes
+    that unnecessary: sessions borrow connections and hand them back, and Postgres
+    resolves concurrent writers itself.
+    """
+    return build_engine(url)
+
+
+def open_session(settings: Settings | None = None) -> Session:
+    """A session on the project database.
+
+    The schema is not applied here. ``alembic upgrade head`` owns it, so a process
+    that starts against an out-of-date database fails loudly rather than silently
+    running on a schema nobody migrated.
     """
     settings = settings or get_settings()
-    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = connect(settings.db_path)
-    apply_schema(conn)
-    return conn
+    return build_sessions(_engine_for(settings.database_url))()
+
+
+DEFAULT_OWNER_EMAIL = "owner@localhost"
+
+
+def default_owner_id(session: Session) -> UUID:
+    """The single seeded owner, created on first use.
+
+    A placeholder for authentication, which arrives in the next change. It exists so
+    that the repositories' ``user_id`` argument has something real to carry while
+    Streamlit is still the only client — and so that the tenancy rules are exercised
+    by the running application rather than only by tests.
+    """
+    owner = session.scalar(select(User).where(User.email == DEFAULT_OWNER_EMAIL))
+    if owner is None:
+        with transaction(session):
+            owner = User(email=DEFAULT_OWNER_EMAIL, created_at=now_utc())
+            session.add(owner)
+            session.flush()
+    return owner.id
 
 
 def build_profile_service(settings: Settings | None = None) -> ProfileService:
-    """The learned-profile service, on its own connection."""
+    """The learned-profile service, on its own session."""
     settings = settings or get_settings()
+    session = open_session(settings)
     return ProfileService(
-        repo=ProfileRepository(open_database(settings)),
+        user_id=default_owner_id(session),
+        repo=ProfileRepository(session),
         gate_model=build_gate_model(),
         now=now_utc,
     )
@@ -81,7 +117,8 @@ def build_deps(*, profile_facts: Callable[[], str], settings: Settings | None = 
         settings: Overridable for tests and alternative entry points.
     """
     settings = settings or get_settings()
-    conn = open_database(settings)
+    session = open_session(settings)
+    user_id = default_owner_id(session)
 
     # Embeddings go through OpenRouter's /embeddings endpoint, same key as the chat
     # models. The corpus is small — roughly 300 chunks — so the whole collection
@@ -118,14 +155,15 @@ def build_deps(*, profile_facts: Callable[[], str], settings: Settings | None = 
 
     return Deps(
         settings=settings,
+        user_id=user_id,
         gate_model=build_gate_model(),
         vision_model=build_vision_model(),
         chat_model=build_reasoning_model(),
         retriever=ChromaRetriever(vectorstore, image_embedder),
-        plants=PlantRepository(conn),
-        observations=ObservationRepository(conn),
-        diagnoses=DiagnosisRepository(conn),
-        roadmap=RoadmapRepository(conn),
+        plants=PlantRepository(session),
+        observations=ObservationRepository(session),
+        diagnoses=DiagnosisRepository(session),
+        roadmap=RoadmapRepository(session),
         weather=get_local_weather,
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
         care_profile=lookup_plant_care_profile,

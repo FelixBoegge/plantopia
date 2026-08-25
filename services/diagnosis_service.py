@@ -8,6 +8,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from langgraph.types import Command
 
@@ -54,8 +55,8 @@ class FinalResult:
     roadmap: Roadmap | None
     contagion: ContagionAssessment | None
     low_confidence: bool
-    plant_id: int | None
-    diagnosis_id: int | None
+    plant_id: UUID | None
+    diagnosis_id: UUID | None
     retrieved: list[Passage]
     visual_matches: list[Passage]
     tools_used: list[str]
@@ -202,7 +203,7 @@ class DiagnosisService:
     def start_recheck(
         self,
         *,
-        plant_id: int,
+        plant_id: UUID,
         uploads: list[bytes],
         user_notes: str | None,
         thread_id: str,
@@ -218,7 +219,7 @@ class DiagnosisService:
             ValueError: if the plant does not exist, or the upload count is outside
                 the allowed range.
         """
-        plant = self._deps.plants.get(plant_id)
+        plant = self._deps.plants.get(self._deps.user_id, plant_id)
         if plant is None:
             raise ValueError(f"No plant with id {plant_id!r}.")
 

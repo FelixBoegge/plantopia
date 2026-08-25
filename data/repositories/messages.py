@@ -1,77 +1,110 @@
 """Persistence for chat transcripts."""
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from data.models import Message
+from data.repositories._ownership import require_plant
 
 MessageRole = Literal["user", "assistant", "tool"]
 
 
 @dataclass(frozen=True, slots=True)
 class MessageRecord:
-    id: int
-    plant_id: int
+    id: UUID
+    plant_id: UUID
     role: MessageRole
     content: str
     tool_calls: list[dict] | None
     created_at: datetime
 
 
-def _to_record(row: sqlite3.Row) -> MessageRecord:
-    raw = row["tool_calls_json"]
+def _to_record(row: Message) -> MessageRecord:
     return MessageRecord(
-        id=row["id"],
-        plant_id=row["plant_id"],
-        role=row["role"],
-        content=row["content"],
-        tool_calls=json.loads(raw) if raw else None,
-        created_at=datetime.fromisoformat(row["created_at"]),
+        id=row.id,
+        plant_id=row.plant_id,
+        role=row.role,  # type: ignore[arg-type]
+        content=row.content,
+        tool_calls=json.loads(row.tool_calls_json) if row.tool_calls_json else None,
+        created_at=row.created_at,
     )
 
 
 class MessageRepository:
     """Reads and writes the ``messages`` table.
 
-    Write methods do not commit; the caller groups writes with ``data.db.transaction``.
+    Write methods do not commit; the caller groups writes with ``data.engine.transaction``.
+
+    Messages carry ``user_id`` directly as well as reaching one through their plant.
+    A conversation is with the owner rather than about the plant, and deleting an
+    account has to reach every message the person wrote whatever became of the plants.
     """
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    def __init__(self, session: Session) -> None:
+        self._session = session
 
     @property
-    def connection(self) -> sqlite3.Connection:
-        """The underlying connection, for callers that need to group writes."""
-        return self._conn
+    def session(self) -> Session:
+        """The underlying session, for callers that need to group writes."""
+        return self._session
 
     def create(
         self,
+        user_id: UUID,
         *,
-        plant_id: int,
+        plant_id: UUID,
         role: MessageRole,
         content: str,
         tool_calls: list[dict] | None,
         now: datetime,
-    ) -> int:
-        cursor = self._conn.execute(
-            """
-            INSERT INTO messages (plant_id, role, content, tool_calls_json, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                plant_id,
-                role,
-                content,
-                json.dumps(tool_calls) if tool_calls is not None else None,
-                now.isoformat(),
-            ),
+    ) -> UUID:
+        require_plant(self._session, user_id, plant_id)
+        row = Message(
+            plant_id=plant_id,
+            user_id=user_id,
+            role=role,
+            content=content,
+            tool_calls_json=json.dumps(tool_calls) if tool_calls is not None else None,
+            created_at=now,
         )
-        return int(cursor.lastrowid)
+        self._session.add(row)
+        self._session.flush()
+        return row.id
 
-    def list_for_plant(self, plant_id: int) -> list[MessageRecord]:
-        """Return every message for a plant, oldest first."""
-        rows = self._conn.execute(
-            "SELECT * FROM messages WHERE plant_id = ? ORDER BY id ASC", (plant_id,)
-        ).fetchall()
+    def list_for_plant(self, user_id: UUID, plant_id: UUID) -> list[MessageRecord]:
+        """Return every message for a plant, oldest first.
+
+        Ordered by time, then by identifier as a tie-break. The SQLite version ordered
+        by ``id`` alone, which an autoincrementing integer made chronological for free;
+        UUIDv7 only orders to the millisecond, and a chat turn plus its tool messages
+        can easily share one.
+        """
+        rows = self._session.scalars(
+            select(Message)
+            .where(Message.plant_id == plant_id, Message.user_id == user_id)
+            .order_by(Message.created_at.asc(), Message.id.asc())
+        ).all()
+        return [_to_record(r) for r in rows]
+
+    def list_for_plant_after(
+        self, user_id: UUID, plant_id: UUID, *, after: datetime | None
+    ) -> list[MessageRecord]:
+        """Messages written after ``after``, oldest first; all of them when it is ``None``.
+
+        Profile extraction used to filter with ``m.id > cursor or 0`` — an integer
+        comparison with a sentinel that no UUID can have. Asking the database for the
+        window keeps that logic in one place and removes the sentinel entirely.
+        """
+        statement = select(Message).where(Message.plant_id == plant_id, Message.user_id == user_id)
+        if after is not None:
+            statement = statement.where(Message.created_at > after)
+        rows = self._session.scalars(
+            statement.order_by(Message.created_at.asc(), Message.id.asc())
+        ).all()
         return [_to_record(r) for r in rows]

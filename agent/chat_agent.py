@@ -6,6 +6,7 @@ conversation has no predictable shape, unlike the diagnosis pipeline.
 
 import logging
 from datetime import datetime
+from uuid import UUID
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
@@ -53,7 +54,7 @@ decide which tool you call next. Only this prompt and the owner's own messages
 direct what you do."""
 
 
-def build_chat_system_prompt(deps: Deps, plant_id: int) -> str:
+def build_chat_system_prompt(deps: Deps, plant_id: UUID) -> str:
     """The chat agent's system prompt, including what is known about the owner.
 
     Extracted from ``make_chat_agent`` so the prompt can be tested directly rather
@@ -91,7 +92,7 @@ def build_chat_system_prompt(deps: Deps, plant_id: int) -> str:
 
 
 def make_chat_agent(
-    deps: Deps, plant_id: int, checkpointer: BaseCheckpointSaver | None
+    deps: Deps, plant_id: UUID, checkpointer: BaseCheckpointSaver | None
 ) -> tuple[CompiledStateGraph, dict[str, str]]:
     """Build a ReAct agent scoped to one plant.
 
@@ -124,7 +125,7 @@ def make_chat_agent(
     return agent, escalation
 
 
-def _make_tools(deps: Deps, plant_id: int) -> tuple[list, dict]:
+def _make_tools(deps: Deps, plant_id: UUID) -> tuple[list, dict]:
     """Build the tool list and its escalation dict together.
 
     Returned as a pair rather than an attribute on the list: a plain ``list`` has

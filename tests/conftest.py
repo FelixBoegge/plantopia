@@ -3,12 +3,14 @@
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
 from agent.deps import Deps
 from core.config import Settings
-from data.db import apply_schema, connect
+from core.ids import new_id
+from data.models import User
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
@@ -30,12 +32,32 @@ def _test_env(monkeypatch):
 
 
 @pytest.fixture
-def db():
-    """In-memory database with the full schema applied."""
-    conn = connect(":memory:")
-    apply_schema(conn)
-    yield conn
-    conn.close()
+def db(pg_session):
+    """A session on the test database, rolled back when the test ends.
+
+    Named ``db`` because it is what several hundred tests already ask for. What it
+    hands over changed — a SQLAlchemy session rather than an in-memory SQLite
+    connection — but its contract did not: an isolated, empty database per test.
+    """
+    return pg_session
+
+
+@pytest.fixture
+def owner(db) -> UUID:
+    """A seeded owner. Every repository call needs one, so every test needs one."""
+    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
+    db.add(user)
+    db.flush()
+    return user.id
+
+
+@pytest.fixture
+def other_owner(db) -> UUID:
+    """A second owner, for proving that the first one's records are unreachable."""
+    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
+    db.add(user)
+    db.flush()
+    return user.id
 
 
 @pytest.fixture
@@ -70,7 +92,7 @@ def chroma_retriever(fixture_corpus):
 
 
 @pytest.fixture
-def make_deps(db, now, chroma_retriever):
+def make_deps(db, owner, now, chroma_retriever):
     """Factory returning a Deps wired entirely with fakes.
 
     Override any field per test, for example::
@@ -81,6 +103,7 @@ def make_deps(db, now, chroma_retriever):
     def _make(**overrides) -> Deps:
         defaults = {
             "settings": Settings(openrouter_api_key="sk-test", _env_file=None),
+            "user_id": owner,
             "gate_model": ScriptedStructuredModel([]),
             "vision_model": ScriptedStructuredModel([]),
             "chat_model": ScriptedStructuredModel([]),

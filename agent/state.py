@@ -5,6 +5,7 @@ only the keys they changed; LangGraph merges them.
 """
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -34,7 +35,7 @@ class DiagnosisState(BaseModel):
     location_kind: Literal["indoor", "outdoor"]
     location_text: str | None = None
     user_notes: str | None = None
-    plant_id: int | None = None
+    plant_id: UUID | None = None
 
     # Intake results
     rejected: bool = False
@@ -70,8 +71,8 @@ class DiagnosisState(BaseModel):
     verdict: ProgressVerdict | None = None
 
     # Bookkeeping
-    observation_id: int | None = None
-    diagnosis_id: int | None = None
+    observation_id: UUID | None = None
+    diagnosis_id: UUID | None = None
     tools_used: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 

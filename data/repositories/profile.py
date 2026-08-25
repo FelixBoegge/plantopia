@@ -5,14 +5,23 @@ Facts are about the *owner*, not about any one plant — "waters on a schedule",
 table already records it exactly and the chat agent already reads it, so a
 paraphrase would be a second, contradictable source of truth (spec §1).
 
-``user_profile.fact`` is UNIQUE, so confirming a known fact must go through
-``upsert`` rather than a second insert.
+Uniqueness is ``(user_id, fact)``, not ``fact``. The single-user constraint would have
+made the second person who tends to overwater a conflict rather than a second row, so
+``upsert`` conflicts only against the same owner's set.
 """
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from data.models import Message, ProfileCursor
+from data.models import ProfileFact as ProfileFactRow
+from data.repositories._ownership import require_plant
 
 FactSource = Literal["inferred", "stated"]
 
@@ -28,73 +37,102 @@ class ProfileFact:
     last_confirmed: datetime
 
 
-def _to_record(row: sqlite3.Row) -> ProfileFact:
+def _to_record(row: ProfileFactRow) -> ProfileFact:
     return ProfileFact(
-        fact=row["fact"],
-        source=row["source"],
-        confidence=row["confidence"],
-        first_seen=datetime.fromisoformat(row["first_seen"]),
-        last_confirmed=datetime.fromisoformat(row["last_confirmed"]),
+        fact=row.fact,
+        source=row.source,  # type: ignore[arg-type]
+        confidence=row.confidence,
+        first_seen=row.first_seen,
+        last_confirmed=row.last_confirmed,
     )
 
 
 class ProfileRepository:
     """Reads and writes ``user_profile`` and ``profile_cursors``.
 
-    Write methods do not commit; the caller groups writes with ``data.db.transaction``.
+    Write methods do not commit; the caller groups writes with ``data.engine.transaction``.
     """
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    def __init__(self, session: Session) -> None:
+        self._session = session
 
     @property
-    def connection(self) -> sqlite3.Connection:
-        """The underlying connection, for callers that need to group writes."""
-        return self._conn
+    def session(self) -> Session:
+        """The underlying session, for callers that need to group writes."""
+        return self._session
 
-    def list_all(self) -> list[ProfileFact]:
-        """Every fact, most confident first, then most recently confirmed."""
-        rows = self._conn.execute(
-            "SELECT * FROM user_profile ORDER BY confidence DESC, last_confirmed DESC"
-        ).fetchall()
+    def list_all(self, user_id: UUID) -> list[ProfileFact]:
+        """This owner's facts, most confident first, then most recently confirmed."""
+        rows = self._session.scalars(
+            select(ProfileFactRow)
+            .where(ProfileFactRow.user_id == user_id)
+            .order_by(ProfileFactRow.confidence.desc(), ProfileFactRow.last_confirmed.desc())
+        ).all()
         return [_to_record(row) for row in rows]
 
-    def upsert(self, *, fact: str, source: FactSource, confidence: float, now: datetime) -> None:
-        """Insert a new fact, or confirm a known one.
+    def upsert(
+        self, user_id: UUID, *, fact: str, source: FactSource, confidence: float, now: datetime
+    ) -> None:
+        """Insert a new fact, or confirm one this owner already holds.
 
         ``first_seen`` is preserved on confirmation — it records when the belief was
         first formed, which is what makes a long-held fact distinguishable from one
         observed once.
         """
-        self._conn.execute(
-            """
-            INSERT INTO user_profile (fact, source, confidence, first_seen, last_confirmed)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(fact) DO UPDATE SET
-                confidence     = excluded.confidence,
-                last_confirmed = excluded.last_confirmed
-            """,
-            (fact, source, confidence, now.isoformat(), now.isoformat()),
+        statement = (
+            insert(ProfileFactRow)
+            .values(
+                user_id=user_id,
+                fact=fact,
+                source=source,
+                confidence=confidence,
+                first_seen=now,
+                last_confirmed=now,
+            )
+            .on_conflict_do_update(
+                index_elements=[ProfileFactRow.user_id, ProfileFactRow.fact],
+                set_={"confidence": confidence, "last_confirmed": now},
+            )
+        )
+        self._session.execute(statement)
+
+    def supersede(self, user_id: UUID, fact: str) -> None:
+        """Remove a contradicted fact. Silent when it is not there.
+
+        Silence is deliberate here, unlike the write methods that raise: superseding is
+        driven by reconciliation deciding a belief no longer holds, and a belief the
+        system never held is already in the desired state.
+        """
+        row = self._session.scalar(
+            select(ProfileFactRow).where(
+                ProfileFactRow.user_id == user_id, ProfileFactRow.fact == fact
+            )
+        )
+        if row is not None:
+            self._session.delete(row)
+
+    def cursor_at(self, user_id: UUID, plant_id: UUID) -> datetime | None:
+        """When the last chat message profile extraction has read was written.
+
+        A time rather than an identifier, because that is what selecting the unread
+        window needs. The stored cursor is still a message id — "how far we have read"
+        is a place in the transcript — and this resolves it.
+        """
+        return self._session.scalar(
+            select(Message.created_at)
+            .join(ProfileCursor, ProfileCursor.last_message_id == Message.id)
+            .where(ProfileCursor.plant_id == plant_id, Message.user_id == user_id)
         )
 
-    def supersede(self, fact: str) -> None:
-        """Remove a contradicted fact. Silent when it is not there."""
-        self._conn.execute("DELETE FROM user_profile WHERE fact = ?", (fact,))
-
-    def cursor_for(self, plant_id: int) -> int | None:
-        """The id of the last chat message profile extraction has read for this plant."""
-        row = self._conn.execute(
-            "SELECT last_message_id FROM profile_cursors WHERE plant_id = ?", (plant_id,)
-        ).fetchone()
-        return int(row["last_message_id"]) if row else None
-
-    def set_cursor(self, *, plant_id: int, last_message_id: int) -> None:
+    def set_cursor(self, user_id: UUID, *, plant_id: UUID, last_message_id: UUID) -> None:
         """Advance the cursor, creating it on first use."""
-        self._conn.execute(
-            """
-            INSERT INTO profile_cursors (plant_id, last_message_id)
-            VALUES (?, ?)
-            ON CONFLICT(plant_id) DO UPDATE SET last_message_id = excluded.last_message_id
-            """,
-            (plant_id, last_message_id),
+        require_plant(self._session, user_id, plant_id)
+        statement = (
+            insert(ProfileCursor)
+            .values(plant_id=plant_id, last_message_id=last_message_id)
+            .on_conflict_do_update(
+                index_elements=[ProfileCursor.plant_id],
+                set_={"last_message_id": last_message_id},
+            )
         )
+        self._session.execute(statement)

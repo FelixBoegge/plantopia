@@ -7,6 +7,7 @@ Everything arrives here, which is what makes the pipeline testable offline.
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from langchain_core.language_models import BaseChatModel
 
@@ -24,6 +25,12 @@ class Deps:
     """Everything the graph needs from the outside world."""
 
     settings: Settings
+
+    # Whose run this is. Repositories take it as their first argument, so a node cannot
+    # read or write a record without saying on whose behalf — and the graph is
+    # constructed per run, so there is no risk of one owner's Deps outliving their
+    # request and serving the next.
+    user_id: UUID
 
     # Three model tiers, cheapest job to hardest. See core/llm.py for why.
     gate_model: BaseChatModel  # guard_input, quality_check

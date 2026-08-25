@@ -11,6 +11,7 @@ evaluation harness renders a fixture profile without a database (spec §4.3).
 import logging
 from collections.abc import Callable
 from datetime import datetime
+from uuid import UUID
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -19,7 +20,7 @@ from agent.prompts.profile import EXTRACT_PROFILE
 from agent.schemas import ProfileUpdate
 from agent.structured import StructuredOutputFailed, invoke_structured
 from core.guards import scan_for_injection
-from data.db import transaction
+from data.engine import transaction
 from data.repositories.messages import MessageRepository
 from data.repositories.profile import ProfileFact, ProfileRepository
 
@@ -62,28 +63,32 @@ class ProfileService:
     def __init__(
         self,
         *,
+        user_id: UUID,
         repo: ProfileRepository,
         gate_model: BaseChatModel,
         now: Callable[[], datetime],
     ) -> None:
+        self._user_id = user_id
         self._repo = repo
         self._gate_model = gate_model
         self._now = now
 
     def facts_for_prompt(self) -> str:
         """The block injected into the diagnosis and chat prompts."""
-        facts = [f for f in self._repo.list_all() if f.confidence >= MIN_INJECTED_CONFIDENCE]
+        facts = [
+            f for f in self._repo.list_all(self._user_id) if f.confidence >= MIN_INJECTED_CONFIDENCE
+        ]
         return render_facts(facts[:MAX_INJECTED_FACTS])
 
     def all_facts(self) -> list[ProfileFact]:
         """Every fact, unfiltered — the view shows low-confidence ones too."""
-        return self._repo.list_all()
+        return self._repo.list_all(self._user_id)
 
     def forget(self, fact: str) -> None:
         """Delete a fact the owner says is wrong. The only correction mechanism
         besides the reconciliation loop superseding a fact on its own."""
-        with transaction(self._repo.connection):
-            self._repo.supersede(fact)
+        with transaction(self._repo.session):
+            self._repo.supersede(self._user_id, fact)
 
     def apply_update(self, update: ProfileUpdate) -> None:
         """Apply a reconciliation, dropping anything that does not match stored text.
@@ -93,16 +98,17 @@ class ProfileService:
         channel — which would skip the confidence policy — nor delete a real fact
         by hallucinating near-miss text.
         """
-        known = {f.fact: f for f in self._repo.list_all()}
+        known = {f.fact: f for f in self._repo.list_all(self._user_id)}
         now = self._now()
 
-        with transaction(self._repo.connection):
+        with transaction(self._repo.session):
             for fact in update.confirmed:
                 existing = known.get(fact)
                 if existing is None:
                     logger.info("dropping confirmation of an unknown fact: %r", fact)
                     continue
                 self._repo.upsert(
+                    self._user_id,
                     fact=fact,
                     source=existing.source,
                     confidence=min(existing.confidence + CONFIRM_STEP, CONFIDENCE_CAP),
@@ -121,6 +127,7 @@ class ProfileService:
                     )
                     continue
                 self._repo.upsert(
+                    self._user_id,
                     fact=candidate.fact,
                     source=candidate.source,
                     # Downward-only: a model hedging an inference (a lower reported
@@ -135,7 +142,7 @@ class ProfileService:
                 if fact not in known:
                     logger.info("dropping supersession of an unknown fact: %r", fact)
                     continue
-                self._repo.supersede(fact)
+                self._repo.supersede(self._user_id, fact)
 
     def learn_from_diagnosis(self, *, answers: dict[str, str], location_text: str | None) -> None:
         """Extract durable facts from what the owner said during a diagnosis.
@@ -153,7 +160,7 @@ class ProfileService:
 
         self._learn(material)
 
-    def learn_from_chat(self, plant_id: int, messages: MessageRepository) -> None:
+    def learn_from_chat(self, plant_id: UUID, messages: MessageRepository) -> None:
         """Extract from this plant's chat thread, reading only what is new.
 
         Chat has no natural session boundary, so extraction fires every
@@ -161,8 +168,9 @@ class ProfileService:
         cursor. Cost per turn stays flat instead of growing with thread length —
         the failure mode ``M16`` records for chat context itself.
         """
-        cursor = self._repo.cursor_for(plant_id) or 0
-        new = [m for m in messages.list_for_plant(plant_id) if m.id > cursor and m.role == "user"]
+        cursor = self._repo.cursor_at(self._user_id, plant_id)
+        unread = messages.list_for_plant_after(self._user_id, plant_id, after=cursor)
+        new = [m for m in unread if m.role == "user"]
         if len(new) < CHAT_TURNS_PER_EXTRACTION:
             return
 
@@ -172,8 +180,8 @@ class ProfileService:
             # read again next time rather than silently lost.
             return
 
-        with transaction(self._repo.connection):
-            self._repo.set_cursor(plant_id=plant_id, last_message_id=new[-1].id)
+        with transaction(self._repo.session):
+            self._repo.set_cursor(self._user_id, plant_id=plant_id, last_message_id=new[-1].id)
 
     def _learn(self, material: str) -> bool:
         """Run one extraction/reconciliation round over new material.

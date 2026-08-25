@@ -4,7 +4,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent.schemas import Passage
-from data.db import apply_schema, connect
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.messages import MessageRepository
 from data.repositories.observations import ObservationRepository

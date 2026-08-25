@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from data.db import transaction
+from data.engine import transaction
 from data.repositories.profile import ProfileRepository
 
 LATER = datetime(2026, 3, 2, 12, 0, tzinfo=UTC)

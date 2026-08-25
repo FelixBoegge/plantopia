@@ -18,7 +18,7 @@ from agent.deps import Deps
 from agent.nodes.intake import NodeFn
 from agent.state import DiagnosisState
 from core.cost import UsageSnapshot
-from data.db import transaction
+from data.engine import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +47,11 @@ def make_persist(deps: Deps) -> NodeFn:
         now = deps.now()
         observation_kind = "recheck" if state.plant_id is not None else "initial"
 
-        with transaction(deps.plants.connection):
+        with transaction(deps.plants.session):
             plant_id = state.plant_id
             if plant_id is None:
                 plant_id = deps.plants.create(
+                    deps.user_id,
                     name=state.plant_name,
                     species=state.species_name,
                     species_confidence=state.species_confidence,
@@ -64,12 +65,14 @@ def make_persist(deps: Deps) -> NodeFn:
                 # identify_plant (see route_after_quality) and can produce a species
                 # here for the first time — persist it back onto the plant record.
                 deps.plants.update_species(
+                    deps.user_id,
                     plant_id,
                     species=state.species_name,
                     species_confidence=state.species_confidence,
                 )
 
             observation_id = deps.observations.create(
+                deps.user_id,
                 plant_id=plant_id,
                 kind=observation_kind,
                 photo_refs=[image.ref for image in state.images],
@@ -79,6 +82,7 @@ def make_persist(deps: Deps) -> NodeFn:
 
             usage = _usage_from(config)
             diagnosis_id = deps.diagnoses.create(
+                deps.user_id,
                 observation_id=observation_id,
                 plant_id=plant_id,
                 differential=state.differential,
@@ -92,6 +96,7 @@ def make_persist(deps: Deps) -> NodeFn:
 
             if state.roadmap is not None:
                 deps.roadmap.create_from_roadmap(
+                    deps.user_id,
                     diagnosis_id=diagnosis_id,
                     plant_id=plant_id,
                     roadmap=state.roadmap,

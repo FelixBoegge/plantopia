@@ -13,7 +13,7 @@ import streamlit as st
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from agent.diagnosis_graph import build_diagnosis_graph
-from agent.wiring import build_deps, build_profile_service, now_utc, open_database
+from agent.wiring import build_deps, build_profile_service, default_owner_id, now_utc, open_session
 from core.config import get_settings
 from data.db import connect
 from data.repositories.diagnoses import DiagnosisRepository
@@ -47,19 +47,19 @@ def get_service() -> DiagnosisService:
 def get_plant_service() -> PlantService:
     """Build the plant-profile service. Cached for the process.
 
-    Opens its own connection to the same database file ``get_service`` uses.
-    ``data.db.transaction``'s write lock is module-level, not per-connection, so
-    writes through either connection still serialise correctly against each other
-    (see ``data/db.py``'s docstring).
+    Opens its own session on the shared pool. Sessions are cheap and independent —
+    unlike the SQLite connections this replaced, they need no cross-connection locking,
+    because Postgres resolves concurrent writers itself.
     """
-    conn = open_database()
+    session = open_session()
 
     return PlantService(
-        plants=PlantRepository(conn),
-        observations=ObservationRepository(conn),
-        diagnoses=DiagnosisRepository(conn),
-        roadmap=RoadmapRepository(conn),
-        feedback=FeedbackRepository(conn),
+        user_id=default_owner_id(session),
+        plants=PlantRepository(session),
+        observations=ObservationRepository(session),
+        diagnoses=DiagnosisRepository(session),
+        roadmap=RoadmapRepository(session),
+        feedback=FeedbackRepository(session),
         now=now_utc,
     )
 
@@ -68,8 +68,7 @@ def get_plant_service() -> PlantService:
 def get_profile_service() -> ProfileService:
     """Build the profile service. Cached for the process.
 
-    Opens its own connection to the same database file, like its siblings; the
-    module-level write lock in ``data/db.py`` serialises writes across them.
+    Opens its own session on the shared pool, like its siblings.
     """
     return build_profile_service()
 
@@ -89,12 +88,12 @@ def get_chat_service() -> ChatService:
     transcript has no business sharing a file that gets pruned on that schedule.
     """
     settings = get_settings()
-    conn = open_database(settings)
+    session = open_session(settings)
 
     service = get_service()
     return ChatService(
         deps=service._deps,
-        messages=MessageRepository(conn),
+        messages=MessageRepository(session),
         checkpointer=SqliteSaver(connect(Path(str(settings.db_path) + ".chat-checkpoints"))),
         now=now_utc,
         profile=get_profile_service(),

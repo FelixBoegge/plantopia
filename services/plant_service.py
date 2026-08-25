@@ -7,8 +7,9 @@ nothing lower — no repository, and no direct SQL, in ``ui/``.
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
-from data.db import transaction
+from data.engine import transaction
 from data.repositories.diagnoses import DiagnosisRecord, DiagnosisRepository
 from data.repositories.feedback import DidItHelp, FeedbackRepository
 from data.repositories.observations import ObservationRecord, ObservationRepository
@@ -42,6 +43,7 @@ class PlantService:
     def __init__(
         self,
         *,
+        user_id: UUID,
         plants: PlantRepository,
         observations: ObservationRepository,
         diagnoses: DiagnosisRepository,
@@ -49,6 +51,7 @@ class PlantService:
         feedback: FeedbackRepository,
         now: Callable[[], datetime],
     ) -> None:
+        self._user_id = user_id
         self._plants = plants
         self._observations = observations
         self._diagnoses = diagnoses
@@ -64,8 +67,8 @@ class PlantService:
         made the badge climb monotonically with each re-check.
         """
         summaries = []
-        for plant in self._plants.list_all():
-            latest = self._diagnoses.latest_for_plant(plant.id)
+        for plant in self._plants.list_all(self._user_id):
+            latest = self._diagnoses.latest_for_plant(self._user_id, plant.id)
             pending = sum(
                 1
                 for s in self._steps_for_latest_diagnosis(plant.id, latest)
@@ -76,20 +79,20 @@ class PlantService:
             )
         return summaries
 
-    def get_plant_detail(self, plant_id: int) -> PlantDetail | None:
+    def get_plant_detail(self, plant_id: UUID) -> PlantDetail | None:
         """Everything the Plant detail page needs, or ``None`` for an unknown plant."""
-        plant = self._plants.get(plant_id)
+        plant = self._plants.get(self._user_id, plant_id)
         if plant is None:
             return None
 
-        observations = self._observations.list_for_plant(plant_id)
-        diagnoses_list = self._diagnoses.list_for_plant(plant_id)
+        observations = self._observations.list_for_plant(self._user_id, plant_id)
+        diagnoses_list = self._diagnoses.list_for_plant(self._user_id, plant_id)
         latest_diagnosis = diagnoses_list[0] if diagnoses_list else None
         roadmap_steps = self._steps_for_latest_diagnosis(plant_id, latest_diagnosis)
 
         feedback_due = (
             latest_diagnosis is not None
-            and not self._feedback.exists_for_diagnosis(latest_diagnosis.id)
+            and not self._feedback.exists_for_diagnosis(self._user_id, latest_diagnosis.id)
             and any(step.status == "done" for step in roadmap_steps)
         )
 
@@ -102,7 +105,7 @@ class PlantService:
         )
 
     def _steps_for_latest_diagnosis(
-        self, plant_id: int, latest_diagnosis: DiagnosisRecord | None
+        self, plant_id: UUID, latest_diagnosis: DiagnosisRecord | None
     ) -> list[RoadmapStepRecord]:
         """This plant's current plan only.
 
@@ -119,11 +122,11 @@ class PlantService:
             return []
         return [
             step
-            for step in self._roadmap.list_for_plant(plant_id)
+            for step in self._roadmap.list_for_plant(self._user_id, plant_id)
             if step.diagnosis_id == latest_diagnosis.id
         ]
 
-    def rename_plant(self, plant_id: int, *, name: str) -> None:
+    def rename_plant(self, plant_id: UUID, *, name: str) -> None:
         """Give a plant the name its owner confirmed after identification.
 
         Blank input is rejected here rather than in the page: a plant with an empty
@@ -132,24 +135,25 @@ class PlantService:
         cleaned = name.strip()
         if not cleaned:
             raise ValueError("A plant needs a name.")
-        with transaction(self._plants.connection):
-            self._plants.rename(plant_id, name=cleaned)
+        with transaction(self._plants.session):
+            self._plants.rename(self._user_id, plant_id, name=cleaned)
 
-    def mark_roadmap_step(self, step_id: int, *, status: StepStatus) -> None:
+    def mark_roadmap_step(self, step_id: UUID, *, status: StepStatus) -> None:
         """Tick, skip, or reopen a roadmap step."""
-        with transaction(self._roadmap.connection):
-            self._roadmap.mark(step_id, status=status, now=self._now())
+        with transaction(self._roadmap.session):
+            self._roadmap.mark(self._user_id, step_id, status=status, now=self._now())
 
     def submit_feedback(
         self,
         *,
-        diagnosis_id: int,
+        diagnosis_id: UUID,
         rating: int | None,
         did_it_help: DidItHelp | None,
         free_text: str | None,
-    ) -> int:
-        with transaction(self._feedback.connection):
+    ) -> UUID:
+        with transaction(self._feedback.session):
             return self._feedback.create(
+                self._user_id,
                 diagnosis_id=diagnosis_id,
                 rating=rating,
                 did_it_help=did_it_help,

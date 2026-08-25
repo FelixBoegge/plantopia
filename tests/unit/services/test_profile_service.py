@@ -4,7 +4,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from agent.schemas import ExtractedFact, ProfileUpdate
-from data.db import transaction
+from data.engine import transaction
 from data.repositories.profile import ProfileFact, ProfileRepository
 from services.profile_service import ProfileService, render_facts
 
@@ -284,7 +284,7 @@ def test_the_owners_answers_reach_the_model(db, now):
 
 def test_the_current_profile_is_sent_so_the_model_can_echo_it_verbatim(db, now):
     """Reconciliation only deduplicates if the model sees the existing wording."""
-    from data.db import transaction
+    from data.engine import transaction
     from tests.fakes.chat_models import ScriptedStructuredModel
 
     repo = ProfileRepository(db)
@@ -348,7 +348,7 @@ def test_a_diagnosis_with_no_answers_makes_no_model_call(db, now):
 
 
 def _say(messages, db, plant_id, now, *texts):
-    from data.db import transaction
+    from data.engine import transaction
 
     with transaction(db):
         for text in texts:
@@ -420,7 +420,7 @@ def test_the_cursor_does_not_advance_when_extraction_fails(db, now, sample_plant
 
 def test_assistant_turns_do_not_count_toward_the_threshold(db, now, sample_plant):
     """The agent's own words are not evidence about the owner."""
-    from data.db import transaction
+    from data.engine import transaction
     from data.repositories.messages import MessageRepository
     from tests.fakes.chat_models import ScriptedStructuredModel
 

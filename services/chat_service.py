@@ -4,13 +4,14 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agent.chat_agent import make_chat_agent
 from agent.deps import Deps
-from data.db import transaction
+from data.engine import transaction
 from data.repositories.messages import MessageRecord, MessageRepository
 from data.repositories.plants import PlantRecord
 from services.profile_service import ProfileService
@@ -98,13 +99,17 @@ class ChatService:
         self._now = now
         self._profile = profile
 
-    @staticmethod
-    def _thread_id(plant_id: int) -> str:
+    def _thread_id(self, plant_id: UUID) -> str:
         """The ReAct loop's own scratch thread, distinct from any diagnosis thread
-        for the same plant (design spec §5)."""
-        return f"chat:{plant_id}"
+        for the same plant (design spec §5).
 
-    def get_plant(self, plant_id: int) -> PlantRecord | None:
+        Prefixed with the owner. A thread id is a resumable handle to a conversation,
+        and one built from a plant id alone would be constructible by anyone who
+        learned that plant id.
+        """
+        return f"{self._deps.user_id}:chat:{plant_id}"
+
+    def get_plant(self, plant_id: UUID) -> PlantRecord | None:
         """The plant's own record, or ``None`` if it no longer exists.
 
         A single-row lookup for callers that just need the plant (e.g. the Chat
@@ -112,12 +117,12 @@ class ChatService:
         observations, diagnoses, roadmap steps and feedback that such a caller has
         no use for.
         """
-        return self._deps.plants.get(plant_id)
+        return self._deps.plants.get(self._deps.user_id, plant_id)
 
-    def history(self, plant_id: int) -> list[MessageRecord]:
-        return self._messages.list_for_plant(plant_id)
+    def history(self, plant_id: UUID) -> list[MessageRecord]:
+        return self._messages.list_for_plant(self._deps.user_id, plant_id)
 
-    def send(self, plant_id: int, content: str) -> ChatTurn:
+    def send(self, plant_id: UUID, content: str) -> ChatTurn:
         """Record the user's message, run the agent, record and return its reply.
 
         The user's message and the assistant's reply are committed in separate
@@ -125,24 +130,30 @@ class ChatService:
         message should stay durable even if the agent call itself fails partway
         through.
         """
-        with transaction(self._messages.connection):
+        with transaction(self._messages.session):
             self._messages.create(
-                plant_id=plant_id, role="user", content=content, tool_calls=None, now=self._now()
+                self._deps.user_id,
+                plant_id=plant_id,
+                role="user",
+                content=content,
+                tool_calls=None,
+                now=self._now(),
             )
 
         agent, escalation = make_chat_agent(self._deps, plant_id, self._checkpointer)
         config = {"configurable": {"thread_id": self._thread_id(plant_id)}}
         result = agent.invoke({"messages": [{"role": "user", "content": content}]}, config)
         # Coerced to str: some providers return content as a list of blocks, which
-        # sqlite3 rejects outright (InterfaceError), and messages.content is NOT NULL —
+        # the database rejects outright, and messages.content is NOT NULL —
         # so an empty or missing reply gets stand-in text rather than a failed insert.
         reply = str(result["messages"][-1].content or "").strip()
         if not reply:
             reply = "(no reply was produced)"
         tool_calls = _extract_tool_calls(result["messages"])
 
-        with transaction(self._messages.connection):
+        with transaction(self._messages.session):
             self._messages.create(
+                self._deps.user_id,
                 plant_id=plant_id,
                 role="assistant",
                 content=reply,

@@ -1,8 +1,14 @@
 """Persistence for treatment-outcome feedback."""
 
-import sqlite3
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from data.models import Diagnosis, Feedback, Plant
+from data.repositories._ownership import require_diagnosis
 
 DidItHelp = Literal["yes", "no", "unclear", "too_early"]
 
@@ -17,42 +23,51 @@ DidItHelp = Literal["yes", "no", "unclear", "too_early"]
 class FeedbackRepository:
     """Reads and writes the ``feedback`` table.
 
-    Write methods do not commit; the caller groups writes with ``data.db.transaction``.
+    Write methods do not commit; the caller groups writes with ``data.engine.transaction``.
     """
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    def __init__(self, session: Session) -> None:
+        self._session = session
 
     @property
-    def connection(self) -> sqlite3.Connection:
-        """The underlying connection, for callers that need to group writes."""
-        return self._conn
+    def session(self) -> Session:
+        """The underlying session, for callers that need to group writes."""
+        return self._session
 
     def create(
         self,
+        user_id: UUID,
         *,
-        diagnosis_id: int,
+        diagnosis_id: UUID,
         rating: int | None,
         did_it_help: DidItHelp | None,
         free_text: str | None,
         now: datetime,
-    ) -> int:
-        cursor = self._conn.execute(
-            """
-            INSERT INTO feedback (diagnosis_id, rating, did_it_help, free_text, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (diagnosis_id, rating, did_it_help, free_text, now.isoformat()),
+    ) -> UUID:
+        require_diagnosis(self._session, user_id, diagnosis_id)
+        row = Feedback(
+            diagnosis_id=diagnosis_id,
+            rating=rating,
+            did_it_help=did_it_help,
+            free_text=free_text,
+            created_at=now,
         )
-        return int(cursor.lastrowid)
+        self._session.add(row)
+        self._session.flush()
+        return row.id
 
-    def exists_for_diagnosis(self, diagnosis_id: int) -> bool:
+    def exists_for_diagnosis(self, user_id: UUID, diagnosis_id: UUID) -> bool:
         """Whether feedback has already been recorded for this diagnosis.
 
         The Plant detail page uses this to avoid re-prompting for feedback already
-        given.
+        given. Another owner's diagnosis answers ``False`` — the same answer an
+        unknown diagnosis gives, so the question cannot be used to discover one.
         """
-        row = self._conn.execute(
-            "SELECT 1 FROM feedback WHERE diagnosis_id = ? LIMIT 1", (diagnosis_id,)
-        ).fetchone()
-        return row is not None
+        found = self._session.scalar(
+            select(Feedback.id)
+            .join(Diagnosis, Feedback.diagnosis_id == Diagnosis.id)
+            .join(Plant, Diagnosis.plant_id == Plant.id)
+            .where(Feedback.diagnosis_id == diagnosis_id, Plant.user_id == user_id)
+            .limit(1)
+        )
+        return found is not None
