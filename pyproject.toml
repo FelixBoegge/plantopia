@@ -76,6 +76,13 @@ omit = [
     # on ui/bootstrap.py's precedent. Everything beneath it — case loading, the
     # scripted model, scoring, stability, report rendering — is unit-tested.
     "eval/run_eval.py",
+    # One-shot migration tools, on the same precedent. Both talk to systems a test
+    # must not: export_chroma reads the Chroma store that is being retired, and
+    # capture_retrieval_fixtures calls the embedding API once to record the parity
+    # baseline. Their output is checked by the thing that consumes it — the corpus
+    # row counts, and the parity test itself — rather than by mocking the call.
+    "knowledge/export_chroma.py",
+    "eval/capture_retrieval_fixtures.py",
 ]
 
 [tool.coverage.report]

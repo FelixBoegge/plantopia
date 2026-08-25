@@ -102,3 +102,13 @@ def load_corpus(corpus_dir: Path) -> list[Chunk]:
     for path in paths:
         chunks.extend(parse_document(path))
     return chunks
+
+
+def chunk_text(chunk: Chunk) -> str:
+    """The text that gets embedded for a chunk.
+
+    One definition, used by both the Chroma builder and the pgvector ingestion. A
+    second copy that drifted by a character would produce different vectors, and the
+    corpus would quietly stop matching what the parity fixture recorded.
+    """
+    return f"{chunk.name} — {chunk.section}\n\n{chunk.text}"

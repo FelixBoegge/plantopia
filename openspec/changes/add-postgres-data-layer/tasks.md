@@ -36,10 +36,10 @@
 
 ## 6. Corpus vectors and parity fixtures
 
-- [ ] 6.1 Write a one-shot export script reading embeddings, documents and metadata out of the existing Chroma collection; verify it emits 301 sections across 43 documents at 1536 dimensions.
-- [ ] 6.2 Add the `corpus_chunks` table and an ingestion command that loads the exported vectors; verify row count, dimension and that every corpus document id is present.
-- [ ] 6.3 Capture the parity fixtures — the golden set's retrieval queries with their embedding vectors, the fetch-by-identifier requests, and the results `ChromaRetriever` returns for each; verify the fixture file is committed and covers all 28 cases. Embedding the recorded queries once costs well under a cent; nothing else in this gate calls an API.
-- [ ] 6.4 Record, alongside each fixture, whether the best score clears the 0.35 escalation threshold; verify the captured decisions match what the current pipeline does for those queries.
+- [x] 6.1 Write a one-shot export script reading embeddings, documents and metadata out of the existing Chroma collection; verify it emits 301 sections across 43 documents at 1536 dimensions.
+- [x] 6.2 Add the `corpus_chunks` table and an ingestion command that loads the exported vectors; verify row count, dimension and that every corpus document id is present.
+- [x] 6.3 Capture the parity fixtures — the golden set's retrieval queries with their embedding vectors, the fetch-by-identifier requests, and the results `ChromaRetriever` returns for each; verify the fixture file is committed and covers all 28 cases. Embedding the recorded queries once costs well under a cent; nothing else in this gate calls an API.
+- [x] 6.4 Record, alongside each fixture, whether the best score clears the 0.35 escalation threshold; verify the captured decisions match what the current pipeline does for those queries.
 
 ## 7. The pgvector retriever and its gate
 

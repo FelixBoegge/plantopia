@@ -13,6 +13,11 @@ data/plantopia.db
 data/plantopia.db.checkpoints*
 data/plantopia.db.chat-checkpoints*
 data/chroma/
+# The one-shot export of Chroma's vectors, used to seed pgvector with byte-identical
+# numbers while the parity gate runs. Local scratch: a deployment embeds the corpus
+# itself (`python -m knowledge.ingest_corpus`), and the committed fixture in
+# eval/fixtures/ is what preserves the comparison.
+data/corpus_vectors.json
 data/uploads/
 .playwright-mcp/
 .superpowers/

@@ -21,7 +21,9 @@ may perfectly well both tend to overwater — so it becomes ``UNIQUE(user_id, fa
 from datetime import datetime
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -36,6 +38,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from core.ids import new_id
+
+# text-embedding-3-small. Changing this means re-embedding the corpus: vectors from
+# two different models are not comparable, and pgvector will happily store the wrong
+# ones alongside the right ones.
+EMBEDDING_DIMENSIONS = 1536
 
 
 class Base(DeclarativeBase):
@@ -230,3 +237,30 @@ class Blob(Base):
     content_type: Mapped[str] = mapped_column(String(64))
     byte_size: Mapped[int] = mapped_column(Integer)
     data: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class CorpusChunk(Base):
+    """One section of one disorder document, with its embedding.
+
+    Reference data, not a record: the corpus is the same for everyone, so this table
+    has no owner and no cascade. It is keyed by ``(doc_id, section)`` rather than by a
+    generated identifier because that pair *is* the identity — it is what
+    ``sections_for`` looks a passage up by, and what the Chroma ids it replaces encoded
+    as ``doc_id::section``.
+
+    **No index on ``embedding``.** 301 rows is a sub-millisecond sequential scan, and
+    an approximate index (HNSW) can reorder results by construction — which would make
+    the parity gate unable to attribute a difference to the new SQL rather than to the
+    index. Add one if the corpus ever grows by an order of magnitude.
+    """
+
+    __tablename__ = "corpus_chunks"
+
+    doc_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    section: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(Text)
+    transmissible: Mapped[bool] = mapped_column(Boolean)
+    severity: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))

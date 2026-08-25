@@ -24,17 +24,28 @@ EXPECTED_TABLES = {
     "messages",
     "profile_cursors",
     "blobs",
+    "corpus_chunks",
 }
 
 OWNED_DIRECTLY = {"plants", "user_profile", "messages", "blobs"}
+
+# Reference data, not records. The corpus is the same for everyone, so it has no owner,
+# no cascade, and a natural key — (doc_id, section) *is* its identity, and it is what
+# fetch-by-id looks a passage up by. The rules below about UUID keys and generated
+# identifiers exist to stop enumeration of a person's records; neither applies here.
+REFERENCE_TABLES = {"corpus_chunks"}
 
 
 def test_the_schema_holds_exactly_the_expected_tables():
     assert set(Base.metadata.tables) == EXPECTED_TABLES
 
 
-def test_every_primary_key_is_a_uuid():
+def test_every_record_table_has_a_uuid_primary_key():
+    """The point is enumeration: /plants/3 tells a stranger how many plants exist. A
+    corpus section has no such secret, and its key is its meaning."""
     for name, table in Base.metadata.tables.items():
+        if name in REFERENCE_TABLES:
+            continue
         for column in table.primary_key.columns:
             assert isinstance(column.type, Uuid), f"{name}.{column.name} is not a UUID"
 
@@ -57,7 +68,7 @@ def test_directly_owned_tables_carry_an_owner(table):
 def test_tables_reaching_an_owner_through_a_parent_do_not_carry_one():
     """Ownership is denormalised onto exactly the tables that need it. Adding user_id to
     a child as well would create a second, independently-wrong answer to who owns it."""
-    for name in EXPECTED_TABLES - OWNED_DIRECTLY - {"users"}:
+    for name in EXPECTED_TABLES - OWNED_DIRECTLY - REFERENCE_TABLES - {"users"}:
         assert "user_id" not in Base.metadata.tables[name].columns, name
 
 
@@ -97,6 +108,8 @@ def test_identifiers_come_from_the_application_not_the_database():
     Keys borrowed from a parent are exempt: profile_cursors is keyed by the plant whose
     thread it tracks, so it has nothing of its own to generate."""
     for name, table in Base.metadata.tables.items():
+        if name in REFERENCE_TABLES:
+            continue
         for column in table.primary_key.columns:
             if column.foreign_keys:
                 continue
@@ -113,3 +126,15 @@ def test_an_identifier_can_be_supplied_ahead_of_the_insert():
     plant = Plant(id=given, name="Basil", location_kind="indoor", created_at=datetime.now())
 
     assert plant.id == given
+
+
+def test_the_corpus_is_not_owned_by_anyone():
+    """A shared corpus with a user_id would be 43 documents per account."""
+    assert "user_id" not in Base.metadata.tables["corpus_chunks"].columns
+
+
+def test_the_corpus_embedding_column_has_no_index():
+    """An approximate index can reorder results by construction, which would make the
+    parity gate unable to attribute a difference to the new SQL. 301 rows scan in
+    under a millisecond; revisit at an order of magnitude more."""
+    assert Base.metadata.tables["corpus_chunks"].indexes == set()
