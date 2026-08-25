@@ -135,10 +135,23 @@ The current retriever converts Chroma's cosine distance into a score, and that n
 web-search escalation threshold. pgvector computes the same distance in different arithmetic, so
 the last bits will differ.
 
-Ranking, document ids and section names are asserted **exactly**. Scores are asserted within
-`1e-6`, and the escalation decision is asserted directly: for every recorded query, whether the
-best score falls above or below 0.35 must be the same on both sides. A change that silently
-turned web escalation on or off would otherwise pass a ranking-only comparison.
+*Corrected during implementation, by the gate failing.* `1e-6` was wrong, and the reason is
+structural rather than a matter of rounding: Chroma writes through hnswlib, which **normalises
+each vector to unit length in float32 at insert time** and then compares by inner product, while
+pgvector stores the vector as given and computes cosine exactly. Measured, scores agree to
+**1.13e-3** — three orders of magnitude wider than the tolerance I guessed.
+
+What that buys, measured rather than assumed: ordering is identical for **27 of 28** golden cases.
+The one exception differs at the sixth and last position, where `root-rot` (0.524517) and `rust`
+(0.523386) are 0.0011 apart. The ground truth for that case sits at rank 3 in both, and `root-rot`
+is on the case's own `also_acceptable` list while `rust` is not — so the new ordering is, if
+anything, the better one.
+
+So the gate asserts a *decided* ordering rather than an identical one: the same passage at every
+position whose neighbours differ by more than **2e-3**, and either passage where two fall inside
+that band. Scores are asserted within the same 2e-3, which is fifty times smaller than the
+narrowest margin any recorded query has to the 0.35 escalation threshold — so the escalation
+decision, which is asserted directly and exactly, cannot move underneath it.
 
 ### One checkpointer instance, thread ids namespaced by owner
 

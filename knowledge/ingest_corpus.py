@@ -1,13 +1,14 @@
 """Put the disorder corpus into Postgres, with its embeddings.
 
-    uv run python -m knowledge.ingest_corpus                 # embed the corpus
-    uv run python -m knowledge.ingest_corpus --from-export   # reuse exported vectors
+    uv run python -m knowledge.ingest_corpus
 
-Two sources, because they answer different questions. **Embedding** is what a
-deployment does: read the corpus, call the embedding API once per section, store the
-result. **Loading an export** is what the migration does: the vectors Chroma already
-held, byte for byte, so the parity gate compares retrieval rather than comparing two
-sets of numbers that happen to be close.
+Reads the corpus, embeds each section, stores the result. Costs a fraction of a cent
+for 301 sections.
+
+Nothing reads this table yet: retrieval still runs on Chroma. The table and this
+command exist because the retrieval move is deliberately deferred until the embedding
+model is chosen — see `docs/known-limitations.md`. Changing model means re-running this,
+and vectors from two models are not comparable, so it replaces rather than appends.
 
 Idempotent: the corpus is keyed by ``(doc_id, section)``, so re-running replaces each
 row rather than accumulating duplicates. That matters because this is a deployment
@@ -19,9 +20,7 @@ whole reason the parity gate can compare exactly rather than approximately.
 """
 
 import argparse
-import json
 import logging
-from pathlib import Path
 
 from sqlalchemy.dialects.postgresql import insert
 
@@ -31,8 +30,6 @@ from data.engine import transaction
 from data.models import EMBEDDING_DIMENSIONS, CorpusChunk
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_INPUT = Path("data/corpus_vectors.json")
 
 
 def rows_from_corpus(settings) -> list[dict]:
@@ -109,24 +106,10 @@ def load(rows: list[dict], session) -> int:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
-    parser.add_argument(
-        "--from-export",
-        action="store_true",
-        help="load exported Chroma vectors instead of embedding the corpus",
-    )
-    args = parser.parse_args()
+    parser.parse_args()
 
     settings = get_settings()
-    if args.from_export:
-        if not args.input.exists():
-            raise SystemExit(
-                f"{args.input} does not exist — run `python -m knowledge.export_chroma` first"
-            )
-        rows = json.loads(args.input.read_text(encoding="utf-8"))
-    else:
-        rows = rows_from_corpus(settings)
-
+    rows = rows_from_corpus(settings)
     session = open_session(settings)
     try:
         written = load(rows, session)

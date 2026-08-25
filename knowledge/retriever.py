@@ -15,12 +15,12 @@ from langchain_core.embeddings import Embeddings
 
 from agent.schemas import LoadedImage, Passage
 from core.embeddings import ImageEmbedder
-from knowledge.ingest import Chunk
+from knowledge.ingest import Chunk, chunk_text
+from knowledge.merging import PER_DOC_SECTIONS, keep_best, ranked
 
 # How many sections a corpus document has, and so the factor by which a query must
 # over-fetch to still find k distinct disorders once each document keeps only one
 # passage. See ``knowledge/ingest.py``'s REQUIRED_SECTIONS.
-_PER_DOC_SECTIONS = 7
 
 
 class Retriever(Protocol):
@@ -84,7 +84,7 @@ def build_vectorstore(
     documents = [
         Document(
             id=f"{chunk.doc_id}::{chunk.section}",
-            page_content=f"{chunk.name} — {chunk.section}\n\n{chunk.text}",
+            page_content=chunk_text(chunk),
             metadata={
                 "doc_id": chunk.doc_id,
                 "name": chunk.name,
@@ -142,7 +142,7 @@ class ChromaRetriever:
         best: dict[tuple[str, str], Passage] = {}
         # Over-fetch, because collapsing to one passage per disorder discards most of
         # what one query returns. Bounded by how many sections a document can offer.
-        per_query = k * (len(sections) if sections else _PER_DOC_SECTIONS)
+        per_query = k * (len(sections) if sections else PER_DOC_SECTIONS)
         where = {"section": {"$in": list(sections)}} if sections else None
 
         for query in queries:
@@ -150,9 +150,15 @@ class ChromaRetriever:
                 query, k=per_query, filter=where
             )
             for document, score in results:
-                self._keep_best(best, document, score)
+                keep_best(
+                    best,
+                    doc_id=document.metadata["doc_id"],
+                    section=document.metadata["section"],
+                    text=document.page_content,
+                    score=score,
+                )
 
-        return self._ranked(best, k)
+        return ranked(best, k)
 
     def sections_for(self, doc_ids: Sequence[str], sections: Sequence[str]) -> list[Passage]:
         """Named sections of named documents, fetched by id.
@@ -214,40 +220,12 @@ class ChromaRetriever:
                 continue
             results = self._store.similarity_search_by_vector_with_relevance_scores(vector, k=k)
             for document, score in results:
-                self._keep_best(best, document, score)
+                keep_best(
+                    best,
+                    doc_id=document.metadata["doc_id"],
+                    section=document.metadata["section"],
+                    text=document.page_content,
+                    score=score,
+                )
 
-        return self._ranked(best, k)
-
-    @staticmethod
-    def _keep_best(best: dict[tuple[str, str], Passage], document: Document, score: float) -> None:
-        passage = Passage(
-            doc_id=document.metadata["doc_id"],
-            section=document.metadata["section"],
-            text=document.page_content,
-            score=max(0.0, min(1.0, float(score))),
-        )
-        key = (passage.doc_id, passage.section)
-        existing = best.get(key)
-        if existing is None or passage.score > existing.score:
-            best[key] = passage
-
-    @staticmethod
-    def _ranked(best: dict[tuple[str, str], Passage], k: int) -> list[Passage]:
-        """The best ``k`` passages, at most one per disorder.
-
-        Scores across nutrient cases sit within about 0.03 of each other, so which
-        disorder wins is close to arbitrary; what is not arbitrary is how many slots
-        each one occupies. Capping at one per document turns ``k`` passages into ``k``
-        distinct candidates.
-        """
-        ordered = sorted(best.values(), key=lambda p: p.score, reverse=True)
-        kept: list[Passage] = []
-        seen: set[str] = set()
-        for passage in ordered:
-            if passage.doc_id in seen:
-                continue
-            kept.append(passage)
-            seen.add(passage.doc_id)
-            if len(kept) == k:
-                break
-        return kept
+        return ranked(best, k)

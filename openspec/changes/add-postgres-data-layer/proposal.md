@@ -45,14 +45,9 @@ enforces rather than a convention callers are trusted to follow.
 - **Both LangGraph checkpointers move to Postgres**, and thread ids gain an owner prefix
   (`{user_id}:diagnose:…`, `{user_id}:chat:{plant_id}`). Every resume path verifies ownership
   before touching state.
-- **A hand-written `PgVectorRetriever` replaces `ChromaRetriever`**, implementing the existing
-  `Retriever` Protocol unchanged. Exact cosine search over ~300 corpus sections with **no HNSW
-  index**: approximate search can reorder results on its own, and this change needs any
-  difference to be attributable to the new SQL. Embeddings are exported from Chroma rather than
-  recomputed — same vectors, same model, no API calls.
-- **A retrieval parity gate** ships with it: committed query-vector fixtures replayed through
-  both retrievers, asserting identical document ids, sections and ordering for `search` *and* for
-  the `sections_for` fetch-by-id path. It costs nothing and runs in CI.
+- **The corpus gets a home in Postgres** — a `corpus_chunks` table and an ingestion command —
+  and a `PgVectorRetriever` written against the existing `Retriever` Protocol. **Neither is
+  wired in.** Retrieval still runs on Chroma; see the scope note below.
 - **Tests gain a Postgres dependency.** `docker compose up -d db` becomes a prerequisite, and the
   suite's "no network calls" claim is retired rather than faked.
 
@@ -63,12 +58,20 @@ enforces rather than a convention callers are trusted to follow.
 - *Upload downscaling (`U3`)* — it changes what the vision model sees, and evaluation is
   structurally blind to vision (`M19`), so nothing here could detect the damage if it did any.
   Full-size bytes continue to reach the model.
+- **Moving retrieval onto pgvector.** Deferred mid-implementation, deliberately. The parity gate
+  this change was going to ship rested on replaying recorded query vectors — and the embedding
+  provider turned out not to be reproducible: re-capturing the same 87 queries against the same
+  model returned **38 different vectors of 87**, moving scores by up to 1.1e-3. A fixture that
+  cannot be reproduced cannot be a gate. More decisively, the owner intends to reconsider the
+  embedding model, and a comparison against vectors from the outgoing model has no value once the
+  model changes. The table, the ingestion command and the retriever stay as groundwork, tested on
+  their own terms and consumed by nothing. See `docs/known-limitations.md`.
 - *An HNSW index* — 43 documents, ~300 sections. Revisit an order of magnitude later.
 - *An S3 blob adapter* — the port ships; the adapter does not.
 - *Migrating existing local data* — development data is development data. The database starts
   empty and the corpus is re-ingested.
-- *Any change to diagnosis behaviour* — this change is verified against the premise that
-  behaviour is constant, and the parity gate is how that premise is checked.
+- *Any change to diagnosis behaviour* — with retrieval deferred, nothing this change touches is
+  on the path from a photograph to a differential.
 
 ## Capabilities
 
@@ -79,9 +82,6 @@ enforces rather than a convention callers are trusted to follow.
   schema change without losing data.
 - `photo-storage`: how uploaded photographs are stored, addressed and retrieved, and what the
   agent's state carries in their place.
-- `disorder-retrieval`: how the disorder corpus is searched — similarity search over sections,
-  and fetch-by-document-id with no ranking involved, which is what hypothesis-driven retrieval
-  depends on.
 - `run-checkpointing`: how a paused diagnosis and a chat thread persist between requests, and
   who is permitted to resume one.
 
@@ -89,22 +89,23 @@ enforces rather than a convention callers are trusted to follow.
 
 None. This is the first change under OpenSpec, so `openspec/specs/` is empty and each capability
 above is being described for the first time. Three of the four already exist as behaviour in the
-code; writing them down is part of this change's work, and the parity gate exists precisely to
-prove that what is written down matches what shipped.
+code; writing them down is part of this change's work. `disorder-retrieval` was drafted here and
+withdrawn when the retrieval move was deferred — it belongs to whichever change actually moves
+the corpus.
 
 ## Impact
 
-**Code.** `data/` is rewritten (models, repositories, migrations). `knowledge/retriever.py` gains
-`PgVectorRetriever` and loses `ChromaRetriever` from the runtime path. `core/images.py` writes
+**Code.** `data/` is rewritten (models, repositories, migrations). `knowledge/` gains a pgvector
+retriever and a corpus table that nothing consumes yet; `ChromaRetriever` stays on the runtime
+path and now shares its merge logic with them. `core/images.py` writes
 through the `BlobStore` port. `agent/state.py` and the nodes that consume `ImageRef` carry keys
 instead of base64. `agent/wiring.py`, `ui/bootstrap.py` and `eval/run_eval.py` construct the new
-retriever and repositories. `services/` gains `user_id` on its call signatures.
+repositories. `services/` gains `user_id` on its call signatures.
 
 **Dependencies.** Added: `sqlalchemy`, `alembic`, `psycopg`, `pgvector`, a UUIDv7 generator, and
 `langgraph-checkpoint-postgres`. Removed from the runtime: `langgraph-checkpoint-sqlite`.
-`chromadb` moves to the dev group rather than leaving — the vector export and the parity fixtures
-need it, and deleting the old retriever before the gate has run would destroy the only evidence
-that retrieval survived.
+`chromadb` stays a runtime dependency, because `ChromaRetriever` is still the retriever the
+application uses.
 
 **Tests.** Repository and retriever tests are rewritten against Postgres; every other tier is
 untouched. Coverage stays gated at 85%.
@@ -113,7 +114,7 @@ untouched. Coverage stays gated at 85%.
 development and for the test suite. Corpus ingestion becomes an explicit one-shot command rather
 than a side effect of first run.
 
-**Risk.** The retrieval rewrite is the one part of this change that could move diagnostic
-accuracy — 89.3% top-1 and 96.4% top-3 over 28 golden cases, measured 2026-08-19. The parity gate
-is the mitigation, and it is stricter than re-measuring accuracy because it fails on the specific
-thing that can break rather than on a number that moves for six reasons.
+**Risk.** Retrieval was the one part of this change that could have moved diagnostic accuracy —
+89.3% top-1 and 96.4% top-3 over 28 golden cases, measured 2026-08-19. Deferring it removes that
+risk from this change entirely: the retriever the application uses is untouched, and the numbers
+in `eval/REPORT.md` still describe what ships.

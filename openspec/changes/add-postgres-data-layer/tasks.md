@@ -41,13 +41,11 @@
 - [x] 6.3 Capture the parity fixtures — the golden set's retrieval queries with their embedding vectors, the fetch-by-identifier requests, and the results `ChromaRetriever` returns for each; verify the fixture file is committed and covers all 28 cases. Embedding the recorded queries once costs well under a cent; nothing else in this gate calls an API.
 - [x] 6.4 Record, alongside each fixture, whether the best score clears the 0.35 escalation threshold; verify the captured decisions match what the current pipeline does for those queries.
 
-## 7. The pgvector retriever and its gate
+## 7. The pgvector groundwork (retrieval move deferred)
 
-- [ ] 7.1 Implement `PgVectorRetriever.search` with exact cosine ordering, a result limit and section filtering, and no index; verify the search half of the parity fixtures returns identical document ids, section names and ordering.
-- [ ] 7.2 Implement `sections_for`, `known_doc_ids`, `supports_image_search` and `search_by_image`; verify the fetch-by-identifier fixtures match exactly, including a document that similarity search ranks outside the top twenty, and that image search reports itself unavailable.
-- [ ] 7.3 Add the score-parity assertion at `1e-6` and the escalation-decision assertion against the captured decisions; verify the test fails if the score conversion is altered by a constant factor.
-- [ ] 7.4 Construct the new retriever in `agent/wiring.py`, `ui/bootstrap.py` and `eval/run_eval.py`, and delete `ChromaRetriever` from the runtime path; verify the full suite is green and no runtime module imports `chromadb`.
-- [ ] 7.5 Move `chromadb` from the runtime dependencies to the dev group; verify `uv run python -c "import chromadb"` still works from the dev environment and no module under `agent/`, `services/` or `knowledge/` imports it outside the export script. Moved here from group 1 during implementation: `langchain-chroma` is a runtime dependency that imports it, so the move is only valid once 7.4 has taken `ChromaRetriever` off the runtime path.
+- [x] 7.1 Implement `PgVectorRetriever` against the existing `Retriever` Protocol — exact cosine ordering, result limit, section filtering, fetch-by-id, no index; verify `tests/unit/knowledge/test_pgvector_retriever.py`, which asserts scores against the arithmetic rather than against recorded numbers.
+- [x] 7.2 Share the merge and ranking logic between both retrievers (`knowledge/merging.py`) rather than reproducing it; verify the existing Chroma retriever tests still pass unchanged.
+- [x] 7.3 **Deferred, not done: move retrieval onto pgvector, behind a parity gate.** Abandoned during implementation for two reasons. The gate's premise was false — the embedding provider returns different vectors for the same text (38 of 87 differed between two captures, moving scores by up to 1.1e-3), so no recorded fixture can serve as an exact baseline. And the owner intends to reconsider the embedding model, which makes a comparison against the outgoing model's vectors worthless. The parity fixture, its capture script and the Chroma export script are removed rather than left to rot. Recorded as forward work in `docs/known-limitations.md`.
 
 ## 8. Checkpointers
 
