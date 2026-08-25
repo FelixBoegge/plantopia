@@ -168,7 +168,12 @@ def chat_service(session: SessionDep, owner: OwnerDep, settings: SettingsDep) ->
     from agent.checkpoints import build_checkpointer, checkpointer_url
 
     profile = profile_service(session, owner)
-    deps = build_deps(profile_facts=profile.facts_for_prompt, settings=settings, session=session)
+    deps = build_deps(
+        user_id=owner,
+        profile_facts=profile.facts_for_prompt,
+        settings=settings,
+        session=session,
+    )
     return ChatService(
         deps=deps,
         messages=MessageRepository(session),

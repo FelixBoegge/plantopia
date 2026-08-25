@@ -76,7 +76,7 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
 
     from agent.diagnosis_graph import build_diagnosis_graph
     from agent.threads import diagnosis_thread
-    from agent.wiring import default_owner_id, open_session
+    from agent.wiring import harness_owner_id, open_session
     from core.blobs import PostgresBlobStore
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.observations import ObservationRepository
@@ -92,7 +92,7 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
     # like any other run; keeping them is what lets a surprising score be investigated
     # afterwards rather than only re-run.
     session = open_session(settings)
-    user_id = default_owner_id(session)
+    user_id = harness_owner_id(session)
 
     gate, vision = case_models(case)
     deps = Deps(

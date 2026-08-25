@@ -27,7 +27,8 @@ from langgraph.graph.state import CompiledStateGraph
 from agent.chat_agent import make_chat_agent
 from agent.deps import Deps
 from agent.diagnosis_graph import build_diagnosis_graph
-from agent.wiring import build_deps, build_profile_service
+from agent.wiring import build_deps, build_profile_service, harness_owner_id, open_session
+from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,9 @@ def _deps() -> Deps:
     Cached because the server calls a factory per request: without this, every glance
     at the graph would re-open the database and re-embed the corpus.
     """
-    profile = build_profile_service()
-    return build_deps(profile_facts=profile.facts_for_prompt)
+    owner = harness_owner_id(open_session(get_settings()))
+    profile = build_profile_service(user_id=owner)
+    return build_deps(user_id=owner, profile_facts=profile.facts_for_prompt)
 
 
 async def _wiring() -> Deps:

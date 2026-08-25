@@ -8,10 +8,9 @@ protect it.
 **The status code is asserted, not just the absence of data.** A handler that caught the
 repository's refusal and re-raised it as "forbidden" would satisfy a body-only check.
 
-**Known limit, recorded rather than glossed.** With one resolvable owner, a request cannot
-be issued *as* a second one; the owner dependency is overridden to a second owner instead,
-which exercises the handler and the error mapping but not the resolution of a session to a
-person. That last step arrives with authentication — `docs/known-limitations.md`, M27.
+**Two real accounts.** Each request carries a bearer token for the second one, and the
+owner is resolved from that token the same way a browser's would be. Nothing about who is
+asking is overridden, which is what closes `M27`.
 """
 
 from datetime import UTC, datetime
@@ -19,6 +18,7 @@ from datetime import UTC, datetime
 import pytest
 
 from api import dependencies
+from tests.api.conftest import token_for
 
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
@@ -40,27 +40,26 @@ ROUTES = [
 
 
 @pytest.fixture
-def as_other_owner(client, db, other_owner, make_service, make_deps):
-    """The same app, resolving every request to a different owner.
+def as_other_owner(client, db, other_owner, api_settings, make_deps):
+    """The same application, asked by a second registered account.
 
-    The chat service is overridden too, and not for convenience: the real dependency
-    builds model clients and a Chroma collection, which would embed the corpus over the
-    network. Every request here is refused before it reaches a model, but building the
-    dependency happens first.
+    The token is real and the owner is resolved from it. The chat service is still
+    substituted, and not for convenience: the real dependency builds model clients and a
+    Chroma collection, which would embed the corpus over the network. Every request here is
+    refused long before it reaches a model, but a dependency is built before a handler runs.
     """
     from langgraph.checkpoint.memory import MemorySaver
 
     from data.repositories.messages import MessageRepository
     from services.chat_service import ChatService
 
-    client.app.dependency_overrides[dependencies.current_owner] = lambda: other_owner
-    client.app.dependency_overrides[dependencies.plant_service] = lambda: make_service(other_owner)
     client.app.dependency_overrides[dependencies.chat_service] = lambda: ChatService(
         deps=make_deps(user_id=other_owner),
         messages=MessageRepository(db),
         checkpointer=MemorySaver(),
         now=lambda: NOW,
     )
+    client.headers["Authorization"] = f"Bearer {token_for(other_owner, api_settings)}"
     return client
 
 

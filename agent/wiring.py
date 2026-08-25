@@ -77,31 +77,32 @@ def open_session(settings: Settings | None = None) -> Session:
     return build_sessions(_engine_for(settings.database_url))()
 
 
-DEFAULT_OWNER_EMAIL = "owner@localhost"
+# The account developer harnesses run as. Not a person, and named so that it cannot be
+# mistaken for one in a list of accounts.
+HARNESS_EMAIL = "harness@plantopia.invalid"
 
 
-def default_owner_id(session: Session) -> UUID:
-    """The single seeded owner, created on first use.
+def harness_owner_id(session: Session) -> UUID:
+    """The owner that the evaluation harness and LangGraph Studio write as.
 
-    A placeholder for authentication, which arrives in the next change. It exists so
-    that the repositories' ``user_id`` argument has something real to carry while
-    Streamlit is still the only client — and so that the tenancy rules are exercised
-    by the running application rather than only by tests.
+    Created on demand so neither has a setting to forget. Its password is unusable and it
+    is never verified, so nothing can sign in as it — it exists to give ``user_id`` a real
+    row to carry in the two entry points that have no request and therefore no session.
+
+    This is not an authentication path and no endpoint reaches it. Endpoints resolve an
+    owner from a bearer token in ``api/dependencies.current_owner``, which is the only
+    place resolution happens.
     """
-    owner = session.scalar(select(User).where(User.email == DEFAULT_OWNER_EMAIL))
+    owner = session.scalar(select(User).where(User.email == HARNESS_EMAIL))
     if owner is None:
         with transaction(session):
-            # Unusable password, unverified: the seed is not a person and must never
-            # become one. It is removed once sessions exist; until then it needs to be a
-            # valid row, which is the same treatment the migration gave the one that
-            # already existed.
             now = now_utc()
             owner = User(
-                email=DEFAULT_OWNER_EMAIL,
+                email=HARNESS_EMAIL,
                 password_hash=UNUSABLE,
                 created_at=now,
                 verified_at=None,
-                consent_version="seed",
+                consent_version="harness",
                 consent_at=now,
                 tier="free",
             )
@@ -110,12 +111,12 @@ def default_owner_id(session: Session) -> UUID:
     return owner.id
 
 
-def build_profile_service(settings: Settings | None = None) -> ProfileService:
+def build_profile_service(*, user_id: UUID, settings: Settings | None = None) -> ProfileService:
     """The learned-profile service, on its own session."""
     settings = settings or get_settings()
     session = open_session(settings)
     return ProfileService(
-        user_id=default_owner_id(session),
+        user_id=user_id,
         repo=ProfileRepository(session),
         gate_model=build_gate_model(),
         now=now_utc,
@@ -124,6 +125,7 @@ def build_profile_service(settings: Settings | None = None) -> ProfileService:
 
 def build_deps(
     *,
+    user_id: UUID,
     profile_facts: Callable[[], str],
     settings: Settings | None = None,
     session: Session | None = None,
@@ -131,6 +133,10 @@ def build_deps(
     """Everything the graph's nodes need from the outside world.
 
     Args:
+        user_id: Whose run this is. Passed in rather than resolved here, because the
+            only place that decides who is asking is the request. Resolving it inside
+            this function is how the agent ended up reading one owner's corpus while the
+            surrounding request was scoped to another.
         profile_facts: Renders the owner's learned profile for injection into
             prompts. Passed in rather than built here because the profile service is
             also a UI-facing object with its own lifetime, and ``Deps`` deliberately
@@ -144,7 +150,6 @@ def build_deps(
     """
     settings = settings or get_settings()
     session = session or open_session(settings)
-    user_id = default_owner_id(session)
 
     retriever = _shared_retriever(settings)
 

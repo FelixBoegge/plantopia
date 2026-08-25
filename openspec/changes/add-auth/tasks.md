@@ -35,8 +35,8 @@
 
 - [x] 5.1 Replace `current_owner` with session resolution; verify that no handler changed, by diffing the routers.
 - [x] 5.2 Refuse owner-scoped endpoints without a session, while leaving auth and health endpoints open; verify a table-driven test over every route asserting which require a session and which do not.
-- [ ] 5.3 Remove `default_owner_id` and the seeded owner; verify nothing imports it and the suite is green.
-- [ ] 5.4 **Decide what happens to Streamlit, and do it.** It resolves an owner through the seeded row and will break outright. Either give it a development-only sign-in or retire it in favour of the API. Surface the choice rather than picking silently — it is the control client the migration has leaned on, and retiring it early costs that. Verify whichever is chosen actually works end to end.
+- [x] 5.3 Remove `default_owner_id` and the seeded owner; verify nothing imports it and the suite is green.
+- [x] 5.4 **Decide what happens to Streamlit, and do it.** Decided: retired. `ui/`, `tests/ui/`, `app.py`, the `ui` pytest marker and the Streamlit dependency are gone; the API and its tests are the only client until the React frontend lands. The evaluation harness and LangGraph Studio run as `harness_owner_id`, an unverified account with an unusable password that nothing can sign in as.
 
 ## 6. Password reset
 
@@ -55,7 +55,7 @@
 
 ## 8. Closing the gaps
 
-- [ ] 8.1 Rewrite the endpoint tenancy table to register two accounts and issue requests as each; verify it fails when a route is made to ignore the session's owner, and remove the dependency override the previous change relied on.
+- [x] 8.1 Rewrite the endpoint tenancy table to register two accounts and issue requests as each; verify it fails when a route is made to ignore the session's owner, and remove the dependency override the previous change relied on.
 - [ ] 8.2 Strike `M27` as resolved with today's date, and record the per-process rate-limit limitation and the frontend contract that refresh must not be retried blindly; verify identifiers and dates against the file's conventions.
 - [ ] 8.3 Update the README: registration and sign-in, the new settings, and whatever became of Streamlit; verify every command runs as written on a clean clone.
 - [ ] 8.4 Run `openspec validate add-auth --strict`, the full suite including the `ui` tier, and ruff; verify all three are clean.

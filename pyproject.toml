@@ -24,7 +24,6 @@ dependencies = [
     "pyjwt>=2.13.0",
     "python-frontmatter>=1.3.0",
     "sqlalchemy>=2.0",
-    "streamlit>=1.61.1",
     "uuid6>=2025.0.1",
     "uvicorn>=0.52.1",
 ]
@@ -48,36 +47,22 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "-m 'not integration and not ui and not llm' --strict-markers --cov --cov-fail-under=85"
+addopts = "-m 'not integration and not llm' --strict-markers --cov --cov-fail-under=85"
 markers = [
     "integration: real SQLite and Chroma, still no LLM or network",
-    "ui: Streamlit AppTest page tests",
     "llm: hits the real model, costs money, opt-in only",
 ]
 filterwarnings = ["error::DeprecationWarning:plantopia.*"]
 
 [tool.coverage.run]
-source = ["core", "agent", "tools", "data", "knowledge", "services", "ui", "eval"]
+source = ["core", "agent", "api", "identity", "tools", "data", "knowledge", "services", "eval"]
 omit = [
     "*/__init__.py",
-    # Real-infrastructure wiring only: opens a live SQLite connection, builds a Chroma
-    # collection against the embeddings API, and constructs model clients. There is
-    # nothing here to unit test that would not be a mock asserting on itself, and the
-    # UI tests substitute a faked service rather than exercising it. Counted in the
-    # denominator it only made the gate trip on unrelated changes.
-    "ui/bootstrap.py",
-    # Pages and components ARE meaningfully tested — via streamlit.testing.v1.AppTest
-    # under the `ui` marker, deliberately excluded from the default `uv run pytest`
-    # run because it boots real Streamlit script sessions and is slower. Excluded
-    # here for the same denominator reason as ui/bootstrap.py above: a file that is
-    # tested, just not in this particular run, shouldn't count as a gap and shouldn't
-    # make the gate trip every time a new page or component is added (as it did for
-    # ui/pages/my_plants.py, and would identically for every later page/component).
-    "ui/pages/*",
-    "ui/components/*",
-    # The evaluation CLI: argument parsing, real model construction and file writing,
-    # on ui/bootstrap.py's precedent. Everything beneath it — case loading, the
-    # scripted model, scoring, stability, report rendering — is unit-tested.
+    # The evaluation CLI: argument parsing, real model construction and file writing.
+    # There is nothing here to unit test that would not be a mock asserting on itself,
+    # and counted in the denominator it only made the gate trip on unrelated changes.
+    # Everything beneath it — case loading, the scripted model, scoring, stability,
+    # report rendering — is unit-tested.
     "eval/run_eval.py",
     # One-shot migration tools, on the same precedent. Both talk to systems a test
     # must not: export_chroma reads the Chroma store that is being retired, and

@@ -7,8 +7,11 @@ scripted fake the rest of the suite uses.
 """
 
 from datetime import UTC, datetime
+from typing import Annotated
+from uuid import UUID
 
 import pytest
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
 from agent.schemas import (
@@ -30,6 +33,7 @@ from data.repositories.messages import MessageRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.roadmap import RoadmapRepository
+from identity.tokens import issue_access_token
 from services.plant_service import PlantService
 from tests.secrets import TEST_JWT_SECRET
 
@@ -133,18 +137,38 @@ def make_service(db):
     return _make
 
 
+def token_for(user_id, settings) -> str:
+    """An access token a test client can present as somebody."""
+    return issue_access_token(
+        user_id=user_id, secret=settings.jwt_secret, lifetime_minutes=settings.access_token_minutes
+    )
+
+
 @pytest.fixture
 def client(db, owner, api_settings, make_service):
-    """A client whose requests resolve to ``owner`` and run on the test session."""
+    """A client signed in as ``owner``, running on the test session.
+
+    The owner is resolved from a real bearer token rather than an override, so every test
+    using this client goes through the same resolution a browser would. What is overridden
+    is the session and the clock — infrastructure — not who is asking.
+    """
     app = create_app(api_settings)
     app.dependency_overrides[dependencies.session_dep] = lambda: db
-    app.dependency_overrides[dependencies.current_owner] = lambda: owner
     app.dependency_overrides[dependencies.settings_dep] = lambda: api_settings
-    app.dependency_overrides[dependencies.plant_service] = lambda: make_service(owner)
+
+    # Depends on the real resolution, so the service follows the token rather than pinning
+    # one owner: a test that presents somebody else's token gets somebody else's service.
+    def _service_for_the_signed_in_owner(
+        resolved: Annotated[UUID, Depends(dependencies.current_owner)],
+    ) -> PlantService:
+        return make_service(resolved)
+
+    app.dependency_overrides[dependencies.plant_service] = _service_for_the_signed_in_owner
     app.dependency_overrides[dependencies.blob_store] = lambda: PostgresBlobStore(db)
     app.dependency_overrides[dependencies.chat_service] = _NotWired
 
     with TestClient(app) as test_client:
+        test_client.headers["Authorization"] = f"Bearer {token_for(owner, api_settings)}"
         yield test_client
 
 
