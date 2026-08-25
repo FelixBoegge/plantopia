@@ -62,7 +62,13 @@ before it, an endpoint would have had no way to answer "whose plant is this?".
 
 ### Modified Capabilities
 
-None. `data-persistence`, `photo-storage` and `run-checkpointing` describe how records are
+- `photo-storage`: gains the ability to delete **one** photograph by key. Added during
+  implementation, not planned: this change's own requirement that deleting a plant removes
+  "everything hanging off it" cannot be met without it. Photographs are owned by a person
+  rather than by a plant — an upload exists before the plant it documents does — so no
+  cascade reaches them, and a plant deletion would otherwise leave the bytes behind.
+
+`data-persistence` and `run-checkpointing` are untouched. They describe how records are
 stored and isolated, and this change adds a caller rather than changing any of it. The
 tenancy rule they state is the rule this change is obliged to preserve at a new boundary,
 which is a reason to test it here, not a reason to restate it.
@@ -71,9 +77,10 @@ which is a reason to test it here, not a reason to restate it.
 
 **Code.** A new `api/` package: application factory, routers, dependencies, request and
 response schemas, and the error handlers. `core/config.py` gains CORS origins and the API
-root path. `services/` is untouched — if a handler cannot do its job through the existing
-service methods, that is a finding worth surfacing rather than a reason to reach past
-them.
+root path. `services/` gains one method: `PlantService.delete_plant`. The rule was that a
+handler unable to do its job through the existing services is a finding rather than a
+licence to reach past them — this is that finding, surfaced. Nothing had ever deleted a
+plant, because Streamlit has no button for it.
 
 **Dependencies.** `fastapi` and `uvicorn`. `python-multipart` is deliberately *not* added,
 since nothing here receives an upload.

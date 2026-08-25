@@ -79,6 +79,16 @@ class Settings(BaseSettings):
     chroma_path: Path = Path("data/chroma")
     corpus_path: Path = Path("knowledge/corpus")
 
+    # The HTTP interface. Every route is served beneath the prefix, so a later
+    # incompatible version can exist alongside this one rather than replacing it under a
+    # running client.
+    api_prefix: str = "/api/v1"
+
+    # Origins permitted to make cross-origin requests, comma-separated. Empty by default
+    # and deliberately never "*": a permissive default is the kind of thing that ships
+    # because nobody had a reason to tighten it yet.
+    cors_origins: str = ""
+
     retrieval_score_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
     species_confidence_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     diagnosis_confidence_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
@@ -94,6 +104,11 @@ class Settings(BaseSettings):
     # retrying three times and then surfacing APIConnectionError — which cost that
     # evaluation most of its cells, and would cost a real diagnosis its result.
     model_max_retries: int = Field(default=6, ge=0, le=20)
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """``cors_origins`` split into a list, with blanks dropped."""
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache

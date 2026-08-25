@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from core.blobs import PostgresBlobStore
+
 pytestmark = pytest.mark.ui
 
 _MY_PLANTS_PAGE = Path(__file__).resolve().parent.parent.parent / "ui" / "pages" / "my_plants.py"
@@ -33,6 +35,7 @@ def app(owner, monkeypatch, db, now):
         diagnoses=DiagnosisRepository(db),
         roadmap=RoadmapRepository(db),
         feedback=FeedbackRepository(db),
+        blobs=PostgresBlobStore(db),
         now=now,
     )
     monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: service)

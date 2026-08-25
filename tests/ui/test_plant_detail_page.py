@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from core.blobs import PostgresBlobStore
+
 pytestmark = pytest.mark.ui
 
 _PLANT_DETAIL_PAGE = (
@@ -54,6 +56,7 @@ def app(owner, monkeypatch, db, now, sample_plant, make_deps, tmp_path):
         diagnoses=DiagnosisRepository(db),
         roadmap=RoadmapRepository(db),
         feedback=FeedbackRepository(db),
+        blobs=PostgresBlobStore(db),
         now=now,
     )
 
@@ -126,6 +129,7 @@ def test_shows_a_prompt_when_no_plant_is_selected(owner, monkeypatch, db, now):
         diagnoses=DiagnosisRepository(db),
         roadmap=RoadmapRepository(db),
         feedback=FeedbackRepository(db),
+        blobs=PostgresBlobStore(db),
         now=now,
     )
     monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: service)
@@ -267,6 +271,7 @@ def test_the_recheck_thread_id_rotates_after_a_rejection_or_retake(
         diagnoses=DiagnosisRepository(db),
         roadmap=RoadmapRepository(db),
         feedback=FeedbackRepository(db),
+        blobs=PostgresBlobStore(db),
         now=now,
     )
     deps = make_deps(

@@ -107,7 +107,12 @@ def build_profile_service(settings: Settings | None = None) -> ProfileService:
     )
 
 
-def build_deps(*, profile_facts: Callable[[], str], settings: Settings | None = None) -> Deps:
+def build_deps(
+    *,
+    profile_facts: Callable[[], str],
+    settings: Settings | None = None,
+    session: Session | None = None,
+) -> Deps:
     """Everything the graph's nodes need from the outside world.
 
     Args:
@@ -116,9 +121,14 @@ def build_deps(*, profile_facts: Callable[[], str], settings: Settings | None = 
             also a UI-facing object with its own lifetime, and ``Deps`` deliberately
             declares no default for it (see ``agent/deps.py``).
         settings: Overridable for tests and alternative entry points.
+        session: An existing session to use rather than opening one. Callers that
+            already have a session must pass it: a request that writes a chat message
+            through one session and reads plant history through another sees its own
+            uncommitted write as absent, which is a bug that only appears once both
+            happen inside one operation.
     """
     settings = settings or get_settings()
-    session = open_session(settings)
+    session = session or open_session(settings)
     user_id = default_owner_id(session)
 
     # Embeddings go through OpenRouter's /embeddings endpoint, same key as the chat

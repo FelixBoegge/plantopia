@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from core.blobs import PostgresBlobStore
 from core.ids import new_id
 
 pytestmark = pytest.mark.ui
@@ -27,6 +28,7 @@ def _plant_service(owner, db, now):
         diagnoses=DiagnosisRepository(db),
         roadmap=RoadmapRepository(db),
         feedback=FeedbackRepository(db),
+        blobs=PostgresBlobStore(db),
         now=now,
     )
 

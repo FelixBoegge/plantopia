@@ -9,8 +9,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from core.blobs import BlobStore
 from data.engine import transaction
 from data.repositories.diagnoses import DiagnosisRecord, DiagnosisRepository
+from data.repositories.errors import RecordNotFoundError
 from data.repositories.feedback import DidItHelp, FeedbackRepository
 from data.repositories.observations import ObservationRecord, ObservationRepository
 from data.repositories.plants import PlantRecord, PlantRepository
@@ -49,6 +51,7 @@ class PlantService:
         diagnoses: DiagnosisRepository,
         roadmap: RoadmapRepository,
         feedback: FeedbackRepository,
+        blobs: BlobStore,
         now: Callable[[], datetime],
     ) -> None:
         self._user_id = user_id
@@ -57,6 +60,7 @@ class PlantService:
         self._diagnoses = diagnoses
         self._roadmap = roadmap
         self._feedback = feedback
+        self._blobs = blobs
         self._now = now
 
     @property
@@ -142,6 +146,28 @@ class PlantService:
             raise ValueError("A plant needs a name.")
         with transaction(self._plants.session):
             self._plants.rename(self._user_id, plant_id, name=cleaned)
+
+    def delete_plant(self, plant_id: UUID) -> None:
+        """Remove a plant, its history, and its photographs.
+
+        The rows go by cascade. The photographs do not: ``blobs`` is owned by a person
+        rather than by a plant — an upload exists before the plant it documents does — so
+        nothing relates the bytes back to the plant except the references its observations
+        hold. Collected here and removed explicitly, because "delete my plant" that leaves
+        the photographs behind is not what it says.
+        """
+        detail = self.get_plant_detail(plant_id)
+        if detail is None:
+            raise RecordNotFoundError(f"no plant {plant_id} for this owner")
+
+        keys = {ref for observation in detail.observations for ref in observation.photo_refs}
+        if detail.plant.photo_ref:
+            keys.add(detail.plant.photo_ref)
+
+        with transaction(self._plants.session):
+            for key in keys:
+                self._blobs.delete(self._user_id, UUID(key))
+            self._plants.delete(self._user_id, plant_id)
 
     def mark_roadmap_step(self, step_id: UUID, *, status: StepStatus) -> None:
         """Tick, skip, or reopen a roadmap step."""

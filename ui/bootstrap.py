@@ -58,6 +58,7 @@ def get_plant_service() -> PlantService:
         diagnoses=DiagnosisRepository(session),
         roadmap=RoadmapRepository(session),
         feedback=FeedbackRepository(session),
+        blobs=PostgresBlobStore(session),
         now=now_utc,
     )
 

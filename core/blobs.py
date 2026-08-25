@@ -40,6 +40,15 @@ class BlobStore(Protocol):
         """
         ...
 
+    def delete(self, user_id: UUID, key: UUID) -> bool:
+        """Remove one photograph. Returns whether there was one to remove.
+
+        Silent about a key that is unknown or not this owner's, for the same reason
+        ``get`` is: an answer that distinguished them would confirm somebody else's
+        photograph exists.
+        """
+        ...
+
     def delete_for_user(self, user_id: UUID) -> int:
         """Remove every photograph belonging to one owner. Returns how many went."""
         ...
@@ -78,6 +87,13 @@ class PostgresBlobStore:
         return self._session.scalar(
             select(Blob.data).where(Blob.id == key, Blob.user_id == user_id)
         )
+
+    def delete(self, user_id: UUID, key: UUID) -> bool:
+        row = self._session.scalar(select(Blob).where(Blob.id == key, Blob.user_id == user_id))
+        if row is None:
+            return False
+        self._session.delete(row)
+        return True
 
     def delete_for_user(self, user_id: UUID) -> int:
         rows = self._session.scalars(select(Blob).where(Blob.user_id == user_id)).all()

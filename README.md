@@ -69,8 +69,13 @@ uv run alembic upgrade head      # create the schema
 cp .env.example .env
 # add your PLANTOPIA_OPENROUTER_API_KEY
 
-uv run streamlit run app.py
+uv run streamlit run app.py                       # the app
+uv run uvicorn api.main:app --reload --port 8000  # the API, in another terminal
 ```
+
+The two are independent clients of the same services. Streamlit works with the API
+stopped, and the API works with Streamlit stopped; neither knows about the other. The
+interactive API documentation is at `http://localhost:8000/api/v1/docs`.
 
 **Port 5433, not 5432.** A machine with PostgreSQL already installed has a service on
 5432, and on Windows both it and Docker's proxy will bind the port — so connections reach
@@ -257,12 +262,12 @@ paused diagnosis that has already been paid for, so it is checked before use.
 
 ```bash
 docker compose up -d db          # a prerequisite: the suite uses a real database
-uv run pytest                    # unit + graph tests, ~1.5 minutes
+uv run pytest                    # unit, graph and API tests, ~2 minutes
 uv run pytest -m ui --no-cov     # Streamlit AppTest page tests
 uv run ruff check . && uv run ruff format .
 ```
 
-1,024 tests in the gated run at 95% coverage (gated at 85%), plus 97 in the `ui` tier.
+1,120 tests in the gated run at 96% coverage (gated at 85%), plus 97 in the `ui` tier.
 
 **Tests make no LLM calls.** That constraint is absolute: models arrive through
 `core/llm.py`, which tests replace with a scripted fake, and HTTP is mocked at the
@@ -362,6 +367,7 @@ the shipped app never imports them.
 
 | Directory | Responsibility |
 |---|---|
+| `api/` | FastAPI routers, dependencies and response schemas |
 | `ui/` | Streamlit pages and components — rendering only |
 | `services/` | The boundary the UI calls |
 | `agent/` | Both graphs, nodes, state, schemas, prompts |

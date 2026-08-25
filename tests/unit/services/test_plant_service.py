@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+from core.blobs import PostgresBlobStore
 from core.ids import new_id
 from services.plant_service import PlantDetail, PlantService, PlantSummary
 
@@ -20,6 +21,7 @@ def _service(owner, db, now) -> PlantService:
         diagnoses=DiagnosisRepository(db),
         roadmap=RoadmapRepository(db),
         feedback=FeedbackRepository(db),
+        blobs=PostgresBlobStore(db),
         now=now,
     )
 
