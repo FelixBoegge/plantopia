@@ -355,3 +355,96 @@ class CorpusChunk(Base):
     transmissible: Mapped[bool] = mapped_column(Boolean)
     severity: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+
+
+class Run(Base):
+    """One execution of the agent, as a thing a client can address.
+
+    A diagnosis takes about ninety seconds and pauses part-way to ask questions. Neither
+    fits inside a request, so the work becomes a resource: the client is handed one of
+    these and watches it, rather than holding a connection and hoping.
+
+    **``status`` is the contract.** A client reads it and never infers one — silence is
+    indistinguishable from a crashed worker, a slow model, and a finished run whose last
+    event was lost. The constraint below is what stops an invented status becoming one.
+
+    ``thread_id`` is the checkpoint's key, kept here because resuming after the pause has
+    to find it, and because a run and its checkpoint are otherwise only related by
+    convention.
+
+    ``cancel_requested`` is a flag the worker reads between nodes rather than a status,
+    because the run is still legitimately ``running`` until it notices — and a status that
+    means "will stop shortly" is a status a client has to special-case.
+    """
+
+    __tablename__ = "runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'awaiting_answers', "
+            "'completed', 'failed', 'cancelled')",
+            name="ck_runs_status",
+        ),
+        CheckConstraint("kind IN ('diagnosis', 'recheck')", name="ck_runs_kind"),
+        Index("idx_runs_user_time", "user_id", "created_at"),
+        # What the sweeper scans: everything not yet finished, oldest first.
+        Index("idx_runs_unfinished", "status", "status_changed_at"),
+    )
+
+    id: Mapped[UUID] = _pk()
+    user_id: Mapped[UUID] = _owner()
+    plant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("plants.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    thread_id: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32))
+
+    created_at: Mapped[datetime] = _when()
+
+    # When the status last changed, which is what both ceilings measure from. Distinct
+    # from ``created_at``: a run that waited an hour for answers has not been working for
+    # an hour, and one clock cannot say both.
+    status_changed_at: Mapped[datetime] = _when()
+    finished_at: Mapped[datetime | None] = _when(nullable=True)
+
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # What it produced, or why it did not. ``error`` is what a client is shown, so it is
+    # written already sanitised — an exception message can carry a query or a filename.
+    diagnosis_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("diagnoses.id", ondelete="SET NULL"), nullable=True
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Distinguishes a run the sweeper gave up on from one that failed while working, and
+    # is what stops the sweeper recording usage for a run that already recorded its own.
+    usage_recorded: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RunEvent(Base):
+    """One thing that happened during a run, in the order it happened.
+
+    Written before it is published. Publishing first would mean a client can receive an
+    event the database does not have, and a reconnect that replays a shorter history than
+    the one already on screen.
+
+    ``sequence`` is per run, not global: two concurrent runs must not interleave, and a
+    global counter would make the replay query a scan across everybody's events.
+
+    ``kind`` is a stable identifier the client may branch on. No node, function or module
+    name is ever stored here — a client rendering ``identify_plant`` is a client coupled
+    to the graph's internals, and renaming a node would then break the interface.
+    """
+
+    __tablename__ = "run_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_run_events_sequence"),
+        Index("idx_run_events_replay", "run_id", "sequence"),
+    )
+
+    id: Mapped[UUID] = _pk()
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    sequence: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(64))
+    payload_json: Mapped[str] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = _when()

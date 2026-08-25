@@ -12,6 +12,7 @@ from alembic import context
 
 from core.config import Settings
 from data.engine import build_engine
+from data.migrations.filters import include_name, include_object
 from data.models import Base
 
 config = context.config
@@ -31,6 +32,8 @@ def run_migrations_offline() -> None:
     context.configure(
         url=_url(),
         target_metadata=target_metadata,
+        include_name=include_name,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
@@ -49,6 +52,8 @@ def run_migrations_online() -> None:
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
+                include_name=include_name,
+                include_object=include_object,
                 # Without this, `alembic check` ignores a column whose type changed —
                 # which would let the models and the schema drift apart in exactly the
                 # way this project has no second source of truth to catch.

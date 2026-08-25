@@ -1,8 +1,8 @@
 ## 1. The run record
 
-- [ ] 1.1 Add `Run` and `RunEvent` models — owner, plant, kind, thread id, status, timestamps, error, resulting diagnosis; and per-run sequence, kind, payload, time; verify the schema test asserts the new table names, that every timestamp carries a timezone, and that a run's sequence is unique within its run rather than globally.
-- [ ] 1.2 Generate and apply the migration; verify `alembic upgrade head` on an empty database and `alembic check` reporting no drift.
-- [ ] 1.3 Add a status constraint permitting only the six statuses; verify a test that writing an invented status is refused by the database, not only by Python.
+- [x] 1.1 Add `Run` and `RunEvent` models — owner, plant, kind, thread id, status, timestamps, error, resulting diagnosis; and per-run sequence, kind, payload, time; verify the schema test asserts the new table names, that every timestamp carries a timezone, and that a run's sequence is unique within its run rather than globally.
+- [x] 1.2 Generate and apply the migration; verify `alembic upgrade head` on an empty database and `alembic check` reporting no drift.
+- [x] 1.3 Add a status constraint permitting only the six statuses; verify a test that writing an invented status is refused by the database, not only by Python.
 - [ ] 1.4 Add `RunRepository`, owner-scoped like every other; verify a test that another owner's run is unreachable through every method, added to the repository tenancy table.
 - [ ] 1.5 Add settings for pool size, queue depth, the working ceiling, the answering ceiling and the keep-alive interval, with `.env.example` documentation; verify a test that each has a default and that the two ceilings are separately configurable.
 

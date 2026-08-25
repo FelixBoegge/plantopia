@@ -28,6 +28,8 @@ EXPECTED_TABLES = {
     "refresh_tokens",
     "email_tokens",
     "usage_events",
+    "runs",
+    "run_events",
 }
 
 OWNED_DIRECTLY = {
@@ -38,6 +40,7 @@ OWNED_DIRECTLY = {
     "refresh_tokens",
     "email_tokens",
     "usage_events",
+    "runs",
 }
 
 # Reference data, not records. The corpus is the same for everyone, so it has no owner,
@@ -177,3 +180,24 @@ def test_a_refresh_token_belongs_to_a_family():
 def test_usage_distinguishes_unknown_cost_from_zero():
     """An unmeasured run must not be readable as a free one."""
     assert Base.metadata.tables["usage_events"].c.cost_usd.nullable
+
+
+def test_a_runs_sequence_is_unique_within_its_run_and_not_globally():
+    """Two concurrent runs must not interleave, and a global counter would make the
+    replay query a scan across everybody's events."""
+    constraint = next(
+        c
+        for c in Base.metadata.tables["run_events"].constraints
+        if c.name == "uq_run_events_sequence"
+    )
+
+    assert {column.name for column in constraint.columns} == {"run_id", "sequence"}
+
+
+def test_a_run_records_when_its_status_last_changed_separately_from_when_it_started():
+    """Both ceilings measure from the status change. A run that waited an hour for
+    answers has not been working for an hour, and one clock cannot say both."""
+    columns = Base.metadata.tables["runs"].columns
+
+    assert "created_at" in columns
+    assert "status_changed_at" in columns
