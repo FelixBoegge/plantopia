@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     verification_token_hours: int = Field(default=24, ge=1, le=168)
     reset_token_hours: int = Field(default=1, ge=1, le=24)
 
+    # How much the application's own loggers say. Uvicorn configures its own handlers and
+    # leaves everybody else at WARNING, which silently swallows the console mailer — the
+    # thing a developer registering an account is supposed to read the verification link
+    # out of.
+    log_level: str = "INFO"
+
     # Whether the refresh cookie is marked Secure. True everywhere it matters; False is
     # what lets a browser keep the cookie when the frontend is served over plain http on
     # localhost, which is the only situation where turning it off is defensible.

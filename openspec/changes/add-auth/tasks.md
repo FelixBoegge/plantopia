@@ -56,6 +56,6 @@
 ## 8. Closing the gaps
 
 - [x] 8.1 Rewrite the endpoint tenancy table to register two accounts and issue requests as each; verify it fails when a route is made to ignore the session's owner, and remove the dependency override the previous change relied on.
-- [ ] 8.2 Strike `M27` as resolved with today's date, and record the per-process rate-limit limitation and the frontend contract that refresh must not be retried blindly; verify identifiers and dates against the file's conventions.
-- [ ] 8.3 Update the README: registration and sign-in, the new settings, and whatever became of Streamlit; verify every command runs as written on a clean clone.
-- [ ] 8.4 Run `openspec validate add-auth --strict`, the full suite including the `ui` tier, and ruff; verify all three are clean.
+- [x] 8.2 Strike `M27` as resolved with today's date, and record the per-process rate-limit limitation and the frontend contract that refresh must not be retried blindly; verify identifiers and dates against the file's conventions.
+- [x] 8.3 Update the README: registration and sign-in, the new settings, and whatever became of Streamlit; verify every command runs as written on a clean clone.
+- [x] 8.4 Run `openspec validate add-auth --strict`, the full suite including the `ui` tier, and ruff; verify all three are clean.

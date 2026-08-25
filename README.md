@@ -67,15 +67,49 @@ docker compose up -d db          # PostgreSQL 17 with pgvector, on port 5433
 uv run alembic upgrade head      # create the schema
 
 cp .env.example .env
-# add your PLANTOPIA_OPENROUTER_API_KEY
+# add your PLANTOPIA_OPENROUTER_API_KEY and a PLANTOPIA_JWT_SECRET of 32+ characters
 
-uv run streamlit run app.py                       # the app
-uv run uvicorn api.main:create_app --factory --reload --port 8000   # the API
+uv run uvicorn api.main:create_app --factory --reload --port 8000
 ```
 
-The two are independent clients of the same services. Streamlit works with the API
-stopped, and the API works with Streamlit stopped; neither knows about the other. The
-interactive API documentation is at `http://localhost:8000/api/v1/docs`.
+The interactive API documentation is at `http://localhost:8000/api/v1/docs`.
+
+**There is no key with a default.** `PLANTOPIA_JWT_SECRET` has none, and the application
+refuses to start without it. A generated default would work perfectly in development and
+sign everybody out on every restart in production, which is the kind of default that is
+discovered by its symptom.
+
+### Getting an account
+
+Registration is open and every account starts unverified; nothing owner-scoped is reachable
+until the address is proven.
+
+```bash
+curl -X POST localhost:8000/api/v1/auth/register   -H 'content-type: application/json'   -d '{"email":"you@example.com","password":"at-least-twelve-characters","accepted_privacy_notice":true}'
+```
+
+With no mail provider configured — which is the default — the verification message is
+written to the application log rather than sent, link included. Copy the token out of it:
+
+```bash
+curl -X POST localhost:8000/api/v1/auth/verify   -H 'content-type: application/json' -d '{"token":"<from the log>"}'
+
+curl -X POST localhost:8000/api/v1/auth/login   -H 'content-type: application/json'   -d '{"email":"you@example.com","password":"at-least-twelve-characters"}'
+```
+
+Sign-in returns an access token in the body and sets the refresh token as an httpOnly
+cookie. Send the access token as `Authorization: Bearer <token>` on every owner-scoped
+request; when it expires — fifteen minutes — `POST /api/v1/auth/refresh` issues another
+from the cookie.
+
+**Refresh is never retried.** Each use rotates the token, so presenting a spent one is
+indistinguishable from a stolen one being used, and is treated as one: the session ends
+and the account signs in again. A client whose refresh fails sends the person to sign in
+rather than trying again.
+
+**There is no browser client at present.** Streamlit was retired when the seeded owner it
+resolved through was replaced by real accounts; the React frontend is the next change but
+one. Until then the OpenAPI page above is the interface.
 
 **Port 5433, not 5432.** A machine with PostgreSQL already installed has a service on
 5432, and on Windows both it and Docker's proxy will bind the port — so connections reach
@@ -263,11 +297,10 @@ paused diagnosis that has already been paid for, so it is checked before use.
 ```bash
 docker compose up -d db          # a prerequisite: the suite uses a real database
 uv run pytest                    # unit, graph and API tests, ~2 minutes
-uv run pytest -m ui --no-cov     # Streamlit AppTest page tests
 uv run ruff check . && uv run ruff format .
 ```
 
-1,120 tests in the gated run at 96% coverage (gated at 85%), plus 97 in the `ui` tier.
+1,310 tests at 96% coverage, gated at 85%.
 
 **Tests make no LLM calls.** That constraint is absolute: models arrive through
 `core/llm.py`, which tests replace with a scripted fake, and HTTP is mocked at the
@@ -282,11 +315,11 @@ created per session and dropped afterwards, each test inside a transaction that 
 back. Mocking the database in a project whose subject is the database would produce tests
 that assert on the mock.
 
-**Run the `ui` tier separately whenever you touch a page or component.** `ui/pages/*`,
-`ui/components/*` and `ui/bootstrap.py` are omitted from coverage, because counting
-untestable wiring as a gap made the gate trip on unrelated changes. They are meaningfully
-tested — just in the `-m ui` tier, which the gated run deselects. So the gate cannot catch
-an untested page; only that second command can.
+**Nothing is tested outside the gated run any more.** The `ui` tier went with Streamlit,
+and `api/` and `identity/` are measured in the default run, so the gate sees everything
+except the evaluation CLI and two one-shot migration tools — each omitted for being
+real-infrastructure wiring with nothing in it a test could assert that would not be a mock
+asserting on itself.
 
 ### Opening the graphs in LangGraph Studio
 
@@ -355,10 +388,14 @@ measured between two `overwaterer` runs rather than against the `empty` baseline
 keeps the comparison clean but leaves the current neutral figure unmeasured; an `empty` run
 is the cheapest thing to do next.
 
-The **Evaluation** page in the app renders whatever the newest file in `eval/results/`
-contains; it only reads that file and never runs the harness itself. Before the first
-run, the page says so explicitly and names the command above, rather than showing a
-traceback or a blank page.
+Results are written to `eval/results/` as timestamped JSON and Markdown. The page that
+used to render them went with Streamlit; reading the newest file is the interface until
+the React frontend has somewhere to put it.
+
+The harness runs as its own account — created on demand, unverified, with an unusable
+password, so nothing can sign in as it. Its plants and diagnoses are real rows in the real
+database, which is what lets a surprising score be investigated afterwards rather than only
+re-run.
 
 `ragas` and `pyyaml`, used only by the harness, are `dev`-dependency-group packages —
 the shipped app never imports them.
@@ -368,15 +405,15 @@ the shipped app never imports them.
 | Directory | Responsibility |
 |---|---|
 | `api/` | FastAPI routers, dependencies and response schemas |
-| `ui/` | Streamlit pages and components — rendering only |
-| `services/` | The boundary the UI calls |
+| `identity/` | Passwords, tokens, sessions, accounts |
 | `agent/` | Both graphs, nodes, state, schemas, prompts |
 | `tools/` | The seven function tools |
 | `knowledge/` | Disorder corpus, ingestion, retrieval |
 | `data/` | Models, repositories, Alembic migrations |
 | `core/` | Config, model factory, guards, image handling, cost, tracing |
 | `eval/` | Golden set, harness, metrics, report renderer |
-| `tests/` | `unit/`, `graph/` and `ui/` tiers |
+| `services/` | The boundary the routers call |
+| `tests/` | `unit/`, `graph/` and `api/` tiers |
 | `docs/` | Graph diagrams, code tour, plans, limitations |
 
 ## Known limitations

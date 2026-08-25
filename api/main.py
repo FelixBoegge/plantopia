@@ -12,6 +12,8 @@ anything it was testing. Run it as a factory:
     uvicorn api.main:create_app --factory
 """
 
+import logging
+
 from fastapi import FastAPI
 
 from api import errors
@@ -25,6 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     can be served alongside this one instead of replacing it underneath a running client.
     """
     settings = settings or get_settings()
+    _configure_logging(settings)
     app = FastAPI(
         title="Plantopia",
         version="1",
@@ -50,6 +53,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(router, prefix=settings.api_prefix)
 
     return app
+
+
+def _configure_logging(settings: Settings) -> None:
+    """Make the application's own loggers audible.
+
+    Uvicorn installs handlers for its loggers and leaves the root at ``WARNING``, so
+    anything this project logs below that vanishes — including the console mailer, which is
+    where a developer reads the verification link out of. Configured here rather than in a
+    ``__main__`` because the application is started through a factory and there is no
+    ``__main__`` of ours to put it in.
+
+    Adds a handler only when nothing has configured one, so a deployment that installs its
+    own logging is not overruled by importing this.
+    """
+    root = logging.getLogger()
+    if not root.handlers:
+        logging.basicConfig(
+            level=settings.log_level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    else:
+        root.setLevel(settings.log_level)
 
 
 def _add_cors(app: FastAPI, settings: Settings) -> None:

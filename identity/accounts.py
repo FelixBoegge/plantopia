@@ -88,28 +88,36 @@ def register(
         return
 
     now = datetime.now(UTC)
-    user = User(
-        email=address,
-        password_hash=hash_password(password),
-        created_at=now,
-        verified_at=None,
-        consent_version=settings.consent_version,
-        consent_at=now,
-    )
-    session.add(user)
-    session.flush()
+    with transaction(session):
+        user = User(
+            email=address,
+            password_hash=hash_password(password),
+            created_at=now,
+            verified_at=None,
+            consent_version=settings.consent_version,
+            consent_at=now,
+        )
+        session.add(user)
+        session.flush()
 
     send_verification(session, user=user, settings=settings, mailer=mailer)
 
 
 def send_verification(session: Session, *, user: User, settings: Settings, mailer: Mailer) -> None:
-    """Issue a fresh verification link and mail it."""
-    token = email_tokens.issue(
-        session,
-        user_id=user.id,
-        purpose=email_tokens.VERIFY,
-        lifetime_hours=settings.verification_token_hours,
-    )
+    """Issue a fresh verification link and mail it.
+
+    Committed before it is sent. A link that arrives before the row it names exists is a
+    link that does not work, and the window is small enough to be missed in testing and
+    reliable enough to hit somebody in production.
+    """
+    with transaction(session):
+        token = email_tokens.issue(
+            session,
+            user_id=user.id,
+            purpose=email_tokens.VERIFY,
+            lifetime_hours=settings.verification_token_hours,
+        )
+
     delivered = mailer.send(
         messages.compose(
             user.email,
