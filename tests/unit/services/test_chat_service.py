@@ -4,7 +4,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent.schemas import Passage
-from core.ids import new_id
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.messages import MessageRepository
 from data.repositories.observations import ObservationRepository
@@ -12,6 +11,7 @@ from data.repositories.plants import PlantRepository
 from data.repositories.roadmap import RoadmapRepository
 from services.chat_service import ChatService
 from tests.fakes.chat_models import ScriptedToolCallingModel
+from tests.people import make_user
 
 
 def _plant_id(owner, db, now) -> int:
@@ -334,9 +334,7 @@ def test_send_commits_durably_not_just_visible_to_the_session_that_wrote_it(
     sessions = build_sessions(pg_engine)
     writer = sessions()
     with transaction(writer):
-        user = User(email=f"{new_id()}@example.test", created_at=now())
-        writer.add(user)
-        writer.flush()
+        user = make_user(writer)
         plant = Plant(user_id=user.id, name="Basil", location_kind="indoor", created_at=now())
         writer.add(plant)
         writer.flush()

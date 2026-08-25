@@ -31,6 +31,7 @@ from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.roadmap import RoadmapRepository
 from services.plant_service import PlantService
+from tests.secrets import TEST_JWT_SECRET
 
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
@@ -79,9 +80,27 @@ def _roadmap() -> Roadmap:
     )
 
 
+class _NotWired:
+    """Stands in for a dependency a test has not deliberately provided.
+
+    FastAPI resolves dependencies before it validates a body, so leaving the real chat
+    service wired means a request that could never run still builds a retriever and calls
+    the embeddings API — a network call in a suite that forbids them, and one that fails
+    for a reason having nothing to do with what the test asserts.
+
+    Accessing anything on this raises instead, naming the override the test needs.
+    """
+
+    def __getattr__(self, name: str):
+        raise AssertionError(
+            f"the chat service was used but never provided; a test reaching .{name}() "
+            "must override dependencies.chat_service with a scripted one"
+        )
+
+
 @pytest.fixture
 def api_settings():
-    return Settings(_env_file=None, openrouter_api_key="sk-test")
+    return Settings(_env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET)
 
 
 @pytest.fixture
@@ -112,6 +131,7 @@ def client(db, owner, api_settings, make_service):
     app.dependency_overrides[dependencies.settings_dep] = lambda: api_settings
     app.dependency_overrides[dependencies.plant_service] = lambda: make_service(owner)
     app.dependency_overrides[dependencies.blob_store] = lambda: PostgresBlobStore(db)
+    app.dependency_overrides[dependencies.chat_service] = _NotWired
 
     with TestClient(app) as test_client:
         yield test_client

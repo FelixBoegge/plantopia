@@ -1,16 +1,16 @@
 ## 1. Schema and settings
 
-- [ ] 1.1 Add `argon2-cffi` and `pyjwt`; verify `uv sync` and that both import.
-- [ ] 1.2 Add password, verification and consent columns to `users`, plus `refresh_tokens`, `email_tokens` and `usage_events` models; verify the schema test asserts the new table names and that every timestamp carries a timezone.
-- [ ] 1.3 Generate and apply the migration; verify `alembic upgrade head` on an empty database and `alembic check` reporting no drift.
-- [ ] 1.4 Add settings for the JWT secret, token lifetimes, the Resend key, quota allowance and the daily spend cap, with `.env.example` documentation; verify a test that the application refuses to start without a JWT secret — a generated default would log everybody out on every restart, and would work perfectly in development.
+- [x] 1.1 Add `argon2-cffi` and `pyjwt`; verify `uv sync` and that both import.
+- [x] 1.2 Add password, verification and consent columns to `users`, plus `refresh_tokens`, `email_tokens` and `usage_events` models; verify the schema test asserts the new table names and that every timestamp carries a timezone.
+- [x] 1.3 Generate and apply the migration; verify `alembic upgrade head` on an empty database and `alembic check` reporting no drift.
+- [x] 1.4 Add settings for the JWT secret, token lifetimes, the Resend key, quota allowance and the daily spend cap, with `.env.example` documentation; verify a test that the application refuses to start without a JWT secret — a generated default would log everybody out on every restart, and would work perfectly in development.
 
 ## 2. Hashing and tokens
 
-- [ ] 2.1 Add password hashing and verification with argon2id at library defaults; verify tests that a hash never equals its password, that two accounts with the same password store different values, and that verification accepts the right password and rejects a wrong one.
-- [ ] 2.2 Add access-token issue and verification; verify tests for a valid token resolving to its subject, an expired one being refused, a tampered one being refused, and one signed with a different secret being refused.
-- [ ] 2.3 Add refresh-token issue, hashing and rotation with family tracking; verify tests that a token is stored only as a hash, that rotation issues a new one and retires the old, and that the retired one no longer works.
-- [ ] 2.4 Add reuse detection; verify a test that presenting an already-rotated token invalidates the family — including the token issued by the legitimate refresh — and a test that a second device's family is untouched.
+- [x] 2.1 Add password hashing and verification with argon2id at library defaults; verify tests that a hash never equals its password, that two accounts with the same password store different values, and that verification accepts the right password and rejects a wrong one.
+- [x] 2.2 Add access-token issue and verification; verify tests for a valid token resolving to its subject, an expired one being refused, a tampered one being refused, and one signed with a different secret being refused.
+- [x] 2.3 Add refresh-token issue, hashing and rotation with family tracking; verify tests that a token is stored only as a hash, that rotation issues a new one and retires the old, and that the retired one no longer works.
+- [x] 2.4 Add reuse detection; verify a test that presenting an already-rotated token invalidates the family — including the token issued by the legitimate refresh — and a test that a second device's family is untouched.
 
 ## 3. Registration and verification
 

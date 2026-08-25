@@ -1,19 +1,14 @@
 """The blob store: opaque keys, owner-scoped reads, complete removal."""
 
-from datetime import UTC, datetime
-
 from core.blobs import PostgresBlobStore
 from core.ids import new_id
-from data.models import User
+from tests.people import make_user
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"pretend pixels" * 100
 
 
 def _owner(session):
-    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
-    session.add(user)
-    session.flush()
-    return user.id
+    return make_user(session).id
 
 
 def test_bytes_round_trip_under_the_key_they_were_stored_with(pg_session):

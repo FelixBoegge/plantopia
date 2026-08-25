@@ -17,6 +17,7 @@ from agent.schemas import (
 )
 from agent.state import DiagnosisState
 from core.config import Settings
+from tests.secrets import TEST_JWT_SECRET
 
 
 class _Spy:
@@ -279,6 +280,7 @@ class TestWebEscalation:
     def _settings(self) -> Settings:
         return Settings(
             openrouter_api_key="sk-test",
+            jwt_secret=TEST_JWT_SECRET,
             retrieval_score_threshold=0.35,
             species_confidence_threshold=0.5,
             _env_file=None,

@@ -1,10 +1,13 @@
 """The shape of the application itself: versioning, CORS, and request scope."""
 
 from core.config import Settings
+from tests.secrets import TEST_JWT_SECRET
 
 
 def _settings(**overrides) -> Settings:
-    return Settings(_env_file=None, openrouter_api_key="sk-test", **overrides)
+    return Settings(
+        _env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET, **overrides
+    )
 
 
 def test_every_route_is_served_beneath_the_version_prefix(client):

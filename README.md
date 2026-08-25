@@ -70,7 +70,7 @@ cp .env.example .env
 # add your PLANTOPIA_OPENROUTER_API_KEY
 
 uv run streamlit run app.py                       # the app
-uv run uvicorn api.main:app --reload --port 8000  # the API, in another terminal
+uv run uvicorn api.main:create_app --factory --reload --port 8000   # the API
 ```
 
 The two are independent clients of the same services. Streamlit works with the API

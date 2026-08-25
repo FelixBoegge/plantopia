@@ -14,6 +14,7 @@ from agent.schemas import (
 from agent.state import DiagnosisState
 from core.config import Settings
 from tests.fakes.chat_models import FailingChatModel, ScriptedStructuredModel
+from tests.secrets import TEST_JWT_SECRET
 
 
 def _candidate(disorder_id: str, probability: float) -> Candidate:
@@ -72,7 +73,10 @@ def test_high_confidence_is_not_flagged(make_deps, sample_images):
     deps = make_deps(
         chat_model=ScriptedStructuredModel([_differential(0.8)]),
         settings=Settings(
-            openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35, _env_file=None
+            openrouter_api_key="sk-test",
+            jwt_secret=TEST_JWT_SECRET,
+            diagnosis_confidence_threshold=0.35,
+            _env_file=None,
         ),
     )
     assert make_diagnose(deps)(_state(sample_images))["low_confidence"] is False
@@ -82,7 +86,10 @@ def test_low_confidence_is_flagged(make_deps, sample_images):
     deps = make_deps(
         chat_model=ScriptedStructuredModel([_differential(0.2)]),
         settings=Settings(
-            openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.35, _env_file=None
+            openrouter_api_key="sk-test",
+            jwt_secret=TEST_JWT_SECRET,
+            diagnosis_confidence_threshold=0.35,
+            _env_file=None,
         ),
     )
     assert make_diagnose(deps)(_state(sample_images))["low_confidence"] is True
@@ -93,7 +100,10 @@ def test_a_healthy_plant_is_never_flagged_low_confidence(make_deps, sample_image
     deps = make_deps(
         chat_model=ScriptedStructuredModel([healthy]),
         settings=Settings(
-            openrouter_api_key="sk-test", diagnosis_confidence_threshold=0.9, _env_file=None
+            openrouter_api_key="sk-test",
+            jwt_secret=TEST_JWT_SECRET,
+            diagnosis_confidence_threshold=0.9,
+            _env_file=None,
         ),
     )
     result = make_diagnose(deps)(_state(sample_images))

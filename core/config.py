@@ -89,6 +89,47 @@ class Settings(BaseSettings):
     # because nobody had a reason to tighten it yet.
     cors_origins: str = ""
 
+    # Signs access tokens. **No default, deliberately.** A generated one would work
+    # perfectly in development and log everybody out at random in production, because a
+    # process restart would invalidate every token issued before it — a failure that
+    # first appears as users complaining, long after the cause.
+    #
+    # At least 32 characters, which is RFC 7518's floor for HMAC-SHA256: a shorter key
+    # weakens the signature, and PyJWT warns about it rather than refusing, so a short
+    # one would otherwise ship behind a log line nobody reads.
+    jwt_secret: str = Field(min_length=32)
+
+    # Short, because an access token cannot be revoked: it is believed until it expires,
+    # so its lifetime is the window a stolen one is useful for.
+    access_token_minutes: int = Field(default=15, ge=1, le=60)
+
+    # Long, because this one *can* be revoked — it is stored, rotated and checked.
+    refresh_token_days: int = Field(default=30, ge=1, le=365)
+
+    verification_token_hours: int = Field(default=24, ge=1, le=168)
+    reset_token_hours: int = Field(default=1, ge=1, le=24)
+
+    minimum_password_length: int = Field(default=12, ge=8, le=128)
+
+    # The privacy notice version a registration agrees to. Stored per account, so
+    # changing this does not rewrite what anybody previously consented to.
+    consent_version: str = "2026-08-25"
+
+    # Transactional email. Absent a key, messages are written to the log instead of sent,
+    # which is what development and tests use.
+    resend_api_key: str | None = None
+    mail_from: str = "Plantopia <onboarding@resend.dev>"
+
+    # How many diagnoses one account may run per calendar month, and what everybody
+    # together may spend in a day. A diagnosis costs roughly five cents; open
+    # registration without either of these is an unmetered bill with a signup form.
+    monthly_run_allowance: int = Field(default=20, ge=1)
+    daily_spend_cap_usd: float = Field(default=5.0, gt=0)
+
+    # Per-source limits on the three unauthenticated endpoints that are cheap to hammer.
+    auth_rate_limit: int = Field(default=10, ge=1)
+    auth_rate_window_seconds: int = Field(default=300, ge=1)
+
     retrieval_score_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
     species_confidence_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     diagnosis_confidence_threshold: float = Field(default=0.35, ge=0.0, le=1.0)

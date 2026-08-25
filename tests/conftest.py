@@ -10,8 +10,6 @@ import pytest
 from agent.deps import Deps
 from core.blobs import PostgresBlobStore
 from core.config import Settings
-from core.ids import new_id
-from data.models import User
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
@@ -23,7 +21,9 @@ from tests.fakes.embeddings import HashingEmbeddings
 
 # Real-PostgreSQL fixtures, defined in tests/postgres.py so this file stays about
 # wiring rather than about database lifecycle. `docker compose up -d db` first.
+from tests.people import make_owner
 from tests.postgres import pg_engine, pg_session  # noqa: F401
+from tests.secrets import TEST_JWT_SECRET
 
 # The PNG signature, written as byte values rather than escapes. Enough to store and
 # read back; no test asserts on pixels.
@@ -32,8 +32,13 @@ PNG_BYTES = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + b"pixels"
 
 @pytest.fixture(autouse=True)
 def _test_env(monkeypatch):
-    """Every test runs with a dummy API key so Settings never fails to construct."""
+    """Every test runs with the two values Settings has no default for.
+
+    ``jwt_secret`` has no default deliberately — a generated one would log everybody out
+    on restart in production — so tests must supply it like any other deployment does.
+    """
     monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_JWT_SECRET", TEST_JWT_SECRET)
 
 
 @pytest.fixture
@@ -49,20 +54,14 @@ def db(pg_session):  # noqa: F811 — the fixture name is the parameter name
 
 @pytest.fixture
 def owner(db) -> UUID:
-    """A seeded owner. Every repository call needs one, so every test needs one."""
-    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
-    db.add(user)
-    db.flush()
-    return user.id
+    """A person. Every repository call needs one, so every test needs one."""
+    return make_owner(db)
 
 
 @pytest.fixture
 def other_owner(db) -> UUID:
-    """A second owner, for proving that the first one's records are unreachable."""
-    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
-    db.add(user)
-    db.flush()
-    return user.id
+    """A second person, for proving the first one's records are unreachable."""
+    return make_owner(db)
 
 
 @pytest.fixture
@@ -107,7 +106,9 @@ def make_deps(db, owner, now, chroma_retriever):
 
     def _make(**overrides) -> Deps:
         defaults = {
-            "settings": Settings(openrouter_api_key="sk-test", _env_file=None),
+            "settings": Settings(
+                openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET, _env_file=None
+            ),
             "user_id": owner,
             "gate_model": ScriptedStructuredModel([]),
             "vision_model": ScriptedStructuredModel([]),

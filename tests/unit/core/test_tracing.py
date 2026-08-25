@@ -6,10 +6,13 @@ import pytest
 
 from core.config import Settings
 from core.tracing import configure_tracing
+from tests.secrets import TEST_JWT_SECRET
 
 
 def _settings(**overrides) -> Settings:
-    return Settings(openrouter_api_key="sk-test", _env_file=None, **overrides)
+    return Settings(
+        openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET, _env_file=None, **overrides
+    )
 
 
 @pytest.fixture(autouse=True)

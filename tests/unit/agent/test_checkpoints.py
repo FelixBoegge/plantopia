@@ -16,6 +16,7 @@ from agent.checkpoints import build_checkpointer, checkpointer_url, delete_for_u
 from agent.threads import diagnosis_thread
 from core.config import Settings
 from core.ids import new_id
+from tests.secrets import TEST_JWT_SECRET
 
 
 class _State(TypedDict, total=False):
@@ -43,7 +44,9 @@ def _paused_graph(checkpointer):
 
 @pytest.fixture
 def url():
-    return checkpointer_url(Settings(_env_file=None, openrouter_api_key="sk-test"))
+    return checkpointer_url(
+        Settings(_env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET)
+    )
 
 
 @pytest.fixture
@@ -131,6 +134,7 @@ def test_the_checkpointer_url_drops_the_sqlalchemy_driver():
     settings = Settings(
         _env_file=None,
         openrouter_api_key="sk-test",
+        jwt_secret=TEST_JWT_SECRET,
         database_url="postgresql+psycopg://u:p@host:5433/db",
     )
 

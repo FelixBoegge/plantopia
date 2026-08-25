@@ -15,6 +15,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import lru_cache
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import Engine, select
@@ -37,6 +38,7 @@ from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.profile import ProfileRepository
 from data.repositories.roadmap import RoadmapRepository
+from identity.passwords import UNUSABLE
 from knowledge.ingest import load_corpus
 from knowledge.retriever import ChromaRetriever, build_vectorstore
 from services.profile_service import ProfileService
@@ -89,7 +91,20 @@ def default_owner_id(session: Session) -> UUID:
     owner = session.scalar(select(User).where(User.email == DEFAULT_OWNER_EMAIL))
     if owner is None:
         with transaction(session):
-            owner = User(email=DEFAULT_OWNER_EMAIL, created_at=now_utc())
+            # Unusable password, unverified: the seed is not a person and must never
+            # become one. It is removed once sessions exist; until then it needs to be a
+            # valid row, which is the same treatment the migration gave the one that
+            # already existed.
+            now = now_utc()
+            owner = User(
+                email=DEFAULT_OWNER_EMAIL,
+                password_hash=UNUSABLE,
+                created_at=now,
+                verified_at=None,
+                consent_version="seed",
+                consent_at=now,
+                tier="free",
+            )
             session.add(owner)
             session.flush()
     return owner.id
@@ -131,38 +146,7 @@ def build_deps(
     session = session or open_session(settings)
     user_id = default_owner_id(session)
 
-    # Embeddings go through OpenRouter's /embeddings endpoint, same key as the chat
-    # models. The corpus is small — roughly 300 chunks — so the whole collection
-    # embeds for a fraction of a cent. Every Document gets a deterministic id
-    # (doc_id::section), so re-running this on an existing persist_directory is a
-    # no-op upsert rather than a re-embed — the corpus does not grow with launches.
-    vectorstore = build_vectorstore(
-        chunks=load_corpus(settings.corpus_path),
-        embeddings=build_embeddings(),
-        persist_directory=settings.chroma_path,
-    )
-
-    # The image embedder shares the collection's vector space, which is what makes
-    # cross-modal retrieval work. If you change embedding_model, delete the Chroma
-    # directory and re-index — vectors from two different models are not comparable.
-    #
-    # Wired only when the configured embedding model actually accepts images. Passing
-    # it unconditionally would cost one doomed HTTP call per uploaded image on every
-    # diagnosis; passing None disables the path cleanly in ChromaRetriever.
-    image_embedder = (
-        ImageEmbedder(
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
-            model=settings.embedding_model,
-        )
-        if settings.multimodal_embeddings
-        else None
-    )
-    if image_embedder is None:
-        logger.info(
-            "cross-modal image retrieval disabled (multimodal_embeddings=False); "
-            "diagnosis will use the text retrieval path only"
-        )
+    retriever = _shared_retriever(settings)
 
     return Deps(
         settings=settings,
@@ -170,7 +154,7 @@ def build_deps(
         gate_model=build_gate_model(),
         vision_model=build_vision_model(),
         chat_model=build_reasoning_model(),
-        retriever=ChromaRetriever(vectorstore, image_embedder),
+        retriever=retriever,
         blobs=PostgresBlobStore(session),
         plants=PlantRepository(session),
         observations=ObservationRepository(session),
@@ -182,3 +166,57 @@ def build_deps(
         profile_facts=profile_facts,
         now=now_utc,
     )
+
+
+def _shared_retriever(settings: Settings) -> ChromaRetriever:
+    """The corpus retriever, built once for the process.
+
+    Embedding the corpus and opening the collection is the expensive part of wiring, and
+    none of it varies by request or by owner. Built per call it would re-embed on every
+    chat message — slow, billable, and in tests a network call the suite forbids.
+    """
+    return _retriever_for(
+        settings.corpus_path,
+        settings.chroma_path,
+        settings.embedding_model,
+        settings.multimodal_embeddings,
+        settings.openrouter_api_key,
+        settings.openrouter_base_url,
+    )
+
+
+@lru_cache(maxsize=2)
+def _retriever_for(
+    corpus_path: Path,
+    chroma_path: Path,
+    embedding_model: str,
+    multimodal: bool,
+    api_key: str,
+    base_url: str,
+) -> ChromaRetriever:
+    """Keyed on what actually determines a retriever.
+
+    Scalars rather than the ``Settings`` object, which is not hashable — and keying on
+    the specific fields is the more honest cache anyway: two settings differing only in,
+    say, a diagnosis threshold describe the same retriever.
+    """
+    vectorstore = build_vectorstore(
+        chunks=load_corpus(corpus_path),
+        embeddings=build_embeddings(),
+        persist_directory=chroma_path,
+    )
+
+    # Shares the collection's vector space, which is what makes cross-modal retrieval
+    # work. Wired only when the configured embedding model actually accepts images —
+    # passing it unconditionally would cost one doomed HTTP call per uploaded image.
+    image_embedder = (
+        ImageEmbedder(api_key=api_key, base_url=base_url, model=embedding_model)
+        if multimodal
+        else None
+    )
+    if image_embedder is None:
+        logger.info(
+            "cross-modal image retrieval disabled (multimodal_embeddings=False); "
+            "diagnosis will use the text retrieval path only"
+        )
+    return ChromaRetriever(vectorstore, image_embedder)

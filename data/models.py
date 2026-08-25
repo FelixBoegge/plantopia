@@ -66,19 +66,110 @@ def _when(**kw: object) -> Mapped[datetime]:
 
 
 class User(Base):
-    """An owner.
+    """A person with an account.
 
-    Deliberately minimal. Registration, password hashing, verification and sessions
-    belong to the change that introduces authentication; this table exists now because
-    the foreign keys below need something to point at, and because tenancy cannot be
-    tested without a second owner to be excluded.
+    ``email`` is stored lowercased and is the identity: addresses are compared
+    case-insensitively in practice, and storing what somebody typed would let the same
+    person register twice.
+
+    ``password_hash`` is argon2id and nothing else. There is no column, log or response
+    anywhere that carries a password in a recoverable form.
     """
 
     __tablename__ = "users"
 
     id: Mapped[UUID] = _pk()
     email: Mapped[str] = mapped_column(String(320), unique=True)
+    password_hash: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _when()
+
+    # Null until the address is proven. An unverified account cannot sign in, which is
+    # what stops somebody registering an address they do not control.
+    verified_at: Mapped[datetime | None] = _when(nullable=True)
+
+    # Which version of the privacy notice was agreed, and when. Consent that cannot be
+    # evidenced afterwards is not consent, and registration is the only moment to capture
+    # it.
+    consent_version: Mapped[str] = mapped_column(String(32))
+    consent_at: Mapped[datetime] = _when()
+
+    # One value today. Quotas read it, so a second tier is a row change rather than a
+    # code change.
+    tier: Mapped[str] = mapped_column(String(32), default="free")
+
+
+class RefreshToken(Base):
+    """One issued refresh token.
+
+    Stored as a hash: a database dump must not be a set of working sessions.
+
+    ``family_id`` is what makes reuse detection possible. Every token descended from one
+    sign-in shares it, so discovering a token used twice — which means two parties hold
+    it — can invalidate all of them rather than refusing one request while the thief's
+    newer token keeps working.
+    """
+
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (Index("idx_refresh_family", "family_id"),)
+
+    id: Mapped[UUID] = _pk()
+    user_id: Mapped[UUID] = _owner()
+    family_id: Mapped[UUID] = mapped_column()
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    issued_at: Mapped[datetime] = _when()
+    expires_at: Mapped[datetime] = _when()
+
+    # Set when the token is rotated. Presenting a token that carries this is the signal
+    # that something has gone wrong.
+    used_at: Mapped[datetime | None] = _when(nullable=True)
+
+    # Set when the family is invalidated, by sign-out, by a password reset, or by reuse.
+    revoked_at: Mapped[datetime | None] = _when(nullable=True)
+
+
+class EmailToken(Base):
+    """A single-use link sent to an address: verification, or password reset.
+
+    Hashed like a refresh token, and for the same reason. A stolen database should not
+    yield a working password-reset link for every account in it.
+    """
+
+    __tablename__ = "email_tokens"
+    __table_args__ = (
+        CheckConstraint("purpose IN ('verify', 'reset')", name="ck_email_tokens_purpose"),
+    )
+
+    id: Mapped[UUID] = _pk()
+    user_id: Mapped[UUID] = _owner()
+    purpose: Mapped[str] = mapped_column(String(16))
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    created_at: Mapped[datetime] = _when()
+    expires_at: Mapped[datetime] = _when()
+    used_at: Mapped[datetime | None] = _when(nullable=True)
+
+
+class UsageEvent(Base):
+    """What one run cost, attributed to whoever started it.
+
+    Per *run*, not per diagnosis. A run that spends on vision and reasoning and then
+    fails to produce a differential is recorded here all the same — a quota that cannot
+    see failed runs is one somebody can exhaust the budget through by failing.
+
+    ``cost_usd`` is null when the provider reported none, which is deliberately different
+    from zero: an unmeasured run must not be readable as a free one.
+    """
+
+    __tablename__ = "usage_events"
+    __table_args__ = (Index("idx_usage_user_time", "user_id", "occurred_at"),)
+
+    id: Mapped[UUID] = _pk()
+    user_id: Mapped[UUID] = _owner()
+    kind: Mapped[str] = mapped_column(String(32))
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float | None] = mapped_column(Float)
+    succeeded: Mapped[bool] = mapped_column(Boolean)
+    occurred_at: Mapped[datetime] = _when()
 
 
 class Plant(Base):

@@ -5,16 +5,13 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 
-from core.ids import new_id
 from data.engine import transaction
-from data.models import Plant, User
+from data.models import Plant
+from tests.people import make_user
 
 
 def _owner(session):
-    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
-    session.add(user)
-    session.flush()
-    return user
+    return make_user(session)
 
 
 def _plant(owner, name, *, location_kind="indoor"):

@@ -11,6 +11,7 @@ from core.guards import (
     validate_upload,
     wrap_untrusted,
 )
+from tests.secrets import TEST_JWT_SECRET
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
@@ -19,7 +20,9 @@ GIF = b"GIF89a" + b"\x00" * 64
 
 
 def _settings(**overrides) -> Settings:
-    return Settings(openrouter_api_key="sk-test", _env_file=None, **overrides)
+    return Settings(
+        openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET, _env_file=None, **overrides
+    )
 
 
 class TestValidateUpload:

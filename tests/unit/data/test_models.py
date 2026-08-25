@@ -25,9 +25,20 @@ EXPECTED_TABLES = {
     "profile_cursors",
     "blobs",
     "corpus_chunks",
+    "refresh_tokens",
+    "email_tokens",
+    "usage_events",
 }
 
-OWNED_DIRECTLY = {"plants", "user_profile", "messages", "blobs"}
+OWNED_DIRECTLY = {
+    "plants",
+    "user_profile",
+    "messages",
+    "blobs",
+    "refresh_tokens",
+    "email_tokens",
+    "usage_events",
+}
 
 # Reference data, not records. The corpus is the same for everyone, so it has no owner,
 # no cascade, and a natural key — (doc_id, section) *is* its identity, and it is what
@@ -138,3 +149,31 @@ def test_the_corpus_embedding_column_has_no_index():
     parity gate unable to attribute a difference to the new SQL. 301 rows scan in
     under a millisecond; revisit at an order of magnitude more."""
     assert Base.metadata.tables["corpus_chunks"].indexes == set()
+
+
+def test_a_password_is_never_stored_recoverably():
+    """There is exactly one password column and it holds a hash. Asserted structurally so
+    that a future "password_plain" or "password_hint" fails here rather than in a breach."""
+    columns = set(Base.metadata.tables["users"].columns.keys())
+    password_columns = {c for c in columns if "password" in c}
+
+    assert password_columns == {"password_hash"}
+
+
+def test_tokens_sent_by_email_are_stored_hashed():
+    """A stolen database must not yield a working reset link for every account in it."""
+    for table in ("refresh_tokens", "email_tokens"):
+        columns = set(Base.metadata.tables[table].columns.keys())
+        assert "token_hash" in columns, table
+        assert "token" not in columns, f"{table} stores a token in the clear"
+
+
+def test_a_refresh_token_belongs_to_a_family():
+    """Reuse detection invalidates everything descended from one sign-in, which is only
+    possible if the descent is recorded."""
+    assert "family_id" in Base.metadata.tables["refresh_tokens"].columns
+
+
+def test_usage_distinguishes_unknown_cost_from_zero():
+    """An unmeasured run must not be readable as a free one."""
+    assert Base.metadata.tables["usage_events"].c.cost_usd.nullable

@@ -14,6 +14,7 @@ from agent.checkpoints import build_checkpointer, checkpointer_url, delete_for_u
 from agent.threads import diagnosis_thread
 from core.config import Settings
 from core.ids import new_id
+from tests.secrets import TEST_JWT_SECRET
 
 
 class _State(BaseModel):
@@ -37,7 +38,9 @@ def test_configurable_carries_a_live_object_through_checkpointing():
     builder.add_edge(START, "node")
     builder.add_edge("node", END)
 
-    url = checkpointer_url(Settings(_env_file=None, openrouter_api_key="sk-test"))
+    url = checkpointer_url(
+        Settings(_env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET)
+    )
     graph = builder.compile(checkpointer=build_checkpointer(url))
     owner = new_id()
 

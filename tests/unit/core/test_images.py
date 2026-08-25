@@ -8,13 +8,17 @@ from PIL import Image
 from core.blobs import PostgresBlobStore
 from core.config import Settings
 from core.images import store_upload, upright_bytes
+from tests.people import make_user
+from tests.secrets import TEST_JWT_SECRET
 
 # A landscape frame, so a quarter turn is visible in the dimensions alone.
 _SIZE = (40, 20)
 
 
 def _settings(**overrides) -> Settings:
-    return Settings(openrouter_api_key="sk-test", _env_file=None, **overrides)
+    return Settings(
+        openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET, _env_file=None, **overrides
+    )
 
 
 def _jpeg(orientation: int | None = None) -> bytes:
@@ -125,12 +129,5 @@ class TestStoreUpload:
 
 @pytest.fixture
 def blob_owner(pg_session):
-    from datetime import UTC, datetime
 
-    from core.ids import new_id
-    from data.models import User
-
-    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
-    pg_session.add(user)
-    pg_session.flush()
-    return user.id
+    return make_user(pg_session).id

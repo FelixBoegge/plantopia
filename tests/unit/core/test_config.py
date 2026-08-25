@@ -78,3 +78,37 @@ def test_cross_modal_retrieval_can_be_enabled(monkeypatch):
     monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
     monkeypatch.setenv("PLANTOPIA_MULTIMODAL_EMBEDDINGS", "true")
     assert Settings(_env_file=None).multimodal_embeddings is True
+
+
+def test_the_jwt_secret_has_no_default(monkeypatch):
+    """A generated secret would work perfectly here and log everybody out at random in
+    production: every restart invalidates every token issued before it, and the cause
+    surfaces long after the change that caused it."""
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.delenv("PLANTOPIA_JWT_SECRET", raising=False)
+
+    with pytest.raises(ValidationError, match="jwt_secret"):
+        Settings(_env_file=None)
+
+
+def test_token_lifetimes_have_sane_bounds(monkeypatch):
+    """An access token cannot be revoked, so its lifetime is the window a stolen one is
+    useful for. A configuration typo should not turn fifteen minutes into a year."""
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_JWT_SECRET", "x" * 32)
+    monkeypatch.setenv("PLANTOPIA_ACCESS_TOKEN_MINUTES", "525600")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_spend_limits_are_configurable(monkeypatch):
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("PLANTOPIA_JWT_SECRET", "x" * 32)
+    monkeypatch.setenv("PLANTOPIA_MONTHLY_RUN_ALLOWANCE", "3")
+    monkeypatch.setenv("PLANTOPIA_DAILY_SPEND_CAP_USD", "0.5")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.monthly_run_allowance == 3
+    assert settings.daily_spend_cap_usd == 0.5

@@ -1,8 +1,15 @@
 """The application factory.
 
 Built by a function rather than at import time so tests can construct one with their own
-dependency overrides, and so nothing connects to a database merely because the module was
+dependency overrides, and so nothing reads configuration merely because the module was
 imported.
+
+**There is deliberately no module-level ``app``.** One existed briefly, and it undid the
+whole point: importing this module constructed ``Settings``, so the moment a required
+setting had no default, every test collection failed on configuration rather than on
+anything it was testing. Run it as a factory:
+
+    uvicorn api.main:create_app --factory
 """
 
 from fastapi import FastAPI
@@ -64,6 +71,3 @@ def _add_cors(app: FastAPI, settings: Settings) -> None:
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
-
-
-app = create_app()

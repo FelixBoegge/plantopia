@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from core.config import Settings
 from data.engine import build_engine, build_sessions
 from data.models import Base
+from tests.secrets import TEST_JWT_SECRET
 
 TEST_DATABASE = "plantopia_test"
 
@@ -36,7 +37,11 @@ def _urls() -> tuple[str, str]:
     M6 records a run where a second key landing in a developer's own .env failed the
     gated suite on their machine and nowhere else.
     """
-    configured = make_url(Settings(_env_file=None, openrouter_api_key="sk-test").database_url)
+    configured = make_url(
+        Settings(
+            _env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET
+        ).database_url
+    )
     maintenance = configured.set(database="postgres")
     testing = configured.set(database=TEST_DATABASE)
     return maintenance.render_as_string(hide_password=False), testing.render_as_string(
