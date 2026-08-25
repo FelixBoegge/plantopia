@@ -228,7 +228,7 @@ def test_the_case_carries_the_profile_block_when_facts_exist(make_deps, sample_i
     assert "tends to overwater" in case
 
 
-def test_the_case_omits_the_profile_section_entirely_when_empty(make_deps, sample_images):
+def test_the_case_omits_the_profile_section_entirely_when_empty(owner, make_deps, sample_images):
     """No header, no placeholder — an empty described section invites invention."""
     from agent.nodes.diagnose import _build_case
     from agent.state import DiagnosisState
@@ -249,7 +249,7 @@ def test_deps_defaults_profile_facts_to_empty(make_deps):
     assert make_deps().profile_facts() == ""
 
 
-def test_a_raising_profile_read_does_not_break_the_case(make_deps, sample_images):
+def test_a_raising_profile_read_does_not_break_the_case(owner, make_deps, sample_images):
     """`deps.profile_facts()` resolves to a separate sqlite connection; if that read
     raises, the diagnosis must proceed without the profile rather than fail."""
 

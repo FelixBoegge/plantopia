@@ -292,7 +292,7 @@ def _finish_diagnosis(app) -> None:
     next(b for b in app.button if b.label == "Get my diagnosis").click().run()
 
 
-def _plant_service(monkeypatch, db, now):
+def _plant_service(owner, monkeypatch, db, now):
     """A real PlantService on the test database, standing in for the cached one.
 
     Left unmocked, ``bootstrap.get_plant_service()`` returns an ``st.cache_resource``
@@ -307,6 +307,7 @@ def _plant_service(monkeypatch, db, now):
     from services.plant_service import PlantService
 
     service = PlantService(
+        user_id=owner,
         plants=PlantRepository(db),
         observations=ObservationRepository(db),
         diagnoses=DiagnosisRepository(db),
@@ -338,8 +339,8 @@ def test_the_name_field_is_prefilled_with_the_identification(app):
     assert next(t for t in app.text_input if t.label == _NAME_FIELD).value == "Basil"
 
 
-def test_accepting_the_suggestion_names_the_plant(app, monkeypatch, db, now):
-    service = _plant_service(monkeypatch, db, now)
+def test_accepting_the_suggestion_names_the_plant(owner, app, monkeypatch, db, now):
+    service = _plant_service(owner, monkeypatch, db, now)
     app.run()
     _finish_diagnosis(app)
 
@@ -347,8 +348,8 @@ def test_accepting_the_suggestion_names_the_plant(app, monkeypatch, db, now):
     assert [s.plant.name for s in service.list_plants()] == ["Basil"]
 
 
-def test_a_name_typed_over_the_suggestion_is_the_one_kept(app, monkeypatch, db, now):
-    service = _plant_service(monkeypatch, db, now)
+def test_a_name_typed_over_the_suggestion_is_the_one_kept(owner, app, monkeypatch, db, now):
+    service = _plant_service(owner, monkeypatch, db, now)
     app.run()
     _submit_intake(app)
 
@@ -360,10 +361,10 @@ def test_a_name_typed_over_the_suggestion_is_the_one_kept(app, monkeypatch, db, 
     assert [s.plant.name for s in service.list_plants()] == ["Kitchen basil"]
 
 
-def test_the_result_has_no_separate_naming_section(app, monkeypatch, db, now):
+def test_the_result_has_no_separate_naming_section(owner, app, monkeypatch, db, now):
     """Naming happens at the questions step now. A second prompt at the end would ask
     the owner to name a plant they have already named."""
-    _plant_service(monkeypatch, db, now)
+    _plant_service(owner, monkeypatch, db, now)
     app.run()
     _finish_diagnosis(app)
 
@@ -371,13 +372,13 @@ def test_the_result_has_no_separate_naming_section(app, monkeypatch, db, now):
     assert not any("Name this plant" in s.value for s in app.subheader)
 
 
-def test_an_untouched_field_is_not_sent_as_a_species_correction(app, monkeypatch, db, now):
+def test_an_untouched_field_is_not_sent_as_a_species_correction(owner, app, monkeypatch, db, now):
     """``DiagnosisService.answer`` treats an override as certain: it rewrites the
     species at confidence 1.0 and drops the scientific name. Prefilling the field
     must not turn a hedged guess into a certainty just because the owner left it
     alone, so only text that differs from the guess counts as a correction.
     """
-    _plant_service(monkeypatch, db, now)
+    _plant_service(owner, monkeypatch, db, now)
     app.run()
     _submit_intake(app)
 
@@ -399,10 +400,10 @@ def test_an_untouched_field_is_not_sent_as_a_species_correction(app, monkeypatch
     assert seen["species_override"] is None
 
 
-def test_a_changed_name_is_still_sent_as_a_species_correction(app, monkeypatch, db, now):
+def test_a_changed_name_is_still_sent_as_a_species_correction(owner, app, monkeypatch, db, now):
     """The other half of the rule above: the owner knows their plant better than a
     photograph does, so a name they typed themselves still reaches the diagnosis."""
-    _plant_service(monkeypatch, db, now)
+    _plant_service(owner, monkeypatch, db, now)
     app.run()
     _submit_intake(app)
 
@@ -425,7 +426,7 @@ def test_a_changed_name_is_still_sent_as_a_species_correction(app, monkeypatch, 
     assert seen["species_override"] == "Rosemary"
 
 
-def test_arriving_after_a_finished_diagnosis_starts_a_fresh_one(app, monkeypatch, db, now):
+def test_arriving_after_a_finished_diagnosis_starts_a_fresh_one(owner, app, monkeypatch, db, now):
     """Coming back to a completed diagnosis begins a new one.
 
     ``app.py`` sets ``arrived_on_page`` on the first rerun after a move, which is the
@@ -435,7 +436,7 @@ def test_arriving_after_a_finished_diagnosis_starts_a_fresh_one(app, monkeypatch
     My Plants, and the route to a clean start was a button at the foot of a diagnosis
     the owner had already read.
     """
-    _plant_service(monkeypatch, db, now)
+    _plant_service(owner, monkeypatch, db, now)
     app.run()
     _finish_diagnosis(app)
     assert app.session_state["stage"] == "result"
@@ -451,7 +452,7 @@ def test_arriving_after_a_finished_diagnosis_starts_a_fresh_one(app, monkeypatch
     )
 
 
-def test_returning_to_a_wizard_in_flight_resumes_it(app):
+def test_returning_to_a_wizard_in_flight_resumes_it(owner, app):
     """Only a finished diagnosis is cleared. A run paused at its questions has already
     had its photos analysed and paid for, and clicking the Diagnose tab is how the
     owner comes back to it — restarting there would throw away work they were told

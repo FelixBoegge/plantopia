@@ -35,11 +35,11 @@ def make_compare_progress(deps: Deps) -> NodeFn:
 
     def compare_progress(state: DiagnosisState) -> dict:
         assert state.plant_id is not None  # routed here only for a known plant
-        prior = deps.diagnoses.latest_for_plant(state.plant_id)
+        prior = deps.diagnoses.latest_for_plant(deps.user_id, state.plant_id)
         if prior is None:
             return {"verdict": _NO_PRIOR_DIAGNOSIS}
 
-        steps = deps.roadmap.list_for_plant(state.plant_id)
+        steps = deps.roadmap.list_for_plant(deps.user_id, state.plant_id)
         messages = [
             SystemMessage(COMPARE_PROGRESS),
             HumanMessage(_build_comparison(state, prior, steps)),
@@ -64,10 +64,10 @@ def make_revise_roadmap(deps: Deps) -> NodeFn:
 
     def revise_roadmap(state: DiagnosisState) -> dict:
         assert state.plant_id is not None and state.verdict is not None
-        prior = deps.diagnoses.latest_for_plant(state.plant_id)
+        prior = deps.diagnoses.latest_for_plant(deps.user_id, state.plant_id)
         assert prior is not None  # compare_progress already confirmed one exists
 
-        steps = deps.roadmap.list_for_plant(state.plant_id)
+        steps = deps.roadmap.list_for_plant(deps.user_id, state.plant_id)
         messages = [
             SystemMessage(REVISE_ROADMAP),
             HumanMessage(_build_revision_brief(state, steps)),

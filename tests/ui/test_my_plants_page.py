@@ -11,7 +11,7 @@ _MY_PLANTS_PAGE = Path(__file__).resolve().parent.parent.parent / "ui" / "pages"
 
 
 @pytest.fixture
-def app(monkeypatch, db, now):
+def app(owner, monkeypatch, db, now):
     """The My Plants page with every bootstrap accessor it touches swapped for a fake
     wired to the in-memory test database. Left unmocked, it would fall through to the
     real ``@st.cache_resource``-cached service and open a connection to the actual
@@ -27,6 +27,7 @@ def app(monkeypatch, db, now):
     from services.plant_service import PlantService
 
     service = PlantService(
+        user_id=owner,
         plants=PlantRepository(db),
         observations=ObservationRepository(db),
         diagnoses=DiagnosisRepository(db),
@@ -49,10 +50,11 @@ def test_empty_state_invites_a_first_diagnosis(app):
     assert any("Diagnose" in b.label for b in app.button)
 
 
-def test_a_plant_appears_as_a_card(app, db, now):
+def test_a_plant_appears_as_a_card(owner, app, db, now):
     from data.repositories.plants import PlantRepository
 
     PlantRepository(db).create(
+        owner,
         name="Kitchen basil",
         species="Basil",
         species_confidence=0.9,
@@ -82,7 +84,7 @@ def test_a_diagnosed_plant_shows_its_primary_candidate_and_pending_steps(app, sa
     assert any("step(s) due across your plants" in c.value for c in app.caption)
 
 
-def test_a_healthy_plant_shows_the_healthy_verdict(app, db, now):
+def test_a_healthy_plant_shows_the_healthy_verdict(owner, app, db, now):
     """A healthy plant is a distinct, first-class outcome (PLAN §14), not the absence
     of a diagnosis — this must render its own verdict rather than falling through to
     "No diagnosis yet"."""
@@ -92,6 +94,7 @@ def test_a_healthy_plant_shows_the_healthy_verdict(app, db, now):
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Healthy fern",
         species="Fern",
         species_confidence=0.8,
@@ -101,9 +104,10 @@ def test_a_healthy_plant_shows_the_healthy_verdict(app, db, now):
         now=now(),
     )
     observation_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
+        owner, plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
     )
     DiagnosisRepository(db).create(
+        owner,
         observation_id=observation_id,
         plant_id=plant_id,
         differential=Differential(
@@ -153,7 +157,7 @@ def test_the_grid_does_not_end_in_an_add_a_plant_button(app, sample_plant):
     assert not any(b.label == "Add a plant" for b in app.button)
 
 
-def test_the_card_that_overflows_a_row_starts_a_new_one(app, db, now):
+def test_the_card_that_overflows_a_row_starts_a_new_one(owner, app, db, now):
     """The grid builds one ``st.columns()`` call per row.
 
     The earlier shape called ``st.columns`` once and indexed it by ``index % 3``,
@@ -170,6 +174,7 @@ def test_the_card_that_overflows_a_row_starts_a_new_one(app, db, now):
 
     def add(name: str) -> None:
         repo.create(
+            owner,
             name=name,
             species="Basil",
             species_confidence=0.9,

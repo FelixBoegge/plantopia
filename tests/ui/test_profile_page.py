@@ -20,7 +20,7 @@ _WHEN = datetime(2026, 8, 17, tzinfo=UTC)
 
 
 @pytest.fixture
-def profile(monkeypatch, db):
+def profile(owner, monkeypatch, db):
     """A real ProfileService on the test database, standing in for the cached one.
 
     Left unmocked, ``bootstrap.get_profile_service()`` opens a connection to the
@@ -32,18 +32,21 @@ def profile(monkeypatch, db):
     from tests.fakes.chat_models import ScriptedStructuredModel
 
     service = ProfileService(
-        repo=ProfileRepository(db), gate_model=ScriptedStructuredModel([]), now=lambda: _WHEN
+        user_id=owner,
+        repo=ProfileRepository(db),
+        gate_model=ScriptedStructuredModel([]),
+        now=lambda: _WHEN,
     )
     monkeypatch.setattr("ui.bootstrap.get_profile_service", lambda: service)
     return service
 
 
-def _remember(db, fact: str) -> None:
-    from data.db import transaction
+def _remember(owner, db, fact: str) -> None:
+    from data.engine import transaction
     from data.repositories.profile import ProfileRepository
 
     with transaction(db):
-        ProfileRepository(db).upsert(fact=fact, source="stated", confidence=0.8, now=_WHEN)
+        ProfileRepository(db).upsert(owner, fact=fact, source="stated", confidence=0.8, now=_WHEN)
 
 
 def test_the_page_renders_with_nothing_learned(profile):
@@ -53,8 +56,8 @@ def test_the_page_renders_with_nothing_learned(profile):
     assert any("learned" in t.value.lower() for t in app.title)
 
 
-def test_a_stored_fact_is_shown(profile, db):
-    _remember(db, "waters weekly")
+def test_a_stored_fact_is_shown(owner, profile, db):
+    _remember(owner, db, "waters weekly")
 
     app = AppTest.from_file(str(_PROFILE_PAGE), default_timeout=30).run()
 
@@ -62,12 +65,12 @@ def test_a_stored_fact_is_shown(profile, db):
     assert any("waters weekly" in m.value for m in app.markdown)
 
 
-def test_forgetting_a_fact_removes_it(profile, db):
+def test_forgetting_a_fact_removes_it(owner, profile, db):
     """The delete control has to reach the real store, not just redraw the list —
     a page about what a system holds on someone is only worth having if its forget
     button forgets.
     """
-    _remember(db, "waters weekly")
+    _remember(owner, db, "waters weekly")
     app = AppTest.from_file(str(_PROFILE_PAGE), default_timeout=30).run()
 
     next(b for b in app.button if b.label == "Forget").click().run()

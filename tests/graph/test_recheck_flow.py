@@ -5,6 +5,7 @@ Companion to tests/graph/test_diagnosis_graph.py, which covers the first-time pa
 
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
+from sqlalchemy import select
 
 from agent.diagnosis_graph import build_diagnosis_graph
 from agent.schemas import (
@@ -24,6 +25,7 @@ from agent.schemas import (
     SymptomSet,
 )
 from agent.state import DiagnosisState
+from data.models import Observation
 from tests.fakes.chat_models import ScriptedStructuredModel
 
 _IDENTIFIED = SpeciesGuess(common_name="Basil", scientific_name=None, confidence=0.9)
@@ -195,10 +197,10 @@ class TestImprovingAndStatic:
         assert result["differential"].primary.disorder_id == "overwatering"  # carried forward
         assert result["roadmap"].steps[0].action == "Continue the current watering schedule."
         assert result["diagnosis_id"] is not None
-        kind = db.execute("SELECT kind FROM observations ORDER BY id DESC LIMIT 1").fetchone()[
-            "kind"
-        ]
-        assert kind == "recheck"
+        newest = db.scalars(
+            select(Observation).order_by(Observation.created_at.desc(), Observation.id.desc())
+        ).first()
+        assert newest.kind == "recheck"
 
 
 class TestWorseningAndNewProblem:

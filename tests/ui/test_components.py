@@ -258,7 +258,7 @@ def test_render_timeline_shows_every_diagnosis():
     assert any("Spider mites" in m for m in markdown)
 
 
-def test_render_timeline_marks_a_recheck_distinctly_from_a_fresh_diagnosis():
+def test_render_timeline_marks_a_recheck_distinctly_from_a_fresh_diagnosis(owner):
     """``persist`` records kind="recheck" vs "initial" on the observation, and the
     timeline iterated only over diagnoses — so a re-check's entry looked identical to a
     brand-new diagnosis and the recorded distinction never reached the owner, even

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from data.models import Message
@@ -93,17 +93,22 @@ class MessageRepository:
         return [_to_record(r) for r in rows]
 
     def list_for_plant_after(
-        self, user_id: UUID, plant_id: UUID, *, after: datetime | None
+        self, user_id: UUID, plant_id: UUID, *, after: tuple[datetime, UUID] | None
     ) -> list[MessageRecord]:
-        """Messages written after ``after``, oldest first; all of them when it is ``None``.
+        """Messages after a position, oldest first; all of them when it is ``None``.
+
+        The position is ``(created_at, id)``, compared as a row value so it agrees
+        exactly with the ordering below. Comparing timestamps alone would drop every
+        message that shares a ``created_at`` with the cursor — which is not a rare
+        edge: a batch written in one transaction shares a single clock reading.
 
         Profile extraction used to filter with ``m.id > cursor or 0`` — an integer
-        comparison with a sentinel that no UUID can have. Asking the database for the
+        comparison against a sentinel no UUID can have. Asking the database for the
         window keeps that logic in one place and removes the sentinel entirely.
         """
         statement = select(Message).where(Message.plant_id == plant_id, Message.user_id == user_id)
         if after is not None:
-            statement = statement.where(Message.created_at > after)
+            statement = statement.where(tuple_(Message.created_at, Message.id) > after)
         rows = self._session.scalars(
             statement.order_by(Message.created_at.asc(), Message.id.asc())
         ).all()

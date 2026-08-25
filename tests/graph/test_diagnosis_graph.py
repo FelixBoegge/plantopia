@@ -8,10 +8,13 @@ routes wrongly, and only these tests would catch that.
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
+from sqlalchemy import func, select
 
 from agent.diagnosis_graph import build_diagnosis_graph
 from agent.schemas import ImageQuality, PlantCheck
 from agent.state import DiagnosisState
+from data.models import Diagnosis, Plant
+from data.models import RoadmapStep as RoadmapStepRow
 from tests.fakes.chat_models import ScriptedStructuredModel
 
 
@@ -60,7 +63,7 @@ class TestInterrupt:
 
         state = graph.get_state(config)
         assert state.values.get("differential") is None
-        assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 0
+        assert db.scalar(select(func.count()).select_from(Diagnosis)) == 0
 
     def test_resuming_completes_the_run(self, make_deps, sample_images, pipeline_models, config):
         gate, vision, chat = pipeline_models
@@ -97,9 +100,9 @@ class TestInterrupt:
         graph.invoke(_initial(sample_images), config)
         graph.invoke(Command(resume={"watering": "every other day"}), config)
 
-        assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 1
-        assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 1
-        assert db.execute("SELECT COUNT(*) AS n FROM roadmap_steps").fetchone()["n"] == 1
+        assert db.scalar(select(func.count()).select_from(Plant)) == 1
+        assert db.scalar(select(func.count()).select_from(Diagnosis)) == 1
+        assert db.scalar(select(func.count()).select_from(RoadmapStepRow)) == 1
 
 
 class TestRejectionPaths:
@@ -118,7 +121,7 @@ class TestRejectionPaths:
         gate = ScriptedStructuredModel([PlantCheck(is_plant=False, what_it_is="a kitchen worktop")])
         graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
         graph.invoke(_initial(sample_images), config)
-        assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 0
+        assert db.scalar(select(func.count()).select_from(Plant)) == 0
 
     def test_an_unusable_photo_ends_the_run_with_guidance(self, make_deps, sample_images, config):
         gate = ScriptedStructuredModel(

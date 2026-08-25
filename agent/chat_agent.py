@@ -60,11 +60,11 @@ def build_chat_system_prompt(deps: Deps, plant_id: UUID) -> str:
     Extracted from ``make_chat_agent`` so the prompt can be tested directly rather
     than through ``create_agent``'s internals.
     """
-    plant = deps.plants.get(plant_id)
+    plant = deps.plants.get(deps.user_id, plant_id)
     if plant is None:
         raise ValueError(f"No plant with id {plant_id!r}.")
 
-    latest = deps.diagnoses.latest_for_plant(plant_id)
+    latest = deps.diagnoses.latest_for_plant(deps.user_id, plant_id)
     if latest is None:
         latest_summary = "None yet."
     elif latest.differential.is_healthy:
@@ -210,9 +210,9 @@ def _make_tools(deps: Deps, plant_id: UUID) -> tuple[list, dict]:
     @tool
     def get_plant_journal() -> str:
         """Read this plant's full observation, diagnosis, and roadmap history."""
-        observations = deps.observations.list_for_plant(plant_id)
-        diagnoses = deps.diagnoses.list_for_plant(plant_id)
-        roadmap_steps = deps.roadmap.list_for_plant(plant_id)
+        observations = deps.observations.list_for_plant(deps.user_id, plant_id)
+        diagnoses = deps.diagnoses.list_for_plant(deps.user_id, plant_id)
+        roadmap_steps = deps.roadmap.list_for_plant(deps.user_id, plant_id)
         if not observations and not diagnoses and not roadmap_steps:
             return "No history recorded for this plant."
 

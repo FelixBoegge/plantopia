@@ -5,12 +5,14 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from core.ids import new_id
+
 pytestmark = pytest.mark.ui
 
 _CHAT_PAGE = Path(__file__).resolve().parent.parent.parent / "ui" / "pages" / "chat.py"
 
 
-def _plant_service(db, now):
+def _plant_service(owner, db, now):
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.feedback import FeedbackRepository
     from data.repositories.observations import ObservationRepository
@@ -19,6 +21,7 @@ def _plant_service(db, now):
     from services.plant_service import PlantService
 
     return PlantService(
+        user_id=owner,
         plants=PlantRepository(db),
         observations=ObservationRepository(db),
         diagnoses=DiagnosisRepository(db),
@@ -28,10 +31,11 @@ def _plant_service(db, now):
     )
 
 
-def _create_plant(db, now, name: str) -> int:
+def _create_plant(owner, db, now, name: str) -> int:
     from data.repositories.plants import PlantRepository
 
     return PlantRepository(db).create(
+        owner,
         name=name,
         species="Basil",
         species_confidence=0.9,
@@ -43,7 +47,7 @@ def _create_plant(db, now, name: str) -> int:
 
 
 @pytest.fixture
-def app(monkeypatch, make_deps, db, now):
+def app(owner, monkeypatch, make_deps, db, now):
     from langchain_core.messages import AIMessage
     from langgraph.checkpoint.memory import MemorySaver
 
@@ -51,7 +55,7 @@ def app(monkeypatch, make_deps, db, now):
     from services.chat_service import ChatService
     from tests.fakes.chat_models import ScriptedToolCallingModel
 
-    plant_id = _create_plant(db, now, "Basil")
+    plant_id = _create_plant(owner, db, now, "Basil")
     model = ScriptedToolCallingModel(
         [AIMessage(content="Some yellowing on lower leaves is normal.")]
     )
@@ -60,7 +64,7 @@ def app(monkeypatch, make_deps, db, now):
         deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
     )
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
-    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(owner, db, now))
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
     at.session_state["selected_plant_id"] = plant_id
@@ -72,7 +76,7 @@ def test_page_renders_without_exception(app):
     assert not app.exception
 
 
-def test_shows_a_prompt_when_no_plant_is_selected(monkeypatch, make_deps, db, now):
+def test_shows_a_prompt_when_no_plant_is_selected(owner, monkeypatch, make_deps, db, now):
     from langgraph.checkpoint.memory import MemorySaver
 
     from data.repositories.messages import MessageRepository
@@ -83,7 +87,7 @@ def test_shows_a_prompt_when_no_plant_is_selected(monkeypatch, make_deps, db, no
         deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
     )
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
-    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(owner, db, now))
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
     at.run()
@@ -108,7 +112,7 @@ def test_the_title_names_the_plant_being_discussed(app):
     assert any("Basil" in t.value for t in app.title)
 
 
-def test_chat_history_does_not_leak_across_plants(monkeypatch, make_deps, db, now):
+def test_chat_history_does_not_leak_across_plants(owner, monkeypatch, make_deps, db, now):
     """The page used to read its own ``chat_plant_id``, set only by Plant detail's
     "Chat about this plant" button. Reaching Chat from the sidebar instead left that
     key pointing at whichever plant was opened first, so a second plant's page
@@ -117,25 +121,35 @@ def test_chat_history_does_not_leak_across_plants(monkeypatch, make_deps, db, no
     is what closes that."""
     from langgraph.checkpoint.memory import MemorySaver
 
-    from data.db import transaction
+    from data.engine import transaction
     from data.repositories.messages import MessageRepository
     from services.chat_service import ChatService
 
-    first = _create_plant(db, now, "Kitchen basil")
-    second = _create_plant(db, now, "Office pothos")
+    first = _create_plant(owner, db, now, "Kitchen basil")
+    second = _create_plant(owner, db, now, "Office pothos")
 
     messages = MessageRepository(db)
     with transaction(db):
         messages.create(
-            plant_id=first, role="user", content="A basil question.", tool_calls=None, now=now()
+            owner,
+            plant_id=first,
+            role="user",
+            content="A basil question.",
+            tool_calls=None,
+            now=now(),
         )
         messages.create(
-            plant_id=second, role="user", content="A pothos question.", tool_calls=None, now=now()
+            owner,
+            plant_id=second,
+            role="user",
+            content="A pothos question.",
+            tool_calls=None,
+            now=now(),
         )
 
     service = ChatService(deps=make_deps(), messages=messages, checkpointer=MemorySaver(), now=now)
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
-    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(owner, db, now))
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
     at.session_state["selected_plant_id"] = first
@@ -155,18 +169,19 @@ def test_chat_history_does_not_leak_across_plants(monkeypatch, make_deps, db, no
     assert any("Office pothos" in t.value for t in at.title)
 
 
-def test_persisted_tool_calls_render_collapsibly(monkeypatch, make_deps, db, now):
+def test_persisted_tool_calls_render_collapsibly(owner, monkeypatch, make_deps, db, now):
     """Design spec §5: "message history rendered with tool calls shown collapsibly"."""
     from langgraph.checkpoint.memory import MemorySaver
 
-    from data.db import transaction
+    from data.engine import transaction
     from data.repositories.messages import MessageRepository
     from services.chat_service import ChatService
 
-    plant_id = _create_plant(db, now, "Basil")
+    plant_id = _create_plant(owner, db, now, "Basil")
     messages = MessageRepository(db)
     with transaction(db):
         messages.create(
+            owner,
             plant_id=plant_id,
             role="assistant",
             content="Basil wants full sun.",
@@ -182,7 +197,7 @@ def test_persisted_tool_calls_render_collapsibly(monkeypatch, make_deps, db, now
 
     service = ChatService(deps=make_deps(), messages=messages, checkpointer=MemorySaver(), now=now)
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
-    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(owner, db, now))
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
     at.session_state["selected_plant_id"] = plant_id
@@ -230,13 +245,13 @@ def _escalating_chat_service(db, now, make_deps, plant_id):
     )
 
 
-def test_escalation_offers_a_handoff_button_not_directions(monkeypatch, make_deps, db, now):
+def test_escalation_offers_a_handoff_button_not_directions(owner, monkeypatch, make_deps, db, now):
     """A diagnosis cannot start without photographs, so escalation hands the owner into
     the re-check upload flow instead of telling them to go find the button."""
-    plant_id = _create_plant(db, now, "Basil")
+    plant_id = _create_plant(owner, db, now, "Basil")
     service = _escalating_chat_service(db, now, make_deps, plant_id)
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
-    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(owner, db, now))
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
     at.session_state["selected_plant_id"] = plant_id
@@ -249,7 +264,7 @@ def test_escalation_offers_a_handoff_button_not_directions(monkeypatch, make_dep
 
 
 def test_the_handoff_lands_on_plant_detail_with_the_upload_form_open(
-    monkeypatch, make_deps, db, now, sample_plant, tmp_path
+    owner, monkeypatch, make_deps, db, now, sample_plant, tmp_path
 ):
     """The whole point of the handoff: the owner must arrive at the upload form, not at
     plant_detail's default closed "Re-check this plant" state."""
@@ -258,7 +273,7 @@ def test_the_handoff_lands_on_plant_detail_with_the_upload_form_open(
     from agent.diagnosis_graph import build_diagnosis_graph
     from services.diagnosis_service import DiagnosisService
 
-    plant_service = _plant_service(db, now)
+    plant_service = _plant_service(owner, db, now)
     chat_service = _escalating_chat_service(db, now, make_deps, sample_plant)
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: chat_service)
     monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: plant_service)
@@ -304,7 +319,9 @@ def test_the_handoff_lands_on_plant_detail_with_the_upload_form_open(
     assert deps.chat_model.call_count == 0
 
 
-def test_a_non_escalating_reply_clears_a_previous_handoff_offer(monkeypatch, make_deps, db, now):
+def test_a_non_escalating_reply_clears_a_previous_handoff_offer(
+    owner, monkeypatch, make_deps, db, now
+):
     """The offer reflects the newest answer, not the high-water mark of the session."""
     from langchain_core.messages import AIMessage
     from langgraph.checkpoint.memory import MemorySaver
@@ -313,7 +330,7 @@ def test_a_non_escalating_reply_clears_a_previous_handoff_offer(monkeypatch, mak
     from services.chat_service import ChatService
     from tests.fakes.chat_models import ScriptedToolCallingModel
 
-    plant_id = _create_plant(db, now, "Basil")
+    plant_id = _create_plant(owner, db, now, "Basil")
     model = ScriptedToolCallingModel(
         [
             AIMessage(
@@ -333,7 +350,7 @@ def test_a_non_escalating_reply_clears_a_previous_handoff_offer(monkeypatch, mak
         now=now,
     )
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
-    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(owner, db, now))
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
     at.session_state["selected_plant_id"] = plant_id
@@ -347,7 +364,9 @@ def test_a_non_escalating_reply_clears_a_previous_handoff_offer(monkeypatch, mak
     assert not any(b.label == "Upload a new photo" for b in at.button)
 
 
-def test_a_plant_that_no_longer_exists_is_reported_not_crashed(monkeypatch, make_deps, db, now):
+def test_a_plant_that_no_longer_exists_is_reported_not_crashed(
+    owner, monkeypatch, make_deps, db, now
+):
     from langgraph.checkpoint.memory import MemorySaver
 
     from data.repositories.messages import MessageRepository
@@ -357,10 +376,10 @@ def test_a_plant_that_no_longer_exists_is_reported_not_crashed(monkeypatch, make
         deps=make_deps(), messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
     )
     monkeypatch.setattr("ui.bootstrap.get_chat_service", lambda: service)
-    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(db, now))
+    monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: _plant_service(owner, db, now))
 
     at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30)
-    at.session_state["selected_plant_id"] = 999_999
+    at.session_state["selected_plant_id"] = new_id()
     at.run()
 
     assert not at.exception

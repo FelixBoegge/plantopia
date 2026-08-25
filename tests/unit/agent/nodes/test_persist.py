@@ -1,6 +1,7 @@
 """Tests for atomic persistence of a completed diagnosis."""
 
 import pytest
+from sqlalchemy import func, select
 
 from agent.nodes.persist import make_persist
 from agent.schemas import (
@@ -14,6 +15,8 @@ from agent.schemas import (
     SpeciesGuess,
 )
 from agent.state import DiagnosisState
+from data.models import Diagnosis, Observation, Plant
+from data.models import RoadmapStep as RoadmapStepRow
 
 
 def _differential() -> Differential:
@@ -87,15 +90,16 @@ def test_creates_a_plant_when_none_exists(make_deps, sample_images, db):
     deps = make_deps()
     result = make_persist(deps)(_state(sample_images))
     assert result["plant_id"] is not None
-    row = db.execute("SELECT * FROM plants WHERE id = ?", (result["plant_id"],)).fetchone()
-    assert row["name"] == "Kitchen basil"
-    assert row["species"] == "Basil"
+    row = db.get(Plant, result["plant_id"])
+    assert row.name == "Kitchen basil"
+    assert row.species == "Basil"
 
 
-def test_reuses_an_existing_plant(make_deps, sample_images, db, now):
+def test_reuses_an_existing_plant(owner, make_deps, sample_images, db, now):
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Kitchen basil",
         species=None,
         species_confidence=None,
@@ -107,15 +111,16 @@ def test_reuses_an_existing_plant(make_deps, sample_images, db, now):
     deps = make_deps()
     result = make_persist(deps)(_state(sample_images, plant_id=plant_id))
     assert result["plant_id"] == plant_id
-    assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 1
+    assert db.scalar(select(func.count()).select_from(Plant)) == 1
 
 
 def test_recheck_of_a_never_identified_plant_saves_the_new_species(
-    make_deps, sample_images, db, now
+    owner, make_deps, sample_images, db, now
 ):
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Mystery plant",
         species=None,
         species_confidence=None,
@@ -127,17 +132,18 @@ def test_recheck_of_a_never_identified_plant_saves_the_new_species(
     deps = make_deps()
     make_persist(deps)(_state(sample_images, plant_id=plant_id))
 
-    row = db.execute("SELECT * FROM plants WHERE id = ?", (plant_id,)).fetchone()
-    assert row["species"] == "Basil"
-    assert row["species_confidence"] == 0.9
+    row = db.get(Plant, plant_id)
+    assert row.species == "Basil"
+    assert row.species_confidence == 0.9
 
 
 def test_recheck_of_an_already_identified_plant_keeps_its_species(
-    make_deps, sample_images, db, now
+    owner, make_deps, sample_images, db, now
 ):
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Kitchen basil",
         species="Basil",
         species_confidence=0.9,
@@ -149,32 +155,30 @@ def test_recheck_of_an_already_identified_plant_keeps_its_species(
     deps = make_deps()
     make_persist(deps)(_state(sample_images, plant_id=plant_id))
 
-    row = db.execute("SELECT * FROM plants WHERE id = ?", (plant_id,)).fetchone()
-    assert row["species"] == "Basil"
-    assert row["species_confidence"] == 0.9
+    row = db.get(Plant, plant_id)
+    assert row.species == "Basil"
+    assert row.species_confidence == 0.9
 
 
 def test_writes_an_observation_with_the_photo_refs(make_deps, sample_images, db):
     deps = make_deps()
     result = make_persist(deps)(_state(sample_images))
-    row = db.execute(
-        "SELECT * FROM observations WHERE id = ?", (result["observation_id"],)
-    ).fetchone()
-    assert row["kind"] == "initial"
-    assert "img-1" in row["photo_refs"]
+    row = db.get(Observation, result["observation_id"])
+    assert row.kind == "initial"
+    assert "img-1" in row.photo_refs
 
 
 def test_writes_the_diagnosis(make_deps, sample_images, db):
     deps = make_deps()
     result = make_persist(deps)(_state(sample_images))
-    row = db.execute("SELECT * FROM diagnoses WHERE id = ?", (result["diagnosis_id"],)).fetchone()
-    assert row["primary_candidate"] == "overwatering"
+    row = db.get(Diagnosis, result["diagnosis_id"])
+    assert row.primary_candidate == "overwatering"
 
 
 def test_writes_every_roadmap_step(make_deps, sample_images, db):
     deps = make_deps()
     make_persist(deps)(_state(sample_images))
-    assert db.execute("SELECT COUNT(*) AS n FROM roadmap_steps").fetchone()["n"] == 2
+    assert db.scalar(select(func.count()).select_from(RoadmapStepRow)) == 2
 
 
 def test_a_healthy_diagnosis_persists_without_roadmap_steps(make_deps, sample_images, db):
@@ -182,14 +186,14 @@ def test_a_healthy_diagnosis_persists_without_roadmap_steps(make_deps, sample_im
     deps = make_deps()
     result = make_persist(deps)(_state(sample_images, differential=healthy, roadmap=None))
     assert result["diagnosis_id"] is not None
-    assert db.execute("SELECT COUNT(*) AS n FROM roadmap_steps").fetchone()["n"] == 0
+    assert db.scalar(select(func.count()).select_from(RoadmapStepRow)) == 0
 
 
 def test_nothing_is_written_without_a_differential(make_deps, sample_images, db):
     deps = make_deps()
     result = make_persist(deps)(_state(sample_images, differential=None))
     assert result["diagnosis_id"] is None
-    assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 0
+    assert db.scalar(select(func.count()).select_from(Plant)) == 0
 
 
 def test_a_failure_mid_write_leaves_no_partial_rows(make_deps, sample_images, db, monkeypatch):
@@ -205,9 +209,9 @@ def test_a_failure_mid_write_leaves_no_partial_rows(make_deps, sample_images, db
     with pytest.raises(RuntimeError, match="disk full"):
         make_persist(deps)(_state(sample_images))
 
-    assert db.execute("SELECT COUNT(*) AS n FROM plants").fetchone()["n"] == 0
-    assert db.execute("SELECT COUNT(*) AS n FROM observations").fetchone()["n"] == 0
-    assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 0
+    assert db.scalar(select(func.count()).select_from(Plant)) == 0
+    assert db.scalar(select(func.count()).select_from(Observation)) == 0
+    assert db.scalar(select(func.count()).select_from(Diagnosis)) == 0
 
 
 def _state_ready_to_persist(sample_images):
@@ -249,7 +253,7 @@ def _state_ready_to_persist(sample_images):
     )
 
 
-def test_persist_writes_usage_from_the_collector(make_deps, sample_images, db, now):
+def test_persist_writes_usage_from_the_collector(owner, make_deps, sample_images, db, now):
     """The collector is read inside persist's transaction, not by a second write."""
     from langchain_core.messages import AIMessage
     from langchain_core.outputs import ChatGeneration, LLMResult
@@ -274,7 +278,7 @@ def test_persist_writes_usage_from_the_collector(make_deps, sample_images, db, n
 
     result = make_persist(deps)(state, config)
 
-    record = DiagnosisRepository(db).get(result["diagnosis_id"])
+    record = DiagnosisRepository(db).get(owner, result["diagnosis_id"])
     assert record.token_usage == {
         "prompt_tokens": 90,
         "completion_tokens": 10,
@@ -283,13 +287,13 @@ def test_persist_writes_usage_from_the_collector(make_deps, sample_images, db, n
     assert record.cost_usd == 0.002
 
 
-def test_persist_writes_null_usage_without_a_collector(make_deps, sample_images, db):
+def test_persist_writes_null_usage_without_a_collector(owner, make_deps, sample_images, db):
     """Every existing caller and every unit test passes no collector. Must not crash."""
     from agent.nodes.persist import make_persist
     from data.repositories.diagnoses import DiagnosisRepository
 
     result = make_persist(make_deps())(_state_ready_to_persist(sample_images), None)
 
-    record = DiagnosisRepository(db).get(result["diagnosis_id"])
+    record = DiagnosisRepository(db).get(owner, result["diagnosis_id"])
     assert record.token_usage is None
     assert record.cost_usd is None

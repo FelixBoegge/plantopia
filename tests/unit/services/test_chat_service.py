@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent.schemas import Passage
+from core.ids import new_id
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.messages import MessageRepository
 from data.repositories.observations import ObservationRepository
@@ -13,8 +14,9 @@ from services.chat_service import ChatService
 from tests.fakes.chat_models import ScriptedToolCallingModel
 
 
-def _plant_id(db, now) -> int:
+def _plant_id(owner, db, now) -> int:
     return PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -25,8 +27,8 @@ def _plant_id(db, now) -> int:
     )
 
 
-def test_send_persists_both_sides_of_the_exchange(make_deps, db, now):
-    plant_id = _plant_id(db, now)
+def test_send_persists_both_sides_of_the_exchange(owner, make_deps, db, now):
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel(
         [AIMessage(content="Some yellowing on lower leaves is normal for basil.")]
     )
@@ -44,7 +46,7 @@ def test_send_persists_both_sides_of_the_exchange(make_deps, db, now):
     assert history[0].content == "Is this normal?"
 
 
-def test_send_remembers_the_earlier_turns_of_the_same_conversation(make_deps, db, now):
+def test_send_remembers_the_earlier_turns_of_the_same_conversation(owner, make_deps, db, now):
     """Design spec §5 gives the ReAct loop its own checkpointer thread, keyed
     ``chat:{plant_id}``. Without a checkpointer wired into ``create_agent`` that
     thread id is inert: the graph ignores it and every ``send`` arrives as turn one,
@@ -54,7 +56,7 @@ def test_send_remembers_the_earlier_turns_of_the_same_conversation(make_deps, db
     received, which is the only place the difference is observable — the reply text
     is scripted either way.
     """
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel(
         [
             AIMessage(content="Lower-leaf yellowing on a basil is usually a watering issue."),
@@ -79,11 +81,12 @@ def test_send_remembers_the_earlier_turns_of_the_same_conversation(make_deps, db
     )
 
 
-def test_separate_plants_do_not_share_a_chat_thread(make_deps, db, now):
+def test_separate_plants_do_not_share_a_chat_thread(owner, make_deps, db, now):
     """The thread id is keyed by plant, so one plant's conversation must not appear
     in another's — the checkpointer is scoped, not global."""
-    first = _plant_id(db, now)
+    first = _plant_id(owner, db, now)
     second = PlantRepository(db).create(
+        owner,
         name="Office pothos",
         species="Pothos",
         species_confidence=0.8,
@@ -109,8 +112,8 @@ def test_separate_plants_do_not_share_a_chat_thread(make_deps, db, now):
     ]
 
 
-def test_send_reports_an_escalation(make_deps, db, now):
-    plant_id = _plant_id(db, now)
+def test_send_reports_an_escalation(owner, make_deps, db, now):
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel(
         [
             AIMessage(
@@ -137,12 +140,12 @@ def test_send_reports_an_escalation(make_deps, db, now):
     assert "flagged" in turn.reply.lower()
 
 
-def test_the_tool_calls_of_a_turn_are_persisted_with_the_reply(make_deps, db, now):
+def test_the_tool_calls_of_a_turn_are_persisted_with_the_reply(owner, make_deps, db, now):
     """``MessageRecord.tool_calls``, its JSON round-trip, and the ``"tool"`` role were
     all built in an earlier task and then never written to — ``send`` hardcoded
     ``tool_calls=None``. Design spec §5 wants the transcript rendered "with tool calls
     shown collapsibly", which needs them recorded in the first place."""
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel(
         [
             AIMessage(
@@ -174,10 +177,10 @@ def test_the_tool_calls_of_a_turn_are_persisted_with_the_reply(make_deps, db, no
     assert "flagged" in assistant.tool_calls[0]["result"].lower()
 
 
-def test_a_turn_with_no_tool_calls_persists_none(make_deps, db, now):
+def test_a_turn_with_no_tool_calls_persists_none(owner, make_deps, db, now):
     """``None``, not an empty list: ``MessageRepository`` round-trips a falsy value to
     ``None`` anyway, and the UI keys the collapsible section off "is there anything"."""
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel([AIMessage(content="Some yellowing is normal.")])
     deps = make_deps(chat_model=model)
     service = ChatService(
@@ -189,11 +192,11 @@ def test_a_turn_with_no_tool_calls_persists_none(make_deps, db, now):
     assert service.history(plant_id)[-1].tool_calls is None
 
 
-def test_only_this_turns_tool_calls_are_persisted(make_deps, db, now):
+def test_only_this_turns_tool_calls_are_persisted(owner, make_deps, db, now):
     """Now that the loop has memory, ``result["messages"]`` holds the whole
     conversation — so a naive sweep of it would re-record every earlier turn's tool
     calls onto every later reply."""
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel(
         [
             AIMessage(
@@ -223,13 +226,13 @@ def test_only_this_turns_tool_calls_are_persisted(make_deps, db, now):
     assert [call["name"] for call in replies[1].tool_calls] == ["lookup_plant_care_profile"]
 
 
-def test_a_long_tool_result_is_truncated(make_deps, db, now):
+def test_a_long_tool_result_is_truncated(owner, make_deps, db, now):
     """Four retrieved corpus passages or a whole journal can run to thousands of
     characters. The stored summary shows what the agent consulted; it is not meant to
     be a second copy of it."""
     from services.chat_service import _MAX_RESULT_CHARS
 
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     long_text = "x" * (_MAX_RESULT_CHARS * 3)
     model = ScriptedToolCallingModel(
         [
@@ -270,11 +273,11 @@ def test_extracting_from_a_message_list_with_no_user_turn_is_not_a_crash():
     assert [c["name"] for c in _extract_tool_calls(messages)] == ["get_plant_journal"]
 
 
-def test_a_block_list_reply_is_coerced_to_text(make_deps, db, now):
+def test_a_block_list_reply_is_coerced_to_text(owner, make_deps, db, now):
     """Some providers return content as a list of blocks rather than a string. sqlite3
     rejects a list outright (InterfaceError), so the reply is coerced before it reaches
     the insert."""
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel(
         [AIMessage(content=[{"type": "text", "text": "Yellowing is normal."}])]
     )
@@ -290,9 +293,9 @@ def test_a_block_list_reply_is_coerced_to_text(make_deps, db, now):
     assert service.history(plant_id)[-1].content == turn.reply
 
 
-def test_an_empty_reply_gets_stand_in_text_not_a_blank_row(make_deps, db, now):
+def test_an_empty_reply_gets_stand_in_text_not_a_blank_row(owner, make_deps, db, now):
     """``messages.content`` is NOT NULL, and a blank bubble tells the owner nothing."""
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel([AIMessage(content="")])
     deps = make_deps(chat_model=model)
     service = ChatService(
@@ -305,8 +308,8 @@ def test_an_empty_reply_gets_stand_in_text_not_a_blank_row(make_deps, db, now):
     assert service.history(plant_id)[-1].content == turn.reply
 
 
-def test_history_is_empty_before_any_messages(make_deps, db, now):
-    plant_id = _plant_id(db, now)
+def test_history_is_empty_before_any_messages(owner, make_deps, db, now):
+    plant_id = _plant_id(owner, db, now)
     deps = make_deps()
     service = ChatService(
         deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
@@ -314,43 +317,65 @@ def test_history_is_empty_before_any_messages(make_deps, db, now):
     assert service.history(plant_id) == []
 
 
-def test_send_commits_durably_not_just_visible_on_the_same_connection(make_deps, now, tmp_path):
-    """``send()`` must actually commit: sqlite3 defaults to non-autocommit, and
-    without wrapping each write in ``data.db.transaction``, both inserts would sit
-    in an open transaction on the connection — invisible to any other connection,
-    and lost on process restart. A second, independent connection to the same
-    on-disk file is the only way to tell "committed" apart from "merely visible
-    to the connection that wrote it"."""
-    db_path = tmp_path / "chat.db"
-    file_conn = connect(db_path)
-    apply_schema(file_conn)
-    plant_id = _plant_id(file_conn, now)
+def test_send_commits_durably_not_just_visible_to_the_session_that_wrote_it(
+    pg_engine, make_deps, now
+):
+    """``send()`` must actually commit, not leave both inserts sitting in an open
+    transaction — visible to the session that wrote them and to nothing else.
+
+    A second, independent session on the same database is the only way to tell those
+    apart, which means this test cannot use the rolled-back ``db`` fixture: work that
+    is never committed is invisible to a second session by definition. It opens its
+    own sessions and cleans up after itself instead.
+    """
+    from data.engine import build_sessions, transaction
+    from data.models import Plant, User
+
+    sessions = build_sessions(pg_engine)
+    writer = sessions()
+    with transaction(writer):
+        user = User(email=f"{new_id()}@example.test", created_at=now())
+        writer.add(user)
+        writer.flush()
+        plant = Plant(user_id=user.id, name="Basil", location_kind="indoor", created_at=now())
+        writer.add(plant)
+        writer.flush()
+        user_id, plant_id = user.id, plant.id
 
     model = ScriptedToolCallingModel([AIMessage(content="Some yellowing is normal for basil.")])
     deps = make_deps(
         chat_model=model,
-        plants=PlantRepository(file_conn),
-        observations=ObservationRepository(file_conn),
-        diagnoses=DiagnosisRepository(file_conn),
-        roadmap=RoadmapRepository(file_conn),
+        user_id=user_id,
+        plants=PlantRepository(writer),
+        observations=ObservationRepository(writer),
+        diagnoses=DiagnosisRepository(writer),
+        roadmap=RoadmapRepository(writer),
     )
     service = ChatService(
-        deps=deps, messages=MessageRepository(file_conn), checkpointer=MemorySaver(), now=now
+        deps=deps, messages=MessageRepository(writer), checkpointer=MemorySaver(), now=now
     )
 
-    service.send(plant_id, "Is this normal?")
-    assert file_conn.in_transaction is False
-    file_conn.close()
+    try:
+        service.send(plant_id, "Is this normal?")
+        assert not writer.in_transaction(), "send() left work in an open transaction"
 
-    second_conn = connect(db_path)
-    history = MessageRepository(second_conn).list_for_plant(plant_id)
-    second_conn.close()
+        reader = sessions()
+        try:
+            history = MessageRepository(reader).list_for_plant(user_id, plant_id)
+        finally:
+            reader.close()
 
-    assert [m.role for m in history] == ["user", "assistant"]
-    assert history[0].content == "Is this normal?"
+        assert [m.role for m in history] == ["user", "assistant"]
+        assert history[0].content == "Is this normal?"
+    finally:
+        cleanup = sessions()
+        with transaction(cleanup):
+            cleanup.delete(cleanup.get(User, user_id))
+        cleanup.close()
+        writer.close()
 
 
-def test_a_completed_chat_turn_triggers_profile_learning(make_deps, db, now):
+def test_a_completed_chat_turn_triggers_profile_learning(owner, make_deps, db, now):
     """Called after the assistant's reply is committed, so its failure cannot cost one."""
     calls = []
 
@@ -358,7 +383,7 @@ def test_a_completed_chat_turn_triggers_profile_learning(make_deps, db, now):
         def learn_from_chat(self, plant_id, messages):
             calls.append(plant_id)
 
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel([AIMessage(content="Some yellowing is normal for basil.")])
     deps = make_deps(chat_model=model)
     service = ChatService(
@@ -374,12 +399,12 @@ def test_a_completed_chat_turn_triggers_profile_learning(make_deps, db, now):
     assert calls == [plant_id]
 
 
-def test_a_failing_profile_service_does_not_break_the_chat_reply(make_deps, db, now):
+def test_a_failing_profile_service_does_not_break_the_chat_reply(owner, make_deps, db, now):
     class _Boom:
         def learn_from_chat(self, plant_id, messages):
             raise RuntimeError("boom")
 
-    plant_id = _plant_id(db, now)
+    plant_id = _plant_id(owner, db, now)
     model = ScriptedToolCallingModel([AIMessage(content="Some yellowing is normal for basil.")])
     deps = make_deps(chat_model=model)
     service = ChatService(

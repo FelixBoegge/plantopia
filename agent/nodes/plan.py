@@ -33,7 +33,7 @@ def make_check_contagion(deps: Deps) -> NodeFn:
         if primary is None or not primary.transmissible:
             return {"contagion": NO_RISK}
 
-        others = [p for p in deps.plants.list_all() if p.id != state.plant_id]
+        others = [p for p in deps.plants.list_all(deps.user_id) if p.id != state.plant_id]
         if not others:
             return {
                 "contagion": ContagionAssessment(

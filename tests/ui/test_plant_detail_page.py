@@ -14,7 +14,7 @@ _PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
 
 @pytest.fixture
-def app(monkeypatch, db, now, sample_plant, make_deps, tmp_path):
+def app(owner, monkeypatch, db, now, sample_plant, make_deps, tmp_path):
     """``sample_plant`` already has a prior diagnosis in ``db``, and ``deps`` shares
     that same ``db`` — so a re-check triggered through this page's ``diagnosis_service``
     genuinely reaches ``compare_progress`` with a real prior diagnosis to compare
@@ -48,6 +48,7 @@ def app(monkeypatch, db, now, sample_plant, make_deps, tmp_path):
     from tests.fakes.chat_models import ScriptedStructuredModel
 
     plant_service = PlantService(
+        user_id=owner,
         plants=PlantRepository(db),
         observations=ObservationRepository(db),
         diagnoses=DiagnosisRepository(db),
@@ -112,7 +113,7 @@ def test_page_renders_without_exception(app):
     assert not app.exception
 
 
-def test_shows_a_prompt_when_no_plant_is_selected(monkeypatch, db, now):
+def test_shows_a_prompt_when_no_plant_is_selected(owner, monkeypatch, db, now):
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.feedback import FeedbackRepository
     from data.repositories.observations import ObservationRepository
@@ -121,6 +122,7 @@ def test_shows_a_prompt_when_no_plant_is_selected(monkeypatch, db, now):
     from services.plant_service import PlantService
 
     service = PlantService(
+        user_id=owner,
         plants=PlantRepository(db),
         observations=ObservationRepository(db),
         diagnoses=DiagnosisRepository(db),
@@ -147,7 +149,7 @@ def test_the_feedback_prompt_shows_because_a_step_is_done(app):
     assert any("Did this treatment help" in s.value for s in app.subheader)
 
 
-def test_ticking_a_step_persists(app, db, sample_plant):
+def test_ticking_a_step_persists(owner, app, db, sample_plant):
     app.run()
     pending_checkbox = next(c for c in app.checkbox if c.value is False)
     pending_checkbox.check().run()
@@ -155,7 +157,7 @@ def test_ticking_a_step_persists(app, db, sample_plant):
 
     from data.repositories.roadmap import RoadmapRepository
 
-    steps = RoadmapRepository(db).list_for_plant(sample_plant)
+    steps = RoadmapRepository(db).list_for_plant(owner, sample_plant)
     assert all(s.status == "done" for s in steps)
 
 
@@ -236,7 +238,7 @@ def _scripted_gate(outcome: str):
 
 @pytest.mark.parametrize("outcome", ["rejected", "retake"])
 def test_the_recheck_thread_id_rotates_after_a_rejection_or_retake(
-    monkeypatch, make_deps, sample_plant, db, now, tmp_path, outcome
+    owner, monkeypatch, make_deps, sample_plant, db, now, tmp_path, outcome
 ):
     """The re-check twin of ``test_thread_id_rotates_after_a_rejection`` in
     tests/ui/test_diagnose_page.py (U7).
@@ -261,6 +263,7 @@ def test_the_recheck_thread_id_rotates_after_a_rejection_or_retake(
     from tests.fakes.chat_models import ScriptedStructuredModel
 
     plant_service = PlantService(
+        user_id=owner,
         plants=PlantRepository(db),
         observations=ObservationRepository(db),
         diagnoses=DiagnosisRepository(db),
@@ -308,7 +311,7 @@ def test_the_recheck_thread_id_rotates_after_a_rejection_or_retake(
     )
 
 
-def test_recheck_result_does_not_leak_to_a_different_plant(app, db, now):
+def test_recheck_result_does_not_leak_to_a_different_plant(owner, app, db, now):
     """``recheck_stage``/``recheck_result`` are bare session-state keys, not scoped
     by plant. Completing a re-check on one plant and then navigating to another
     (still within the same Streamlit session) must not carry the first plant's
@@ -322,6 +325,7 @@ def test_recheck_result_does_not_leak_to_a_different_plant(app, db, now):
     from data.repositories.plants import PlantRepository
 
     other_plant_id = PlantRepository(db).create(
+        owner,
         name="Office pothos",
         species=None,
         species_confidence=None,

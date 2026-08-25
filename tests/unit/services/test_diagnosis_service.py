@@ -8,13 +8,16 @@ from langgraph.checkpoint.memory import MemorySaver
 from agent.diagnosis_graph import build_diagnosis_graph
 from agent.schemas import PlantCheck
 from core.guards import UploadRejected
+from core.ids import new_id
 from services.diagnosis_service import DiagnosisService, FinalResult, StartResult
 from tests.fakes.chat_models import ScriptedStructuredModel
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 
 
-def _service(make_deps, pipeline_models, upload_dir: Path, *, profile=None) -> DiagnosisService:
+def _service(
+    owner, make_deps, pipeline_models, upload_dir: Path, *, profile=None
+) -> DiagnosisService:
     """Build a service wired with the happy-path scripted models.
 
     Mirrors the ``service`` fixture's construction, but as a plain callable so a
@@ -335,7 +338,9 @@ def test_start_recheck_reports_a_rejection_like_start_does(recheck_service, samp
     assert result.status == "rejected"
 
 
-def test_start_recheck_of_a_never_identified_plant_acquires_a_species(recheck_service, db, now):
+def test_start_recheck_of_a_never_identified_plant_acquires_a_species(
+    owner, recheck_service, db, now
+):
     """``start_recheck`` used to fill ``species`` with an "Unknown" placeholder, which
     satisfied both ``identify_plant``'s idempotency guard and the router's skip — so a
     plant whose first diagnosis never identified it could never acquire a species."""
@@ -355,6 +360,7 @@ def test_start_recheck_of_a_never_identified_plant_acquires_a_species(recheck_se
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Mystery plant",
         species=None,
         species_confidence=None,
@@ -460,13 +466,15 @@ def test_start_recheck_raises_for_an_unknown_plant(recheck_service):
         chat=ScriptedStructuredModel([]),
     )
     with pytest.raises(ValueError, match="No plant"):
-        service.start_recheck(plant_id=999_999, uploads=[PNG], user_notes=None, thread_id="rc3")
+        service.start_recheck(plant_id=new_id(), uploads=[PNG], user_notes=None, thread_id="rc3")
 
 
-def test_one_collector_spans_start_and_answer(make_deps, pipeline_models, sample_images, tmp_path):
+def test_one_collector_spans_start_and_answer(
+    owner, make_deps, pipeline_models, sample_images, tmp_path
+):
     """The vision calls happen in start(); the persist happens in answer(). One
     collector must see both, or cost undercounts by roughly half."""
-    service = _service(make_deps, pipeline_models, tmp_path)
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
 
     first = service._run_config("thread-a")
     second = service._run_config("thread-a")
@@ -474,8 +482,8 @@ def test_one_collector_spans_start_and_answer(make_deps, pipeline_models, sample
     assert first["configurable"]["usage_collector"] is second["configurable"]["usage_collector"]
 
 
-def test_different_threads_get_different_collectors(make_deps, pipeline_models, tmp_path):
-    service = _service(make_deps, pipeline_models, tmp_path)
+def test_different_threads_get_different_collectors(owner, make_deps, pipeline_models, tmp_path):
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
 
     a = service._run_config("thread-a")["configurable"]["usage_collector"]
     b = service._run_config("thread-b")["configurable"]["usage_collector"]
@@ -483,19 +491,19 @@ def test_different_threads_get_different_collectors(make_deps, pipeline_models, 
     assert a is not b
 
 
-def test_the_collector_is_also_a_callback(make_deps, pipeline_models, tmp_path):
+def test_the_collector_is_also_a_callback(owner, make_deps, pipeline_models, tmp_path):
     """Passed twice on purpose: as a callback to observe calls, and through
     configurable so persist can read it (spec §2.1)."""
-    service = _service(make_deps, pipeline_models, tmp_path)
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
 
     config = service._run_config("thread-a")
 
     assert config["callbacks"] == [config["configurable"]["usage_collector"]]
 
 
-def test_collectors_are_evicted_at_a_terminal_outcome(make_deps, pipeline_models, tmp_path):
+def test_collectors_are_evicted_at_a_terminal_outcome(owner, make_deps, pipeline_models, tmp_path):
     """Otherwise the dict grows for the life of the process."""
-    service = _service(make_deps, pipeline_models, tmp_path)
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
     service._run_config("thread-a")
 
     service._release("thread-a")
@@ -503,19 +511,19 @@ def test_collectors_are_evicted_at_a_terminal_outcome(make_deps, pipeline_models
     assert "thread-a" not in service._collectors
 
 
-def test_releasing_an_unknown_thread_is_harmless(make_deps, pipeline_models, tmp_path):
-    service = _service(make_deps, pipeline_models, tmp_path)
+def test_releasing_an_unknown_thread_is_harmless(owner, make_deps, pipeline_models, tmp_path):
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
 
     service._release("never-seen")  # must not raise
 
 
 def test_an_exception_out_of_invoke_releases_the_collector_in_start(
-    make_deps, pipeline_models, tmp_path
+    owner, make_deps, pipeline_models, tmp_path
 ):
     """A model call raising mid-graph must not leave that thread's collector behind
     forever — the same leak the ``RuntimeError`` "finished without interrupting"
     branch already guarded against, but for any exception, not just that one."""
-    service = _service(make_deps, pipeline_models, tmp_path)
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
     service._graph.invoke = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
 
     with pytest.raises(RuntimeError, match="boom"):
@@ -532,9 +540,9 @@ def test_an_exception_out_of_invoke_releases_the_collector_in_start(
 
 
 def test_an_exception_out_of_invoke_releases_the_collector_in_answer(
-    make_deps, pipeline_models, tmp_path
+    owner, make_deps, pipeline_models, tmp_path
 ):
-    service = _service(make_deps, pipeline_models, tmp_path)
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
     service.start(
         uploads=[PNG],
         plant_name="Basil",
@@ -572,12 +580,12 @@ def test_an_exception_out_of_invoke_releases_the_collector_in_start_recheck(
 
 
 def test_a_pending_clarifying_question_session_still_keeps_its_collector(
-    make_deps, pipeline_models, tmp_path
+    owner, make_deps, pipeline_models, tmp_path
 ):
     """The one thread that legitimately survives ``start()`` without exception: it
     paused at the clarifying-question interrupt, and ``answer()`` needs the same
     collector to keep counting the gate/vision calls already made."""
-    service = _service(make_deps, pipeline_models, tmp_path)
+    service = _service(owner, make_deps, pipeline_models, tmp_path)
 
     result = service.start(
         uploads=[PNG],
@@ -592,7 +600,9 @@ def test_a_pending_clarifying_question_session_still_keeps_its_collector(
     assert "t-pending" in service._collectors
 
 
-def test_a_completed_diagnosis_triggers_profile_learning(make_deps, pipeline_models, tmp_path):
+def test_a_completed_diagnosis_triggers_profile_learning(
+    owner, make_deps, pipeline_models, tmp_path
+):
     """Called after the diagnosis is committed, so its failure cannot cost one."""
     calls = []
 
@@ -600,7 +610,7 @@ def test_a_completed_diagnosis_triggers_profile_learning(make_deps, pipeline_mod
         def learn_from_diagnosis(self, *, answers, location_text):
             calls.append(answers)
 
-    service = _service(make_deps, pipeline_models, tmp_path, profile=_Spy())
+    service = _service(owner, make_deps, pipeline_models, tmp_path, profile=_Spy())
     service.start(
         uploads=[PNG],
         plant_name="Basil",
@@ -615,13 +625,13 @@ def test_a_completed_diagnosis_triggers_profile_learning(make_deps, pipeline_mod
 
 
 def test_a_failing_profile_service_does_not_break_the_diagnosis(
-    make_deps, pipeline_models, tmp_path
+    owner, make_deps, pipeline_models, tmp_path
 ):
     class _Boom:
         def learn_from_diagnosis(self, *, answers, location_text):
             raise RuntimeError("boom")
 
-    service = _service(make_deps, pipeline_models, tmp_path, profile=_Boom())
+    service = _service(owner, make_deps, pipeline_models, tmp_path, profile=_Boom())
     service.start(
         uploads=[PNG],
         plant_name="Basil",

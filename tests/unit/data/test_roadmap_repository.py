@@ -1,10 +1,12 @@
 """Tests for roadmap step persistence and status transitions."""
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 
 from agent.schemas import IPMTier, Roadmap, RoadmapStep
+from core.ids import new_id
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
@@ -13,8 +15,9 @@ from tests.unit.data.test_diagnoses_repository import _differential
 
 
 @pytest.fixture
-def ids(db, now) -> tuple[int, int]:
+def ids(db, owner, now) -> tuple[UUID, UUID]:
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species=None,
         species_confidence=None,
@@ -24,11 +27,12 @@ def ids(db, now) -> tuple[int, int]:
         now=now(),
     )
     obs_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
+        owner, plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
     )
     from agent.schemas import ContagionAssessment
 
     diagnosis_id = DiagnosisRepository(db).create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=_differential(),
@@ -63,106 +67,108 @@ def _roadmap() -> Roadmap:
     )
 
 
-def test_create_from_roadmap_computes_absolute_due_dates(db, now, ids):
+def test_create_from_roadmap_computes_absolute_due_dates(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
-    steps = repo.list_for_plant(plant_id)
+    steps = repo.list_for_plant(owner, plant_id)
     assert steps[0].due_date == now()
     assert steps[1].due_date == now() + timedelta(days=7)
 
 
-def test_create_from_roadmap_returns_one_id_per_step(db, now, ids):
+def test_create_from_roadmap_returns_one_id_per_step(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     ids_created = RoadmapRepository(db).create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
     assert len(ids_created) == 2
 
 
-def test_steps_start_pending(db, now, ids):
+def test_steps_start_pending(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
-    assert all(s.status == "pending" for s in repo.list_for_plant(plant_id))
-    assert all(s.completed_at is None for s in repo.list_for_plant(plant_id))
+    assert all(s.status == "pending" for s in repo.list_for_plant(owner, plant_id))
+    assert all(s.completed_at is None for s in repo.list_for_plant(owner, plant_id))
 
 
-def test_mark_done_records_completion_time(db, now, ids):
+def test_mark_done_records_completion_time(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     step_ids = repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
     completion = now() + timedelta(days=1)
-    repo.mark(step_ids[0], status="done", now=completion)
+    repo.mark(owner, step_ids[0], status="done", now=completion)
 
-    step = next(s for s in repo.list_for_plant(plant_id) if s.id == step_ids[0])
+    step = next(s for s in repo.list_for_plant(owner, plant_id) if s.id == step_ids[0])
     assert step.status == "done"
     assert step.completed_at == completion
 
 
-def test_mark_skipped_records_completion_time(db, now, ids):
+def test_mark_skipped_records_completion_time(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     step_ids = repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
-    repo.mark(step_ids[1], status="skipped", now=now())
-    step = next(s for s in repo.list_for_plant(plant_id) if s.id == step_ids[1])
+    repo.mark(owner, step_ids[1], status="skipped", now=now())
+    step = next(s for s in repo.list_for_plant(owner, plant_id) if s.id == step_ids[1])
     assert step.status == "skipped"
 
 
-def test_mark_rejects_an_unknown_status(db, now, ids):
+def test_mark_rejects_an_unknown_status(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     step_ids = repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
     with pytest.raises(ValueError, match="status"):
-        repo.mark(step_ids[0], status="finished", now=now())  # type: ignore[arg-type]
+        repo.mark(owner, step_ids[0], status="finished", now=now())  # type: ignore[arg-type]
 
 
-def test_due_before_returns_only_pending_overdue_steps(db, now, ids):
+def test_due_before_returns_only_pending_overdue_steps(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     step_ids = repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
     cutoff = now() + timedelta(days=1)
 
-    assert [s.id for s in repo.due_before(cutoff)] == [step_ids[0]]
+    assert [s.id for s in repo.due_before(owner, cutoff)] == [step_ids[0]]
 
-    repo.mark(step_ids[0], status="done", now=now())
-    assert repo.due_before(cutoff) == []
+    repo.mark(owner, step_ids[0], status="done", now=now())
+    assert repo.due_before(owner, cutoff) == []
 
 
-def test_due_dates_survive_a_month_boundary(db, ids):
+def test_due_dates_survive_a_month_boundary(db, owner, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     late_january = datetime(2026, 1, 28, 9, 0, tzinfo=UTC)
     repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=late_january
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=late_january
     )
-    steps = repo.list_for_plant(plant_id)
+    steps = repo.list_for_plant(owner, plant_id)
     assert steps[1].due_date == datetime(2026, 2, 4, 9, 0, tzinfo=UTC)
 
 
-def test_mark_raises_on_an_unknown_step_id(db, now, ids):
+def test_mark_raises_on_an_unknown_step_id(db, owner, now, ids):
     plant_id, diagnosis_id = ids
     repo = RoadmapRepository(db)
     repo.create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=_roadmap(), now=now()
     )
 
     with pytest.raises(ValueError, match="no roadmap step"):
-        repo.mark(999_999, status="done", now=now())
+        repo.mark(owner, new_id(), status="done", now=now())
 
 
-def test_connection_property_exposes_the_underlying_connection(db):
+def test_session_property_exposes_the_underlying_session(db, owner):
+    """The caller groups writes with data.engine.transaction, which needs the session
+    the repository is working through."""
     repo = RoadmapRepository(db)
-    assert repo.connection is db
+    assert repo.session is db

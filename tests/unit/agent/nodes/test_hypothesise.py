@@ -58,7 +58,7 @@ def test_the_prompt_offers_the_corpus_ids(make_deps, sample_images, chroma_retri
         assert doc_id in prompt
 
 
-def test_the_care_answers_are_offered_too(make_deps, sample_images):
+def test_the_care_answers_are_offered_too(owner, make_deps, sample_images):
     """How often a plant is fed is often what separates two disorders that look
     identical in a photograph, and it is the owner's answers that carry it."""
     chat = ScriptedStructuredModel([Hypotheses(doc_ids=["root-rot"], reasoning="x")])

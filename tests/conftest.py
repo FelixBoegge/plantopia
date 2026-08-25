@@ -32,7 +32,7 @@ def _test_env(monkeypatch):
 
 
 @pytest.fixture
-def db(pg_session):
+def db(pg_session):  # noqa: F811 — the fixture name is the parameter name
     """A session on the test database, rolled back when the test ends.
 
     Named ``db`` because it is what several hundred tests already ask for. What it
@@ -132,7 +132,7 @@ def sample_images():
 
 
 @pytest.fixture
-def sample_plant(db, now) -> int:
+def sample_plant(db, owner, now) -> UUID:
     """A plant with one prior diagnosis and a partially completed roadmap — the
     standard re-check starting point."""
     from agent.schemas import (
@@ -150,6 +150,7 @@ def sample_plant(db, now) -> int:
     from data.repositories.roadmap import RoadmapRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Kitchen basil",
         species="Basil",
         species_confidence=0.9,
@@ -159,7 +160,7 @@ def sample_plant(db, now) -> int:
         now=now(),
     )
     observation_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
+        owner, plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
     )
     differential = Differential(
         is_healthy=False,
@@ -188,6 +189,7 @@ def sample_plant(db, now) -> int:
         ],
     )
     diagnosis_id = DiagnosisRepository(db).create(
+        owner,
         observation_id=observation_id,
         plant_id=plant_id,
         differential=differential,
@@ -217,9 +219,9 @@ def sample_plant(db, now) -> int:
         ]
     )
     step_ids = RoadmapRepository(db).create_from_roadmap(
-        diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=roadmap, now=now()
+        owner, diagnosis_id=diagnosis_id, plant_id=plant_id, roadmap=roadmap, now=now()
     )
-    RoadmapRepository(db).mark(step_ids[0], status="done", now=now())
+    RoadmapRepository(db).mark(owner, step_ids[0], status="done", now=now())
     return plant_id
 
 

@@ -50,8 +50,9 @@ def _differential() -> Differential:
     )
 
 
-def _prior_plant(db, now) -> tuple[int, int]:
+def _prior_plant(owner, db, now) -> tuple[int, int]:
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -61,9 +62,10 @@ def _prior_plant(db, now) -> tuple[int, int]:
         now=now(),
     )
     obs_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
+        owner, plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
     )
     diagnosis_id = DiagnosisRepository(db).create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=_differential(),
@@ -73,6 +75,7 @@ def _prior_plant(db, now) -> tuple[int, int]:
         now=now(),
     )
     RoadmapRepository(db).create_from_roadmap(
+        owner,
         diagnosis_id=diagnosis_id,
         plant_id=plant_id,
         roadmap=Roadmap(
@@ -114,31 +117,36 @@ def _state(images, plant_id, **overrides) -> DiagnosisState:
 
 
 class TestCompareProgress:
-    def test_records_the_models_verdict(self, make_deps, sample_images, db, now):
-        plant_id, _ = _prior_plant(db, now)
+    def test_records_the_models_verdict(self, owner, make_deps, sample_images, db, now):
+        plant_id, _ = _prior_plant(owner, db, now)
         verdict = ProgressVerdict(verdict="improving", reasoning="Fewer symptoms than before.")
         deps = make_deps(chat_model=ScriptedStructuredModel([verdict]))
         result = make_compare_progress(deps)(_state(sample_images, plant_id))
         assert result["verdict"] == verdict
 
-    def test_the_prior_differential_reaches_the_prompt(self, make_deps, sample_images, db, now):
-        plant_id, _ = _prior_plant(db, now)
+    def test_the_prior_differential_reaches_the_prompt(
+        self, owner, make_deps, sample_images, db, now
+    ):
+        plant_id, _ = _prior_plant(owner, db, now)
         model = ScriptedStructuredModel([ProgressVerdict(verdict="static", reasoning="Unchanged.")])
         deps = make_deps(chat_model=model)
         make_compare_progress(deps)(_state(sample_images, plant_id))
         assert "Overwatering" in str(model.prompts[0])
 
-    def test_roadmap_completion_status_reaches_the_prompt(self, make_deps, sample_images, db, now):
-        plant_id, _ = _prior_plant(db, now)
+    def test_roadmap_completion_status_reaches_the_prompt(
+        self, owner, make_deps, sample_images, db, now
+    ):
+        plant_id, _ = _prior_plant(owner, db, now)
         model = ScriptedStructuredModel([ProgressVerdict(verdict="static", reasoning="Unchanged.")])
         deps = make_deps(chat_model=model)
         make_compare_progress(deps)(_state(sample_images, plant_id))
         assert "pending" in str(model.prompts[0])
 
     def test_no_prior_diagnosis_is_treated_as_a_new_problem(
-        self, make_deps, sample_images, db, now
+        self, owner, make_deps, sample_images, db, now
     ):
         plant_id = PlantRepository(db).create(
+            owner,
             name="Basil",
             species="Basil",
             species_confidence=0.9,
@@ -152,9 +160,9 @@ class TestCompareProgress:
         assert result["verdict"].verdict == "new_problem"
 
     def test_model_failure_is_treated_as_a_new_problem_not_a_crash(
-        self, make_deps, sample_images, db, now
+        self, owner, make_deps, sample_images, db, now
     ):
-        plant_id, _ = _prior_plant(db, now)
+        plant_id, _ = _prior_plant(owner, db, now)
         deps = make_deps(chat_model=FailingChatModel(RuntimeError("api down")))
         result = make_compare_progress(deps)(_state(sample_images, plant_id))
         assert result["verdict"].verdict == "new_problem"
@@ -162,8 +170,8 @@ class TestCompareProgress:
 
 
 class TestReviseRoadmap:
-    def test_records_the_revised_roadmap(self, make_deps, sample_images, db, now):
-        plant_id, _ = _prior_plant(db, now)
+    def test_records_the_revised_roadmap(self, owner, make_deps, sample_images, db, now):
+        plant_id, _ = _prior_plant(owner, db, now)
         revised = Roadmap(
             steps=[
                 RoadmapStep(
@@ -186,9 +194,9 @@ class TestReviseRoadmap:
         assert result["roadmap"] == revised
 
     def test_carries_the_prior_differential_forward_unchanged(
-        self, make_deps, sample_images, db, now
+        self, owner, make_deps, sample_images, db, now
     ):
-        plant_id, _ = _prior_plant(db, now)
+        plant_id, _ = _prior_plant(owner, db, now)
         deps = make_deps(
             chat_model=ScriptedStructuredModel(
                 [
@@ -216,11 +224,11 @@ class TestReviseRoadmap:
         assert result["differential"].primary.disorder_id == "overwatering"
 
     def test_model_failure_still_carries_the_differential_forward(
-        self, make_deps, sample_images, db, now
+        self, owner, make_deps, sample_images, db, now
     ):
         """Better to keep the prior diagnosis visible than to lose it alongside a
         failed revision (same principle as build_roadmap's failure path)."""
-        plant_id, _ = _prior_plant(db, now)
+        plant_id, _ = _prior_plant(owner, db, now)
         deps = make_deps(chat_model=FailingChatModel(RuntimeError("api down")))
         state = _state(
             sample_images,

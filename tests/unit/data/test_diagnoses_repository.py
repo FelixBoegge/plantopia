@@ -1,20 +1,25 @@
 """Tests for the diagnosis repository, including JSON column round-tripping."""
 
+from uuid import UUID
+
 import pytest
+from sqlalchemy import func, select
 
 from agent.schemas import Candidate, ContagionAssessment, Differential, Passage, Severity
+from data.models import Diagnosis
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 
 
-def _create_minimal_diagnosis(repo, db, now, **usage) -> int:
+def _create_minimal_diagnosis(repo, db, owner, now, **usage) -> UUID:
     """A plant, an observation, and one diagnosis. Returns the diagnosis id."""
     from agent.schemas import Candidate, Differential, Severity
     from data.repositories.observations import ObservationRepository
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Test plant",
         species=None,
         species_confidence=None,
@@ -24,7 +29,7 @@ def _create_minimal_diagnosis(repo, db, now, **usage) -> int:
         now=now(),
     )
     observation_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
+        owner, plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now()
     )
     differential = Differential(
         is_healthy=False,
@@ -53,6 +58,7 @@ def _create_minimal_diagnosis(repo, db, now, **usage) -> int:
         ],
     )
     return repo.create(
+        owner,
         observation_id=observation_id,
         plant_id=plant_id,
         differential=differential,
@@ -65,8 +71,9 @@ def _create_minimal_diagnosis(repo, db, now, **usage) -> int:
 
 
 @pytest.fixture
-def ids(db, now) -> tuple[int, int]:
+def ids(db, owner, now) -> tuple[UUID, UUID]:
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species=None,
         species_confidence=None,
@@ -76,7 +83,7 @@ def ids(db, now) -> tuple[int, int]:
         now=now(),
     )
     obs_id = ObservationRepository(db).create(
-        plant_id=plant_id, kind="initial", photo_refs=["a"], user_notes=None, now=now()
+        owner, plant_id=plant_id, kind="initial", photo_refs=["a"], user_notes=None, now=now()
     )
     return plant_id, obs_id
 
@@ -114,10 +121,11 @@ def _differential() -> Differential:
     )
 
 
-def test_differential_round_trips_as_a_model(db, now, ids):
+def test_differential_round_trips_as_a_model(db, owner, now, ids):
     plant_id, obs_id = ids
     repo = DiagnosisRepository(db)
     diagnosis_id = repo.create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=_differential(),
@@ -126,16 +134,17 @@ def test_differential_round_trips_as_a_model(db, now, ids):
         model="test-model",
         now=now(),
     )
-    record = repo.get(diagnosis_id)
+    record = repo.get(owner, diagnosis_id)
     assert record is not None
     assert record.differential == _differential()
     assert record.differential.primary.disorder_id == "overwatering"
 
 
-def test_denormalised_columns_are_populated(db, now, ids):
+def test_denormalised_columns_are_populated(db, owner, now, ids):
     plant_id, obs_id = ids
     repo = DiagnosisRepository(db)
     diagnosis_id = repo.create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=_differential(),
@@ -144,16 +153,17 @@ def test_denormalised_columns_are_populated(db, now, ids):
         model="test-model",
         now=now(),
     )
-    row = db.execute("SELECT * FROM diagnoses WHERE id = ?", (diagnosis_id,)).fetchone()
-    assert row["primary_candidate"] == "overwatering"
-    assert row["primary_confidence"] == 0.65
-    assert row["severity"] == "act_this_week"
+    row = db.get(Diagnosis, diagnosis_id)
+    assert row.primary_candidate == "overwatering"
+    assert row.primary_confidence == 0.65
+    assert row.severity == "act_this_week"
 
 
-def test_healthy_diagnosis_has_null_primary(db, now, ids):
+def test_healthy_diagnosis_has_null_primary(db, owner, now, ids):
     plant_id, obs_id = ids
     repo = DiagnosisRepository(db)
     diagnosis_id = repo.create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=Differential(is_healthy=True, candidates=[], reasoning="Looks healthy."),
@@ -162,12 +172,11 @@ def test_healthy_diagnosis_has_null_primary(db, now, ids):
         model="test-model",
         now=now(),
     )
-    row = db.execute("SELECT * FROM diagnoses WHERE id = ?", (diagnosis_id,)).fetchone()
-    assert row["primary_candidate"] is None
-    assert repo.get(diagnosis_id).differential.is_healthy is True
+    assert db.get(Diagnosis, diagnosis_id).primary_candidate is None
+    assert repo.get(owner, diagnosis_id).differential.is_healthy is True
 
 
-def test_retrieved_passages_round_trip(db, now, ids):
+def test_retrieved_passages_round_trip(db, owner, now, ids):
     plant_id, obs_id = ids
     passages = [
         Passage(doc_id="root-rot", section="Symptoms", text="brown mushy roots", score=0.9),
@@ -175,6 +184,7 @@ def test_retrieved_passages_round_trip(db, now, ids):
     ]
     repo = DiagnosisRepository(db)
     diagnosis_id = repo.create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=_differential(),
@@ -183,13 +193,14 @@ def test_retrieved_passages_round_trip(db, now, ids):
         model="test-model",
         now=now(),
     )
-    assert repo.get(diagnosis_id).retrieved == passages
+    assert repo.get(owner, diagnosis_id).retrieved == passages
 
 
-def test_latest_for_plant_returns_the_newest(db, now, ids):
+def test_latest_for_plant_returns_the_newest(db, owner, now, ids):
     plant_id, obs_id = ids
     repo = DiagnosisRepository(db)
     repo.create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=_differential(),
@@ -199,6 +210,7 @@ def test_latest_for_plant_returns_the_newest(db, now, ids):
         now=now(),
     )
     newest = repo.create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=Differential(is_healthy=True, candidates=[], reasoning="Recovered."),
@@ -207,17 +219,18 @@ def test_latest_for_plant_returns_the_newest(db, now, ids):
         model="test-model",
         now=now(),
     )
-    assert repo.latest_for_plant(plant_id).id == newest
+    assert repo.latest_for_plant(owner, plant_id).id == newest
 
 
-def test_latest_for_plant_returns_none_when_no_diagnoses(db, now, ids):
+def test_latest_for_plant_returns_none_when_no_diagnoses(db, owner, now, ids):
     plant_id, _ = ids
-    assert DiagnosisRepository(db).latest_for_plant(plant_id) is None
+    assert DiagnosisRepository(db).latest_for_plant(owner, plant_id) is None
 
 
-def test_deleting_a_plant_cascades_to_diagnoses(db, now, ids):
+def test_deleting_a_plant_cascades_to_diagnoses(db, owner, now, ids):
     plant_id, obs_id = ids
     DiagnosisRepository(db).create(
+        owner,
         observation_id=obs_id,
         plant_id=plant_id,
         differential=_differential(),
@@ -226,17 +239,20 @@ def test_deleting_a_plant_cascades_to_diagnoses(db, now, ids):
         model="test-model",
         now=now(),
     )
-    PlantRepository(db).delete(plant_id)
-    assert db.execute("SELECT COUNT(*) AS n FROM diagnoses").fetchone()["n"] == 0
+    PlantRepository(db).delete(owner, plant_id)
+    db.flush()
+    db.expire_all()
+    assert db.scalar(select(func.count()).select_from(Diagnosis)) == 0
 
 
-def test_list_for_plant_returns_every_diagnosis_newest_first(db, now):
+def test_list_for_plant_returns_every_diagnosis_newest_first(db, owner, now):
     from datetime import timedelta
 
     from data.repositories.observations import ObservationRepository
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species=None,
         species_confidence=None,
@@ -249,10 +265,11 @@ def test_list_for_plant_returns_every_diagnosis_newest_first(db, now):
     ids = []
     for i in range(3):
         obs_id = ObservationRepository(db).create(
-            plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
+            owner, plant_id=plant_id, kind="initial", photo_refs=[], user_notes=None, now=now()
         )
         ids.append(
             repo.create(
+                owner,
                 observation_id=obs_id,
                 plant_id=plant_id,
                 differential=_differential(),
@@ -263,14 +280,15 @@ def test_list_for_plant_returns_every_diagnosis_newest_first(db, now):
             )
         )
 
-    result = [d.id for d in repo.list_for_plant(plant_id)]
+    result = [d.id for d in repo.list_for_plant(owner, plant_id)]
     assert result == list(reversed(ids))
 
 
-def test_list_for_plant_is_empty_for_a_plant_with_no_diagnoses(db, now):
+def test_list_for_plant_is_empty_for_a_plant_with_no_diagnoses(db, owner, now):
     from data.repositories.plants import PlantRepository
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species=None,
         species_confidence=None,
@@ -279,10 +297,10 @@ def test_list_for_plant_is_empty_for_a_plant_with_no_diagnoses(db, now):
         photo_ref=None,
         now=now(),
     )
-    assert DiagnosisRepository(db).list_for_plant(plant_id) == []
+    assert DiagnosisRepository(db).list_for_plant(owner, plant_id) == []
 
 
-def test_token_usage_round_trips(db, now):
+def test_token_usage_round_trips(db, owner, now):
     """M12: these columns exist and create() already accepts them — nothing wrote them."""
     from data.repositories.diagnoses import DiagnosisRepository
 
@@ -290,12 +308,13 @@ def test_token_usage_round_trips(db, now):
     diagnosis_id = _create_minimal_diagnosis(
         repo,
         db,
+        owner,
         now,
         token_usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
         cost_usd=0.0042,
     )
 
-    record = repo.get(diagnosis_id)
+    record = repo.get(owner, diagnosis_id)
     assert record.token_usage == {
         "prompt_tokens": 100,
         "completion_tokens": 20,
@@ -304,12 +323,12 @@ def test_token_usage_round_trips(db, now):
     assert record.cost_usd == 0.0042
 
 
-def test_token_usage_is_none_when_not_written(db, now):
+def test_token_usage_is_none_when_not_written(db, owner, now):
     from data.repositories.diagnoses import DiagnosisRepository
 
     repo = DiagnosisRepository(db)
-    diagnosis_id = _create_minimal_diagnosis(repo, db, now)
+    diagnosis_id = _create_minimal_diagnosis(repo, db, owner, now)
 
-    record = repo.get(diagnosis_id)
+    record = repo.get(owner, diagnosis_id)
     assert record.token_usage is None
     assert record.cost_usd is None

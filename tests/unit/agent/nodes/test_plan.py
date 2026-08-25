@@ -73,10 +73,13 @@ def _roadmap() -> Roadmap:
 
 
 class TestCheckContagion:
-    def test_transmissible_with_other_plants_flags_risk(self, make_deps, sample_images, db, now):
+    def test_transmissible_with_other_plants_flags_risk(
+        self, owner, make_deps, sample_images, db, now
+    ):
         from data.repositories.plants import PlantRepository
 
         PlantRepository(db).create(
+            owner,
             name="Monstera",
             species=None,
             species_confidence=None,
@@ -95,10 +98,11 @@ class TestCheckContagion:
         result = make_check_contagion(deps)(_state(sample_images))
         assert result["contagion"].at_risk is False
 
-    def test_non_transmissible_never_flags(self, make_deps, sample_images, db, now):
+    def test_non_transmissible_never_flags(self, owner, make_deps, sample_images, db, now):
         from data.repositories.plants import PlantRepository
 
         PlantRepository(db).create(
+            owner,
             name="Monstera",
             species=None,
             species_confidence=None,
@@ -112,11 +116,12 @@ class TestCheckContagion:
         assert make_check_contagion(deps)(state)["contagion"].at_risk is False
 
     def test_the_plant_being_diagnosed_is_not_counted_as_at_risk(
-        self, make_deps, sample_images, db, now
+        self, owner, make_deps, sample_images, db, now
     ):
         from data.repositories.plants import PlantRepository
 
         plant_id = PlantRepository(db).create(
+            owner,
             name="Basil",
             species=None,
             species_confidence=None,

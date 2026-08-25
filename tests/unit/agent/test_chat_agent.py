@@ -4,17 +4,19 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent.chat_agent import make_chat_agent
+from core.ids import new_id
 from data.repositories.plants import PlantRepository
 
 
 def test_raises_for_an_unknown_plant(make_deps, db):
     deps = make_deps()
     with pytest.raises(ValueError, match="No plant"):
-        make_chat_agent(deps, 999_999, MemorySaver())
+        make_chat_agent(deps, new_id(), MemorySaver())
 
 
-def test_builds_an_agent_for_a_known_plant(make_deps, db, now):
+def test_builds_an_agent_for_a_known_plant(owner, make_deps, db, now):
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -29,11 +31,12 @@ def test_builds_an_agent_for_a_known_plant(make_deps, db, now):
     assert escalation == {}
 
 
-def test_the_agent_is_compiled_with_the_checkpointer_it_was_given(make_deps, db, now):
+def test_the_agent_is_compiled_with_the_checkpointer_it_was_given(owner, make_deps, db, now):
     """A ``create_agent`` graph compiled without a checkpointer silently ignores
     ``thread_id``, which is exactly how the chat loop lost its memory. Assert the
     compiled graph actually holds one rather than trusting the call site."""
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -47,13 +50,14 @@ def test_the_agent_is_compiled_with_the_checkpointer_it_was_given(make_deps, db,
     assert agent.checkpointer is checkpointer
 
 
-def test_every_tool_gets_a_clean_model_visible_name(make_deps, db, now):
+def test_every_tool_gets_a_clean_model_visible_name(owner, make_deps, db, now):
     """The Python function needs a ``_tool`` suffix to avoid shadowing the imported
     ``search_plant_knowledge``, but the name the model reads should not carry it —
     ``@tool`` defaults to the function name unless given one explicitly."""
     from agent.chat_agent import _make_tools
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -76,10 +80,11 @@ def test_every_tool_gets_a_clean_model_visible_name(make_deps, db, now):
     assert not any(name.endswith("_tool") for name in names)
 
 
-def test_the_care_profile_tool_reports_an_unknown_species(make_deps, db, now):
+def test_the_care_profile_tool_reports_an_unknown_species(owner, make_deps, db, now):
     from agent.chat_agent import _make_tools
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Mystery plant",
         species=None,
         species_confidence=None,
@@ -94,10 +99,11 @@ def test_the_care_profile_tool_reports_an_unknown_species(make_deps, db, now):
     assert "no baseline" in care_tool.invoke({"species": "Mystery plant"}).lower()
 
 
-def test_the_weather_tool_reports_when_it_cannot_run(make_deps, db, now):
+def test_the_weather_tool_reports_when_it_cannot_run(owner, make_deps, db, now):
     from agent.chat_agent import _make_tools
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -112,10 +118,11 @@ def test_the_weather_tool_reports_when_it_cannot_run(make_deps, db, now):
     assert "could not" in weather_tool.invoke({"location": "Berlin"}).lower()
 
 
-def test_the_journal_tool_reports_no_history_for_a_fresh_plant(make_deps, db, now):
+def test_the_journal_tool_reports_no_history_for_a_fresh_plant(owner, make_deps, db, now):
     from agent.chat_agent import _make_tools
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -152,10 +159,11 @@ def test_the_journal_tool_aggregates_observations_diagnoses_and_roadmap_steps(
     assert "pending" in journal
 
 
-def test_suggest_new_diagnosis_populates_the_escalation_dict(make_deps, db, now):
+def test_suggest_new_diagnosis_populates_the_escalation_dict(owner, make_deps, db, now):
     from agent.chat_agent import _make_tools
 
     plant_id = PlantRepository(db).create(
+        owner,
         name="Basil",
         species="Basil",
         species_confidence=0.9,
@@ -198,7 +206,7 @@ def test_an_unknown_plant_still_raises(make_deps):
     from agent.chat_agent import build_chat_system_prompt
 
     with pytest.raises(ValueError, match="No plant"):
-        build_chat_system_prompt(make_deps(profile_facts=lambda: ""), 9999)
+        build_chat_system_prompt(make_deps(profile_facts=lambda: ""), new_id())
 
 
 def test_a_raising_profile_read_does_not_break_the_chat_turn(make_deps, sample_plant):
@@ -257,7 +265,9 @@ class TestDeadEndsNameTheNextStep:
         assert "web_search_plant_info" in result
         assert "disorders only" in result
 
-    def test_an_empty_web_search_asks_for_the_admission_instead(self, make_deps, sample_plant):
+    def test_an_empty_web_search_asks_for_the_admission_instead(
+        self, owner, make_deps, sample_plant
+    ):
         """The web is the last resort, so this one has no further tool to name. It asks
         the agent to say the answer is unsourced, which is what the provenance panel
         cannot show on its own."""

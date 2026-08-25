@@ -111,18 +111,20 @@ class ProfileRepository:
         if row is not None:
             self._session.delete(row)
 
-    def cursor_at(self, user_id: UUID, plant_id: UUID) -> datetime | None:
-        """When the last chat message profile extraction has read was written.
+    def cursor_position(self, user_id: UUID, plant_id: UUID) -> tuple[datetime, UUID] | None:
+        """Where profile extraction has read up to: a time *and* the message id.
 
-        A time rather than an identifier, because that is what selecting the unread
-        window needs. The stored cursor is still a message id — "how far we have read"
-        is a place in the transcript — and this resolves it.
+        Both halves are needed. A timestamp alone cannot order messages written in the
+        same transaction — they share one ``now()`` — so ``created_at > cursor`` would
+        skip a whole batch that arrived alongside the one already read. The pair
+        matches the ordering ``list_for_plant`` uses, so "everything after this point"
+        means the same thing to both.
         """
-        return self._session.scalar(
-            select(Message.created_at)
+        return self._session.execute(
+            select(Message.created_at, Message.id)
             .join(ProfileCursor, ProfileCursor.last_message_id == Message.id)
             .where(ProfileCursor.plant_id == plant_id, Message.user_id == user_id)
-        )
+        ).first()
 
     def set_cursor(self, user_id: UUID, *, plant_id: UUID, last_message_id: UUID) -> None:
         """Advance the cursor, creating it on first use."""

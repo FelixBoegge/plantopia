@@ -168,7 +168,7 @@ class ProfileService:
         cursor. Cost per turn stays flat instead of growing with thread length —
         the failure mode ``M16`` records for chat context itself.
         """
-        cursor = self._repo.cursor_at(self._user_id, plant_id)
+        cursor = self._repo.cursor_position(self._user_id, plant_id)
         unread = messages.list_for_plant_after(self._user_id, plant_id, after=cursor)
         new = [m for m in unread if m.role == "user"]
         if len(new) < CHAT_TURNS_PER_EXTRACTION:
@@ -202,7 +202,7 @@ class ProfileService:
         break its caller anyway — after the diagnosis it is learning from has
         already been committed and shown to the owner.
         """
-        current = self._repo.list_all()
+        current = self._repo.list_all(self._user_id)
         profile_block = (
             "\n".join(f"- {f.fact}" for f in current) if current else "(the profile is empty)"
         )
