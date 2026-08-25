@@ -1,15 +1,14 @@
 ## 1. Dependencies and database bring-up
 
-- [ ] 1.1 Resolve the dependency set — `sqlalchemy`, `alembic`, `psycopg[binary]`, `pgvector`, a UUIDv7 generator, `langgraph-checkpoint-postgres` — against the pinned LangGraph version; verify `uv sync` succeeds and `uv run python -c "from langgraph.checkpoint.postgres import PostgresSaver"` imports. If it cannot resolve, stop and take the fallback in design.md — Risks (checkpointers move in the background-runs change instead).
+- [x] 1.1 Resolve the dependency set — `sqlalchemy`, `alembic`, `psycopg[binary]`, `pgvector`, a UUIDv7 generator, `langgraph-checkpoint-postgres` — against the pinned LangGraph version; verify `uv sync` succeeds and `uv run python -c "from langgraph.checkpoint.postgres import PostgresSaver"` imports. If it cannot resolve, stop and take the fallback in design.md — Risks (checkpointers move in the background-runs change instead).
 - [ ] 1.2 Add `docker-compose.yml` with a `db` service on `pgvector/pgvector:pg17`, a named volume and a healthcheck; verify `docker compose up -d db` reaches healthy and `CREATE EXTENSION IF NOT EXISTS vector` succeeds.
-- [ ] 1.3 Add `database_url` to `Settings` with `.env.example` documentation; verify `tests/unit/core/test_config.py` covers the default and an override, constructed with `_env_file=None`.
-- [ ] 1.4 Move `chromadb` from the runtime dependencies to the dev group; verify `uv run python -c "import chromadb"` still works and no module under `agent/`, `services/` or `knowledge/` imports it outside the export script.
+- [x] 1.3 Add `database_url` to `Settings` with `.env.example` documentation; verify `tests/unit/core/test_config.py` covers the default and an override, constructed with `_env_file=None`.
 
 ## 2. Models and migrations
 
-- [ ] 2.1 Add a UUIDv7 helper in `core/`; verify a test that generates 100 identifiers in sequence and asserts they sort ascending and are all distinct.
-- [ ] 2.2 Write typed `Mapped[]` models for `users` and the eight existing tables, with UUIDv7 primary keys and `timestamptz` columns; verify a test asserting `Base.metadata.tables` holds exactly the expected nine names.
-- [ ] 2.3 Add `user_id` to `plants`, `user_profile` and `messages`, change `UNIQUE(fact)` to `UNIQUE(user_id, fact)`, and carry the existing `ON DELETE CASCADE` chains across; verify tests that two owners may hold the same learned fact and that deleting a plant removes its observations, diagnoses and roadmap steps.
+- [x] 2.1 Add a UUIDv7 helper in `core/`; verify a test that generates 100 identifiers in sequence and asserts they sort ascending and are all distinct.
+- [x] 2.2 Write typed `Mapped[]` models for `users` and the eight existing tables, with UUIDv7 primary keys and `timestamptz` columns; verify a test asserting `Base.metadata.tables` holds exactly the expected nine names.
+- [x] 2.3 Add `user_id` to `plants`, `user_profile` and `messages`, change `UNIQUE(fact)` to `UNIQUE(user_id, fact)`, and carry the existing `ON DELETE CASCADE` chains across; verify tests that two owners may hold the same learned fact and that deleting a plant removes its observations, diagnoses and roadmap steps.
 - [ ] 2.4 Scaffold Alembic and autogenerate the initial migration from the models; verify `alembic upgrade head` builds every table on an empty database and `alembic check` reports no drift afterwards.
 - [ ] 2.5 Replace `data/db.py`'s sqlite3 connection and `transaction()` helper with a SQLAlchemy engine, session factory and transaction context manager; verify the existing transaction tests port unchanged and still prove rollback on exception.
 
@@ -24,7 +23,7 @@
 - [ ] 4.1 Rewrite `PlantRepository` with `user_id` as the required first parameter on every method; verify its existing tests port plus a new test that a second owner reading the first owner's plant gets nothing back.
 - [ ] 4.2 Rewrite `ObservationRepository` and `DiagnosisRepository` the same way; verify ported tests plus cross-owner cases on `list_for_plant` and `latest_for_plant`.
 - [ ] 4.3 Rewrite `RoadmapRepository` and `FeedbackRepository`; verify ported tests, the `M10` rowcount `ValueError` on an unknown step id is preserved, and marking another owner's step raises rather than silently succeeding.
-- [ ] 4.4 Rewrite the profile and message repositories including `profile_cursors`; verify ported tests plus a test that the same fact for two owners is two rows.
+- [ ] 4.4 Rewrite the profile and message repositories including `profile_cursors`; verify ported tests plus a test that the same fact for two owners is two rows. Found during implementation: two integer-id assumptions travel with this. `services/profile_service.py` reads `cursor_for(plant_id) or 0` — a sentinel that cannot exist for a UUID — and both the cursor comparison and `MessageRepository.list_for_plant`'s `ORDER BY id` rely on identifiers being chronological. Order by `created_at, id` and compare the cursor on an explicit `None` instead of leaning on UUIDv7's ordering, which ties arbitrarily within a millisecond.
 - [ ] 4.5 Add a table-driven tenancy test that walks every public repository method taking a record identifier and asserts a foreign owner is refused; verify it fails when a `user_id` filter is deliberately removed from one method.
 - [ ] 4.6 Seed a single owner at startup and thread its id from `ui/bootstrap.py` through `services/` into the repositories; verify `uv run pytest -m ui --no-cov` passes and Streamlit still completes a diagnosis end to end.
 
@@ -48,6 +47,7 @@
 - [ ] 7.2 Implement `sections_for`, `known_doc_ids`, `supports_image_search` and `search_by_image`; verify the fetch-by-identifier fixtures match exactly, including a document that similarity search ranks outside the top twenty, and that image search reports itself unavailable.
 - [ ] 7.3 Add the score-parity assertion at `1e-6` and the escalation-decision assertion against the captured decisions; verify the test fails if the score conversion is altered by a constant factor.
 - [ ] 7.4 Construct the new retriever in `agent/wiring.py`, `ui/bootstrap.py` and `eval/run_eval.py`, and delete `ChromaRetriever` from the runtime path; verify the full suite is green and no runtime module imports `chromadb`.
+- [ ] 7.5 Move `chromadb` from the runtime dependencies to the dev group; verify `uv run python -c "import chromadb"` still works from the dev environment and no module under `agent/`, `services/` or `knowledge/` imports it outside the export script. Moved here from group 1 during implementation: `langchain-chroma` is a runtime dependency that imports it, so the move is only valid once 7.4 has taken `ChromaRetriever` off the runtime path.
 
 ## 8. Checkpointers
 

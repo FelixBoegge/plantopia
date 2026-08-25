@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     # only set this when the workspace is actually on a non-default region/host.
     langsmith_endpoint: str | None = None
 
+    # One Postgres holds domain records, the corpus vectors and both graph
+    # checkpointers. The driver is named explicitly because SQLAlchemy's bare
+    # ``postgresql://`` still resolves to psycopg2, which is not installed —
+    # the failure is an obscure ImportError rather than anything that names the URL.
+    # The default matches docker-compose.yml so a fresh clone needs no .env entry.
+    database_url: str = "postgresql+psycopg://plantopia:plantopia@localhost:5432/plantopia"
+
     db_path: Path = Path("data/plantopia.db")
     chroma_path: Path = Path("data/chroma")
     corpus_path: Path = Path("knowledge/corpus")

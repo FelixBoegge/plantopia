@@ -1,0 +1,34 @@
+# Local development and the test suite both run against this database.
+#
+# `docker compose up -d db` is a prerequisite for `uv run pytest`: repository and
+# retriever tests exercise real Postgres and real pgvector rather than a mock that
+# would only assert on itself.
+#
+# The image is pgvector's own build of PostgreSQL 17 — the extension is compiled in,
+# so `CREATE EXTENSION vector` succeeds without installing anything into the container.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: plantopia
+      POSTGRES_PASSWORD: plantopia
+      POSTGRES_DB: plantopia
+    ports:
+      # Published so the application and the test suite can reach it from the host
+      # while they still run outside compose. The API container joins this network later.
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` alone reports true while the entrypoint is still running its
+      # initialisation scripts, which is long enough for a test session to connect
+      # and find no database. Naming the user and database closes that window.
+      test: ["CMD-SHELL", "pg_isready -U plantopia -d plantopia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:

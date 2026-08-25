@@ -57,8 +57,14 @@ gap `M17` has been sitting behind.
 
 ### UUIDv7 primary keys, generated in the application
 
-Identifiers are generated before insert rather than by the database, because a blob key and a
-plant id are both needed in application code before the row exists.
+Identifiers are generated in Python rather than by the database, so no insert depends on a
+database function or on reading a value back.
+
+*Corrected during implementation:* an earlier draft said the identifier exists "before the row
+exists". A SQLAlchemy column default fires at **flush**, not at construction, so that is only
+true when the caller supplies one. It matters for exactly one caller — the blob store, whose key
+*is* its return value — and that one assigns explicitly. The models keep the default for
+everything else.
 
 Python 3.12's `uuid` module has no v7 generator, and the target image is PostgreSQL 17, whose
 `gen_random_uuid()` is v4. So a small library supplies it. v7 rather than v4 because it is

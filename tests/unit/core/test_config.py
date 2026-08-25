@@ -43,6 +43,23 @@ def test_settings_applies_defaults(monkeypatch):
     assert settings.tavily_api_key is None
 
 
+def test_the_database_url_names_its_driver(monkeypatch):
+    """A bare postgresql:// URL resolves to psycopg2, which is not installed — and the
+    resulting ImportError says nothing about the URL that caused it."""
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+
+    assert Settings(_env_file=None).database_url.startswith("postgresql+psycopg://")
+
+
+def test_the_database_url_is_overridable_from_the_environment(monkeypatch):
+    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv(
+        "PLANTOPIA_DATABASE_URL", "postgresql+psycopg://someone@db.example:5432/other"
+    )
+
+    assert Settings(_env_file=None).database_url.endswith("db.example:5432/other")
+
+
 def test_settings_thresholds_must_be_probabilities(monkeypatch):
     monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
     monkeypatch.setenv("PLANTOPIA_RETRIEVAL_SCORE_THRESHOLD", "1.5")
