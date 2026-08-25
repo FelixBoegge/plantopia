@@ -41,6 +41,6 @@ class HashingEmbeddings(Embeddings):
     def embed_query(self, text: str) -> list[float]:
         return self._embed(text)
 
-    def embed_image(self, data_b64: str, media_type: str) -> list[float]:
+    def embed_image(self, data: bytes, media_type: str) -> list[float]:
         """Deterministic pseudo-embedding for an image, no real vision involved."""
-        return self._embed(f"image {media_type} {data_b64}")
+        return self._embed(f"image {media_type} {data!r}")

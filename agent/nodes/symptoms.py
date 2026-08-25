@@ -32,7 +32,12 @@ def make_assess_symptoms(deps: Deps) -> NodeFn:
 
         messages = [
             SystemMessage(ASSESS_SYMPTOMS),
-            build_image_message("\n\n".join(parts), state.images),
+            build_image_message(
+                "\n\n".join(parts),
+                state.images,
+                blobs=deps.blobs,
+                user_id=deps.user_id,
+            ),
         ]
         try:
             symptoms = invoke_structured(deps.vision_model, SymptomSet, messages)

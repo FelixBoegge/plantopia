@@ -26,9 +26,7 @@ def app(monkeypatch, make_deps, pipeline_models, tmp_path):
 
     gate, vision, chat = pipeline_models
     deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
-    service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
+    service = DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver()))
 
     monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
     return AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
@@ -192,9 +190,7 @@ def test_healthy_result_does_not_claim_no_treatment_plan(monkeypatch, make_deps,
     )
 
     deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
-    service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
+    service = DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver()))
     monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
 
     app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
@@ -230,9 +226,7 @@ def test_thread_id_rotates_after_a_rejection(monkeypatch, make_deps, tmp_path):
         ]
     )
     deps = make_deps(gate_model=gate)
-    service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
+    service = DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver()))
     monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
 
     app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)
@@ -266,9 +260,7 @@ def test_thread_id_rotates_after_a_retake(monkeypatch, make_deps, tmp_path):
         ]
     )
     deps = make_deps(gate_model=gate)
-    service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
+    service = DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver()))
     monkeypatch.setattr("ui.bootstrap.get_service", lambda: service)
 
     app = AppTest.from_file(str(_DIAGNOSE_PAGE), default_timeout=30)

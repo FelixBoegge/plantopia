@@ -28,6 +28,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -212,3 +213,20 @@ class ProfileCursor(Base):
         ForeignKey("plants.id", ondelete="CASCADE"), primary_key=True
     )
     last_message_id: Mapped[UUID] = mapped_column()
+
+
+class Blob(Base):
+    """An uploaded photograph.
+
+    Owned directly rather than through a plant: an upload exists before the plant it
+    documents does — the wizard stores photographs, then identifies the species, then
+    creates the plant — so there is no parent to reach an owner through at that point.
+    """
+
+    __tablename__ = "blobs"
+
+    id: Mapped[UUID] = _pk()
+    user_id: Mapped[UUID] = _owner()
+    content_type: Mapped[str] = mapped_column(String(64))
+    byte_size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

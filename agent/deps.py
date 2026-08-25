@@ -12,6 +12,7 @@ from uuid import UUID
 from langchain_core.language_models import BaseChatModel
 
 from agent.schemas import CareProfile, Passage, WeatherSummary
+from core.blobs import BlobStore
 from core.config import Settings
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
@@ -38,6 +39,10 @@ class Deps:
     chat_model: BaseChatModel  # question selection, diagnose, build_roadmap
 
     retriever: Retriever
+
+    # Where uploaded photographs live. Reached through Deps like every other outside
+    # capability, so a node cannot open storage on its own.
+    blobs: BlobStore
 
     plants: PlantRepository
     observations: ObservationRepository

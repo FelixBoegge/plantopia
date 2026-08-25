@@ -40,7 +40,7 @@ def get_service() -> DiagnosisService:
     checkpointer = SqliteSaver(connect(Path(str(settings.db_path) + ".checkpoints")))
     graph = build_diagnosis_graph(deps, checkpointer)
 
-    return DiagnosisService(deps, graph, upload_dir=settings.upload_path, profile=profile)
+    return DiagnosisService(deps, graph, profile=profile)
 
 
 @st.cache_resource

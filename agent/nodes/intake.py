@@ -29,7 +29,12 @@ def make_guard_input(deps: Deps) -> NodeFn:
     def guard_input(state: DiagnosisState) -> dict:
         messages = [
             SystemMessage(GUARD_INPUT),
-            build_image_message("Is this plant material?", state.images),
+            build_image_message(
+                "Is this plant material?",
+                state.images,
+                blobs=deps.blobs,
+                user_id=deps.user_id,
+            ),
         ]
         try:
             check = invoke_structured(deps.gate_model, PlantCheck, messages)
@@ -68,7 +73,12 @@ def make_quality_check(deps: Deps) -> NodeFn:
     def quality_check(state: DiagnosisState) -> dict:
         messages = [
             SystemMessage(QUALITY_CHECK),
-            build_image_message("Are these usable for diagnosis?", state.images),
+            build_image_message(
+                "Are these usable for diagnosis?",
+                state.images,
+                blobs=deps.blobs,
+                user_id=deps.user_id,
+            ),
         ]
         try:
             quality = invoke_structured(deps.gate_model, ImageQuality, messages)

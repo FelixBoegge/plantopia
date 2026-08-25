@@ -1,13 +1,12 @@
 """Upload handling: validate, store outside the served path, return a reference."""
 
-import base64
-import uuid
 from io import BytesIO
-from pathlib import Path
+from uuid import UUID
 
 from PIL import Image, ImageOps
 
 from agent.state import ImageRef
+from core.blobs import BlobStore
 from core.config import Settings
 from core.guards import validate_upload
 
@@ -56,11 +55,17 @@ def upright_bytes(data: bytes) -> bytes:
     return buffer.getvalue()
 
 
-def store_upload(data: bytes, upload_dir: Path, settings: Settings) -> ImageRef:
-    """Validate an upload, persist it under an opaque id, and return a reference.
+def store_upload(data: bytes, *, blobs: BlobStore, user_id: UUID, settings: Settings) -> ImageRef:
+    """Validate an upload, store it under an opaque key, and return a reference.
 
-    The stored file and the base64 the model sees are the same upright bytes, so
-    the grid and the diagnosis can never disagree about which way up a plant is.
+    The stored bytes and the bytes the model sees are the same upright bytes, so the
+    grid and the diagnosis can never disagree about which way up a plant is.
+
+    **No downscaling.** Pillow is here to apply the orientation the photograph declares
+    and nothing else. Resizing would change what the vision model sees, and no
+    measurement in this project can see the vision layer (``M19``) — so the damage, if
+    there were any, would be invisible. It is recorded as separate work rather than
+    smuggled in with a storage change.
 
     Raises:
         UploadRejected: if validation fails.
@@ -70,12 +75,5 @@ def store_upload(data: bytes, upload_dir: Path, settings: Settings) -> ImageRef:
     # and normalisation is our own transformation of an upload already accepted.
     data = upright_bytes(data)
 
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    ref = uuid.uuid4().hex
-    (upload_dir / f"{ref}.{image_format}").write_bytes(data)
-
-    return ImageRef(
-        ref=ref,
-        media_type=_MEDIA_TYPES[image_format],
-        data_b64=base64.b64encode(data).decode("ascii"),
-    )
+    media_type = _MEDIA_TYPES[image_format]
+    return ImageRef(ref=blobs.put(user_id, data, media_type), media_type=media_type)

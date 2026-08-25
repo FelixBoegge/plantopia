@@ -13,7 +13,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
-from agent.schemas import ImageRef, Passage
+from agent.schemas import LoadedImage, Passage
 from core.embeddings import ImageEmbedder
 from knowledge.ingest import Chunk
 
@@ -63,7 +63,7 @@ class Retriever(Protocol):
         """
         ...
 
-    def search_by_image(self, images: Sequence[ImageRef], k: int) -> list[Passage]:
+    def search_by_image(self, images: Sequence[LoadedImage], k: int) -> list[Passage]:
         """Return corpus passages that match the photographs themselves.
 
         Cross-modal: the image is embedded into the same space as the corpus text.
@@ -197,7 +197,7 @@ class ChromaRetriever:
     def supports_image_search(self) -> bool:
         return self._image_embedder is not None
 
-    def search_by_image(self, images: Sequence[ImageRef], k: int) -> list[Passage]:
+    def search_by_image(self, images: Sequence[LoadedImage], k: int) -> list[Passage]:
         """Retrieve corpus passages by embedding the photographs directly.
 
         Returns an empty list when no image embedder is configured or every embedding
@@ -209,7 +209,7 @@ class ChromaRetriever:
         best: dict[tuple[str, str], Passage] = {}
 
         for image in images:
-            vector = self._image_embedder.embed_image(image.data_b64, image.media_type)
+            vector = self._image_embedder.embed_image(image.data, image.media_type)
             if vector is None:
                 continue
             results = self._store.similarity_search_by_vector_with_relevance_scores(vector, k=k)

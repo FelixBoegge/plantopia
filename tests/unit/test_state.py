@@ -1,10 +1,11 @@
 """Tests for the graph state model."""
 
 from agent.state import DiagnosisState, ImageRef
+from core.ids import new_id
 
 
 def _image() -> ImageRef:
-    return ImageRef(ref="img-1", media_type="image/png", data_b64="aGk=")
+    return ImageRef(ref=new_id(), media_type="image/png")
 
 
 def test_state_requires_at_least_one_image():

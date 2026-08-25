@@ -1,6 +1,6 @@
 """Tests for multi-query retrieval and ranking, text and image paths."""
 
-from agent.schemas import ImageRef, Passage
+from agent.schemas import LoadedImage, Passage
 from knowledge.retriever import ChromaRetriever, build_vectorstore
 from tests.fakes.embeddings import HashingEmbeddings
 
@@ -116,8 +116,8 @@ class TestImagePath:
     harness against real embeddings, not here.
     """
 
-    def _image(self, ref: str = "img-1") -> ImageRef:
-        return ImageRef(ref=ref, media_type="image/png", data_b64="aGVsbG8=")
+    def _image(self, data: bytes = b"pixels") -> LoadedImage:
+        return LoadedImage(data=data, media_type="image/png")
 
     def test_returns_passages(self, chroma_retriever):
         results = chroma_retriever.search_by_image([self._image()], k=3)
@@ -132,7 +132,7 @@ class TestImagePath:
         assert len(chroma_retriever.search_by_image([self._image()], k=2)) == 2
 
     def test_multiple_images_are_deduplicated(self, chroma_retriever):
-        results = chroma_retriever.search_by_image([self._image("a"), self._image("b")], k=10)
+        results = chroma_retriever.search_by_image([self._image(b"a"), self._image(b"b")], k=10)
         keys = [(p.doc_id, p.section) for p in results]
         assert len(keys) == len(set(keys))
 

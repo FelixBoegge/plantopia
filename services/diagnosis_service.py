@@ -6,7 +6,6 @@ The UI knows nothing about LangGraph, checkpointers, or resume commands. It call
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
@@ -75,12 +74,10 @@ class DiagnosisService:
         deps: Deps,
         graph,
         *,
-        upload_dir: Path,
         profile: ProfileService | None = None,
     ) -> None:
         self._deps = deps
         self._graph = graph
-        self._upload_dir = upload_dir
         self._profile = profile
         # Keyed by thread_id because a diagnosis spans two invocations: start()
         # pauses at the clarifying-question interrupt and answer() resumes it. The
@@ -276,7 +273,12 @@ class DiagnosisService:
             raise ValueError("Please upload at least one photo.")
         if len(uploads) > settings.max_images_per_observation:
             raise ValueError(f"Please upload at most {settings.max_images_per_observation} photos.")
-        return [store_upload(data, self._upload_dir, settings) for data in uploads]
+        return [
+            store_upload(
+                data, blobs=self._deps.blobs, user_id=self._deps.user_id, settings=settings
+            )
+            for data in uploads
+        ]
 
     @staticmethod
     def _stopped_at_the_guards(result: dict) -> StartResult | None:

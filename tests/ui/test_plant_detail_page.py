@@ -96,9 +96,7 @@ def app(owner, monkeypatch, db, now, sample_plant, make_deps, tmp_path):
         ]
     )
     deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
-    diagnosis_service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
+    diagnosis_service = DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver()))
 
     monkeypatch.setattr("ui.bootstrap.get_plant_service", lambda: plant_service)
     monkeypatch.setattr("ui.bootstrap.get_service", lambda: diagnosis_service)
@@ -276,9 +274,7 @@ def test_the_recheck_thread_id_rotates_after_a_rejection_or_retake(
         vision_model=ScriptedStructuredModel([]),
         chat_model=ScriptedStructuredModel([]),
     )
-    diagnosis_service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
+    diagnosis_service = DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver()))
 
     # Record what thread id each attempt actually ran on — the only place the
     # difference shows, since neither outcome writes anything to the database.

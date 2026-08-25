@@ -299,9 +299,7 @@ def test_the_handoff_lands_on_plant_detail_with_the_upload_form_open(
     deps = make_deps()
     monkeypatch.setattr(
         "ui.bootstrap.get_service",
-        lambda: DiagnosisService(
-            deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-        ),
+        lambda: DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver())),
     )
     detail_page = AppTest.from_file(
         str(Path(__file__).resolve().parent.parent.parent / "ui" / "pages" / "plant_detail.py"),

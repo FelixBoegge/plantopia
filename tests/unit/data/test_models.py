@@ -23,9 +23,10 @@ EXPECTED_TABLES = {
     "user_profile",
     "messages",
     "profile_cursors",
+    "blobs",
 }
 
-OWNED_DIRECTLY = {"plants", "user_profile", "messages"}
+OWNED_DIRECTLY = {"plants", "user_profile", "messages", "blobs"}
 
 
 def test_the_schema_holds_exactly_the_expected_tables():

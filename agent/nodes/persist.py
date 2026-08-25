@@ -57,7 +57,7 @@ def make_persist(deps: Deps) -> NodeFn:
                     species_confidence=state.species_confidence,
                     location_kind=state.location_kind,
                     location_text=state.location_text or state.answers.get("location"),
-                    photo_ref=state.images[0].ref if state.images else None,
+                    photo_ref=str(state.images[0].ref) if state.images else None,
                     now=now,
                 )
             elif state.species_name is not None:
@@ -75,7 +75,8 @@ def make_persist(deps: Deps) -> NodeFn:
                 deps.user_id,
                 plant_id=plant_id,
                 kind=observation_kind,
-                photo_refs=[image.ref for image in state.images],
+                # Stored as text: photo_refs is a JSON column, and a UUID is not JSON.
+                photo_refs=[str(image.ref) for image in state.images],
                 user_notes=state.user_notes,
                 now=now,
             )

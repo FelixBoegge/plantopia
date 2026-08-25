@@ -35,7 +35,12 @@ def make_identify_plant(deps: Deps) -> NodeFn:
         hint = f'The user calls this plant "{state.plant_name}".'
         messages = [
             SystemMessage(IDENTIFY_PLANT),
-            build_image_message(f"{hint}\n\nWhat species is this?", state.images),
+            build_image_message(
+                f"{hint}\n\nWhat species is this?",
+                state.images,
+                blobs=deps.blobs,
+                user_id=deps.user_id,
+            ),
         ]
         try:
             guess = invoke_structured(deps.vision_model, SpeciesGuess, messages)

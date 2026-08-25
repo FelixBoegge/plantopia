@@ -7,6 +7,7 @@ if the structure is actually enforced here.
 
 from enum import IntEnum, StrEnum
 from typing import Literal, Self
+from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -120,15 +121,35 @@ class Passage(BaseModel):
 
 
 class ImageRef(BaseModel):
-    """One uploaded image, carried through the graph as base64.
+    """One uploaded image, carried through the graph as a key.
+
+    Deliberately *not* the bytes. LangGraph re-serialises the whole state at every
+    superstep, so an image held here is written to the checkpoint once per node —
+    ``M15`` measured 205 MB of checkpoint blobs from two diagnoses of 3 MB
+    photographs. The bytes are loaded from the blob store at the one place that needs
+    them, the vision call.
 
     Defined here rather than in ``agent/state.py`` because the retriever needs it and
     must not depend on graph state.
     """
 
-    ref: str
+    ref: UUID
     media_type: Literal["image/png", "image/jpeg", "image/webp"]
-    data_b64: str
+
+
+class LoadedImage(BaseModel):
+    """An image with its bytes in hand.
+
+    Distinct from ``ImageRef`` on purpose. A reference is what travels through graph
+    state; this is what exists briefly at the two boundaries that need real pixels —
+    the vision call and, when an embedder can accept one, the cross-modal search.
+    Keeping them separate is what stops bytes drifting back into state (``M15``).
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    data: bytes
+    media_type: Literal["image/png", "image/jpeg", "image/webp"]
 
 
 class CareProfile(BaseModel):

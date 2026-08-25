@@ -29,10 +29,10 @@
 
 ## 5. Blob storage
 
-- [ ] 5.1 Define the `BlobStore` port and implement `PostgresBlobStore` over a `blobs` table; verify tests for put/get round-trip, an unknown key returning nothing, a foreign owner's key returning nothing, and `delete_for_user` leaving other owners untouched.
-- [ ] 5.2 Replace `ImageRef.data_b64` with `ImageRef.key` and resolve bytes from the store at the vision call only; verify the vision node tests pass against a fake store and that no other node reads image bytes.
-- [ ] 5.3 Route `core/images.py:store_upload` through the port, keeping magic-byte validation and orientation correction; verify the existing image tests port and a new test asserts delivered bytes equal uploaded bytes after orientation only — no downscaling.
-- [ ] 5.4 Add a test that serialises a completed diagnosis's run state and asserts it contains no image payload and stays under a fixed size ceiling; verify it fails if `ImageRef` is given bytes again.
+- [x] 5.1 Define the `BlobStore` port and implement `PostgresBlobStore` over a `blobs` table; verify tests for put/get round-trip, an unknown key returning nothing, a foreign owner's key returning nothing, and `delete_for_user` leaving other owners untouched.
+- [x] 5.2 Replace `ImageRef.data_b64` with `ImageRef.key` and resolve bytes from the store at the vision call only; verify the vision node tests pass against a fake store and that no other node reads image bytes.
+- [x] 5.3 Route `core/images.py:store_upload` through the port, keeping magic-byte validation and orientation correction; verify the existing image tests port and a new test asserts delivered bytes equal uploaded bytes after orientation only — no downscaling.
+- [x] 5.4 Add a test that serialises a completed diagnosis's run state and asserts it contains no image payload and stays under a fixed size ceiling; verify it fails if `ImageRef` is given bytes again.
 
 ## 6. Corpus vectors and parity fixtures
 

@@ -21,6 +21,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from agent.deps import Deps
+from core.blobs import PostgresBlobStore
 from core.config import Settings, get_settings
 from core.embeddings import ImageEmbedder
 from core.llm import (
@@ -160,6 +161,7 @@ def build_deps(*, profile_facts: Callable[[], str], settings: Settings | None = 
         vision_model=build_vision_model(),
         chat_model=build_reasoning_model(),
         retriever=ChromaRetriever(vectorstore, image_embedder),
+        blobs=PostgresBlobStore(session),
         plants=PlantRepository(session),
         observations=ObservationRepository(session),
         diagnoses=DiagnosisRepository(session),

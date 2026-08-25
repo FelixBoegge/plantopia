@@ -10,6 +10,7 @@ import logging
 
 from agent.deps import Deps
 from agent.nodes.intake import NodeFn
+from agent.schemas import LoadedImage
 from agent.state import DiagnosisState
 from tools.knowledge import build_symptom_queries, search_plant_knowledge
 from tools.web_search import should_escalate
@@ -90,8 +91,22 @@ def _retrieve_by_image(deps: Deps, state: DiagnosisState, tools_used: list[str])
     if not deps.retriever.supports_image_search:
         return []
 
+    # Bytes are resolved here, at the one node that needs them, and go no further.
+    # A photograph missing from the store drops out of the visual search rather than
+    # failing the diagnosis: this path is corroboration, and the text path stands on
+    # its own. The vision call treats the same absence as fatal, because there it is.
+    loaded = []
+    for image in state.images:
+        data = deps.blobs.get(deps.user_id, image.ref)
+        if data is None:
+            logger.warning("photograph %s is not in the store; skipping it", image.ref)
+            continue
+        loaded.append(LoadedImage(data=data, media_type=image.media_type))
+    if not loaded:
+        return []
+
     tools_used.append("search_by_photograph")
-    matches = deps.retriever.search_by_image(state.images, k=VISUAL_RESULTS)
+    matches = deps.retriever.search_by_image(loaded, k=VISUAL_RESULTS)
     kept = [p for p in matches if p.score >= deps.settings.image_match_threshold]
 
     if matches and not kept:

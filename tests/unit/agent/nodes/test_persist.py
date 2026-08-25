@@ -165,7 +165,7 @@ def test_writes_an_observation_with_the_photo_refs(make_deps, sample_images, db)
     result = make_persist(deps)(_state(sample_images))
     row = db.get(Observation, result["observation_id"])
     assert row.kind == "initial"
-    assert "img-1" in row.photo_refs
+    assert str(sample_images[0].ref) in row.photo_refs
 
 
 def test_writes_the_diagnosis(make_deps, sample_images, db):

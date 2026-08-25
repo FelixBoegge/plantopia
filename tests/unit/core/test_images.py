@@ -1,10 +1,11 @@
 """Tests for upload storage, and for the EXIF orientation it normalises away."""
 
-import base64
 from io import BytesIO
 
+import pytest
 from PIL import Image
 
+from core.blobs import PostgresBlobStore
 from core.config import Settings
 from core.images import store_upload, upright_bytes
 
@@ -68,24 +69,68 @@ class TestUprightBytes:
 
 
 class TestStoreUpload:
-    def test_the_stored_file_is_upright(self, tmp_path):
-        ref = store_upload(_jpeg(orientation=6), tmp_path, _settings())
+    """Storage now goes through the blob port, so these assert on what came back out
+    of it rather than on a file on disk."""
 
-        assert _size((tmp_path / f"{ref.ref}.jpeg").read_bytes()) == (20, 40)
+    def test_the_stored_bytes_are_upright(self, pg_session, blob_owner):
+        store = PostgresBlobStore(pg_session)
 
-    def test_the_model_sees_the_same_bytes_as_the_grid(self, tmp_path):
-        """The base64 sent to the vision model and the file the My Plants card
-        renders must be one image, or the two can disagree about which way up a
-        plant is."""
-        ref = store_upload(_jpeg(orientation=6), tmp_path, _settings())
+        ref = store_upload(
+            _jpeg(orientation=6), blobs=store, user_id=blob_owner, settings=_settings()
+        )
 
-        assert base64.b64decode(ref.data_b64) == (tmp_path / f"{ref.ref}.jpeg").read_bytes()
+        assert _size(store.get(blob_owner, ref.ref)) == (20, 40)
 
-    def test_an_undecodable_upload_is_still_stored(self, tmp_path):
-        """Unchanged behaviour, asserted so the pass-through above cannot regress
-        into a rejection: several UI tests upload magic bytes with no real pixels."""
-        data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    def test_the_model_sees_exactly_what_was_stored(self, pg_session, blob_owner):
+        """One image, not two. The bytes the vision model is shown and the bytes the My
+        Plants card renders are the same row, so they cannot disagree about which way up
+        a plant is."""
+        store = PostgresBlobStore(pg_session)
 
-        ref = store_upload(data, tmp_path, _settings())
+        ref = store_upload(
+            _jpeg(orientation=6), blobs=store, user_id=blob_owner, settings=_settings()
+        )
 
-        assert (tmp_path / f"{ref.ref}.png").read_bytes() == data
+        stored = store.get(blob_owner, ref.ref)
+        assert stored == upright_bytes(_jpeg(orientation=6))
+
+    def test_nothing_is_downscaled(self, pg_session, blob_owner):
+        """U3 is deliberately not bundled with this change: resizing alters what the
+        vision model sees, and no measurement in this project can see the vision layer
+        (M19), so the damage would be undetectable."""
+        store = PostgresBlobStore(pg_session)
+        original = _jpeg(orientation=1)
+
+        ref = store_upload(original, blobs=store, user_id=blob_owner, settings=_settings())
+
+        assert _size(store.get(blob_owner, ref.ref)) == _size(original)
+
+    def test_an_undecodable_upload_is_still_stored(self, pg_session, blob_owner):
+        """Unchanged behaviour, asserted so the pass-through above cannot regress into a
+        rejection: several UI tests upload magic bytes with no real pixels."""
+        store = PostgresBlobStore(pg_session)
+        data = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + bytes(32)
+
+        ref = store_upload(data, blobs=store, user_id=blob_owner, settings=_settings())
+
+        assert store.get(blob_owner, ref.ref) == data
+
+    def test_the_media_type_matches_the_format_detected(self, pg_session, blob_owner):
+        store = PostgresBlobStore(pg_session)
+
+        ref = store_upload(_jpeg(), blobs=store, user_id=blob_owner, settings=_settings())
+
+        assert ref.media_type == "image/jpeg"
+
+
+@pytest.fixture
+def blob_owner(pg_session):
+    from datetime import UTC, datetime
+
+    from core.ids import new_id
+    from data.models import User
+
+    user = User(email=f"{new_id()}@example.test", created_at=datetime.now(UTC))
+    pg_session.add(user)
+    pg_session.flush()
+    return user.id

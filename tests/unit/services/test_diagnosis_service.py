@@ -32,7 +32,7 @@ def _service(
     gate, vision, chat = pipeline_models
     deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
     graph = build_diagnosis_graph(deps, MemorySaver())
-    return DiagnosisService(deps, graph, upload_dir=upload_dir, profile=profile)
+    return DiagnosisService(deps, graph, profile=profile)
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def service(make_deps, pipeline_models, tmp_path):
     gate, vision, chat = pipeline_models
     deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
     graph = build_diagnosis_graph(deps, MemorySaver())
-    return DiagnosisService(deps, graph, upload_dir=tmp_path)
+    return DiagnosisService(deps, graph)
 
 
 def test_start_returns_questions(service):
@@ -145,9 +145,7 @@ def test_a_rejected_upload_returns_a_rejection(make_deps, tmp_path):
         [PlantCheck(is_plant=False, what_it_is="a photograph of a person")]
     )
     deps = make_deps(gate_model=gate)
-    service = DiagnosisService(
-        deps, build_diagnosis_graph(deps, MemorySaver()), upload_dir=tmp_path
-    )
+    service = DiagnosisService(deps, build_diagnosis_graph(deps, MemorySaver()))
     result = service.start(
         uploads=[PNG],
         plant_name="x",
@@ -196,7 +194,14 @@ def test_too_many_uploads_raises(service):
         )
 
 
-def test_uploads_are_written_to_disk(service, tmp_path):
+def test_uploads_are_stored_and_retrievable(service, db, owner):
+    """Not "written to disk" any more: an upload goes to the blob store, which is what
+    lets a redeployed container still serve the photograph."""
+    from sqlalchemy import select
+
+    from core.blobs import PostgresBlobStore
+    from data.models import Blob
+
     service.start(
         uploads=[PNG],
         plant_name="Basil",
@@ -205,7 +210,10 @@ def test_uploads_are_written_to_disk(service, tmp_path):
         user_notes=None,
         thread_id="t7",
     )
-    assert list(tmp_path.glob("*.png"))
+
+    keys = list(db.scalars(select(Blob.id).where(Blob.user_id == owner)))
+    assert len(keys) == 1
+    assert PostgresBlobStore(db).get(owner, keys[0]) == PNG
 
 
 def test_answering_an_unknown_thread_raises(service):
@@ -233,7 +241,7 @@ def recheck_service(make_deps, tmp_path):
 
         deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat)
         graph = build_diagnosis_graph(deps, MemorySaver())
-        return DiagnosisService(deps, graph, upload_dir=tmp_path)
+        return DiagnosisService(deps, graph)
 
     return _make
 

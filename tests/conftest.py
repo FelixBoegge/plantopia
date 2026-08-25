@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 
 from agent.deps import Deps
+from core.blobs import PostgresBlobStore
 from core.config import Settings
 from core.ids import new_id
 from data.models import User
@@ -23,6 +24,10 @@ from tests.fakes.embeddings import HashingEmbeddings
 # Real-PostgreSQL fixtures, defined in tests/postgres.py so this file stays about
 # wiring rather than about database lifecycle. `docker compose up -d db` first.
 from tests.postgres import pg_engine, pg_session  # noqa: F401
+
+# The PNG signature, written as byte values rather than escapes. Enough to store and
+# read back; no test asserts on pixels.
+PNG_BYTES = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + b"pixels"
 
 
 @pytest.fixture(autouse=True)
@@ -108,6 +113,7 @@ def make_deps(db, owner, now, chroma_retriever):
             "vision_model": ScriptedStructuredModel([]),
             "chat_model": ScriptedStructuredModel([]),
             "retriever": chroma_retriever,
+            "blobs": PostgresBlobStore(db),
             "plants": PlantRepository(db),
             "observations": ObservationRepository(db),
             "diagnoses": DiagnosisRepository(db),
@@ -124,11 +130,16 @@ def make_deps(db, owner, now, chroma_retriever):
 
 
 @pytest.fixture
-def sample_images():
-    """One tiny valid PNG, as the graph carries images."""
+def sample_images(db, owner):
+    """One tiny valid PNG, stored so the vision call can actually load it.
+
+    The graph carries a key, not the bytes — so a fixture that invented a key without
+    putting anything behind it would make every vision call raise ImageMissingError.
+    """
     from agent.state import ImageRef
 
-    return [ImageRef(ref="img-1", media_type="image/png", data_b64="aGVsbG8=")]
+    key = PostgresBlobStore(db).put(owner, PNG_BYTES, "image/png")
+    return [ImageRef(ref=key, media_type="image/png")]
 
 
 @pytest.fixture

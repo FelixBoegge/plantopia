@@ -9,6 +9,7 @@ Every failure returns ``None``. The image path is additive: without it the diagn
 proceeds on the text path exactly as it would have.
 """
 
+import base64
 import logging
 
 import httpx
@@ -35,9 +36,9 @@ class ImageEmbedder:
         self._model = model
         self._client = client
 
-    def embed_image(self, data_b64: str, media_type: str) -> list[float] | None:
+    def embed_image(self, data: bytes, media_type: str) -> list[float] | None:
         """Return the embedding vector for one image, or None on any failure."""
-        if not data_b64:
+        if not data:
             return None
 
         owns_client = self._client is None
@@ -53,7 +54,7 @@ class ImageEmbedder:
                             "content": [
                                 {
                                     "type": "image_url",
-                                    "image_url": {"url": f"data:{media_type};base64,{data_b64}"},
+                                    "image_url": {"url": f"data:{media_type};base64,{_b64(data)}"},
                                 }
                             ]
                         }
@@ -74,3 +75,8 @@ class ImageEmbedder:
         finally:
             if owns_client:
                 client.close()
+
+
+def _b64(data: bytes) -> str:
+    """Base64 is how the API wants an image; it is not how the application carries one."""
+    return base64.b64encode(data).decode("ascii")

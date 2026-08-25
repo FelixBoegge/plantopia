@@ -25,7 +25,16 @@ logger = logging.getLogger(__name__)
 # vision message from ``state.images`` before ever consulting a model. Golden cases
 # are text, so this one-pixel placeholder stands in for a photograph the case never
 # had; the gate and vision tiers are scripted to pass it unconditionally either way.
-_PLACEHOLDER_IMAGE = ImageRef(ref="golden-case", media_type="image/png", data_b64="aGVsbG8=")
+# Stored rather than invented: an ImageRef is a key into the blob store, and a key
+# with nothing behind it makes the vision call raise rather than proceed on a
+# photograph it cannot see.
+_PLACEHOLDER_BYTES = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + b"placeholder"
+
+
+def _placeholder_image(deps: Deps) -> ImageRef:
+    key = deps.blobs.put(deps.user_id, _PLACEHOLDER_BYTES, "image/png")
+    return ImageRef(ref=key, media_type="image/png")
+
 
 # ``questions_asked`` records the *complete* interrupt payload — watering and
 # drainage (``agent.nodes.context.ALWAYS_ASK_KEYS``), the conditional location
@@ -120,7 +129,7 @@ def run_case(case: GoldenCase, *, deps: Deps, graph: CompiledStateGraph, thread_
 
     try:
         state = DiagnosisState(
-            images=[_PLACEHOLDER_IMAGE],
+            images=[_placeholder_image(deps)],
             plant_name=case.plant.name,
             location_kind=case.plant.location_kind,
             location_text=case.plant.location_text,
