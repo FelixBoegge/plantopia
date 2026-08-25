@@ -1,6 +1,8 @@
 # Capstone Design — FastAPI, React and Postgres
 
-**Status:** awaiting review. Implementation plan not yet written, nothing implemented.
+**Status:** approved 2026-08-25, with the feature scope in §14 added the same day. Work is
+planned and tracked in OpenSpec from here — see §15. This document is the background the
+proposals are written against, not the plan of record.
 
 **Companion documents:** [`project_brief_capstone.md`](../../../project_brief_capstone.md) is the
 assignment this is built against; [`project_brief_Sprint4.md`](../../../project_brief_Sprint4.md)
@@ -19,6 +21,10 @@ behaviour difference it produces is a defect rather than a feature. The diagnosi
 fourteen nodes, its prompts, its tools, the corpus and the evaluation harness all cross over
 unmodified. What changes is everything around them: who can use the app, where its data lives,
 how it is served, and what it looks like.
+
+The feature work in §14 *does* change the agent, deliberately. It lands after the migration is
+complete and verified, precisely so that the two kinds of change are never in flight together
+and a behaviour difference always has one candidate cause rather than two.
 
 **In scope:**
 
@@ -48,8 +54,11 @@ how it is served, and what it looks like.
 | Multi-replica deployment | The `RunExecutor` and event-bus ports allow it. One container is the target. |
 | Chroma's image-search path | `supports_image_search` / `search_by_image` port across as no-ops, as they already are — no reachable multimodal embedder (`U2`). |
 
-**Budget:** four weeks at 30–40h/week, so 120–160 hours. The estimate below totals ~155.
-That is at the ceiling with no slack, and §11 names what gets cut first.
+**Budget:** revised 2026-08-25. The migration alone estimates at ~155 hours. Five feature
+changes agreed after this document was first drafted add ~44 more (§14), so the total is
+~200 hours — six to seven weeks at 30–40h/week rather than four. The capstone review is
+booked when the work is ready rather than against a fixed date. §11's cut list stands as
+the order things go if that estimate proves optimistic.
 
 ---
 
@@ -438,3 +447,116 @@ The evaluation harness never runs in CI — it costs money and needs real keys.
 - **Upload downscaling** (`U3`) — after vision is measurable.
 - **Empty differentials** (`U9`) — a run that returns no candidates at all.
 - **S3 blob adapter**, subscription tiers, multi-replica deployment. Seams exist; features do not.
+
+---
+
+## 14. Feature scope (added 2026-08-25)
+
+Five features agreed after the migration design was drafted. All land **after** the migration,
+on the finished stack, so each is built once. Together ~44 hours.
+
+### 14.1 Identification by Pl@ntNet, with the owner deciding — ~10h
+
+The original idea was a reference-image knowledge base: a list of plants and crops, images
+pulled per species, embedded, and searched by similarity against the upload. It dissolved on
+contact with a constraint already recorded as `U2` — no multimodal embedding model is reachable
+on an OpenRouter key, and a local embedder (BioCLIP being the strongest candidate for
+fine-grained taxa) was rejected because ~2 GB of torch in the container is a liability at deploy
+time.
+
+Pl@ntNet's identification API replaces it. Free tier: 500 identifications/day, **commercial use
+permitted**, 50,000+ species, European hosting, and a required *"powered by Pl@ntNet"*
+attribution in the UI — which is a design requirement, not a nicety.
+
+**Both identifications run.** The vision model identifies and tags each photograph's organ
+(leaf, flower, fruit, bark, habit — Pl@ntNet takes those as input and is more accurate with
+them); Pl@ntNet identifies from the same photographs in parallel. At the existing clarifying
+interrupt the owner sees three things — the name they typed, if they typed one; Pl@ntNet's top
+match with its score; the vision model's suggestion — and chooses. Two independent methods
+disagreeing is information rather than a defect, and it is what makes the choice screen worth
+showing.
+
+The optional species text field sits under the upload widget. Left blank, the pipeline proceeds
+on the identification as it does today.
+
+### 14.2 Image metadata capture — ~7h
+
+EXIF gives the capture timestamp and, when present, a GPS fix, so the owner stops supplying by
+hand what the photograph already knows.
+
+**Location is coarsened on arrival and the precise fix is never stored** — rounded to ~0.1°
+(about 11 km) or reverse-geocoded to a place name. Weather at 11 km is diagnostically
+indistinguishable from weather at the doorstep, and the alternative is holding precise home
+locations next to photographs of people's interiors. Surfaced as "detected: near Berlin" with an
+edit control.
+
+Two implementation constraints. Metadata must be read from the **original bytes on arrival**:
+`core/images.py:upright_bytes` calls `ImageOps.exif_transpose` and re-saves, which clears the
+orientation tag and can take the rest of the EXIF block with it. And photographs shared through
+messaging apps arrive stripped, while browser camera capture often has no EXIF at all — so this
+is enrichment, and the manual path stays.
+
+### 14.3 Granular weather and forecast — ~9h
+
+`tools/weather.py` already fetches daily arrays from Open-Meteo's archive — minimum and maximum
+temperature, precipitation — and then collapses three weeks into a handful of aggregates. This
+change stops discarding them and adds the forecast endpoint for the next seven days. No API key,
+no cost.
+
+One fetch, three consumers:
+
+- **The diagnose prompt** gets a condensed block: notable events (frost dates, heat days, dry
+  and wet spells), the last seven days day by day, and the seven-day forecast day by day. A few
+  hundred tokens, all of it decision-relevant — a table of 37 unremarkable rows buries the one
+  frost date that explains everything.
+- **The timeline** (§14.5) gets the full daily series, stored with the observation, drawn as a
+  chart. A human reads that better than a model reads a table.
+- **The chat agent** gets a tool that queries the stored series for any window, falling back to
+  Open-Meteo only outside it — so "was it cold last week?" gets a real answer rather than a
+  recollection.
+
+### 14.4 Species care profiles that keep up — ~8h
+
+`tools/care_profiles.py` holds 18 hand-written profiles. Pl@ntNet can name 50,000+ species, so
+sharper identification widens the "no baseline care profile is known" gap rather than closing it.
+
+The first time a species is identified, the agent researches its care baseline through the
+existing web-search tool, writes a `CareProfile`, and caches it in Postgres. Hand-written
+profiles remain the trusted tier and always win. Every generated profile carries its sources and
+is labelled as derived — the same honesty rule the differential already follows, and the same
+untrusted-content fencing applies to what the search returns.
+
+### 14.5 The plant timeline — ~10h
+
+Per plant: every observation with its photograph and date, each diagnosis and its leading
+candidate, roadmap steps as they were completed or skipped, and — for outdoor plants — daily
+temperature and rainfall drawn underneath. That is the causal chain a history page exists to
+show: what you saw, what it was judged to be, what you did, what the weather was doing.
+
+Chat keeps its own tab, with one exception: when the chat agent flags a described symptom as
+different enough to warrant a fresh look, that is a real event and belongs on the timeline.
+
+---
+
+## 15. Decomposition into OpenSpec changes
+
+Planning and tracking move to OpenSpec (`@fission-ai/openspec`, schema `spec-driven`) as of
+2026-08-25. Eleven changes in dependency order; each gets its own proposal, design, spec deltas
+and tasks.
+
+| # | Change | Est. | Covers |
+|---|---|---|---|
+| 1 | `add-postgres-data-layer` | ~30h | §4 entire, including the pgvector retriever and §9.3's parity gate |
+| 2 | `add-http-api-and-auth` | ~30h | §5, plus email verification, reset, quotas, spend cap, the consent record |
+| 3 | `add-background-runs-streaming` | ~15h | §6 entire |
+| 4 | `add-react-frontend` | ~50h | §7, closing with the deletion of Streamlit and the `ui` test tier |
+| 5 | `add-plantnet-identification` | ~10h | §14.1 — one flow, so the typed name and the three-way choice ride with it |
+| 6 | `add-image-metadata-capture` | ~7h | §14.2 |
+| 7 | `add-granular-weather` | ~9h | §14.3 |
+| 8 | `add-species-care-profiles` | ~8h | §14.4 |
+| 9 | `add-plant-timeline` | ~10h | §14.5 — needs 6 and 7 to have anything to draw |
+| 10 | `add-privacy-controls` | ~10h | §8's export and cascading deletion, once there are surfaces to trigger them |
+| 11 | `add-deployment-pipeline` | ~15h | §10, plus the README and the showcase entry the brief requires |
+
+The SSE-across-interrupt probe stays a throwaway spike before change 3. Its output is an answer,
+not code, so it is not a change.
