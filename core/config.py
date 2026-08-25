@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     verification_token_hours: int = Field(default=24, ge=1, le=168)
     reset_token_hours: int = Field(default=1, ge=1, le=24)
 
+    # Whether the refresh cookie is marked Secure. True everywhere it matters; False is
+    # what lets a browser keep the cookie when the frontend is served over plain http on
+    # localhost, which is the only situation where turning it off is defensible.
+    secure_cookies: bool = True
+
     minimum_password_length: int = Field(default=12, ge=8, le=128)
 
     # The privacy notice version a registration agrees to. Stored per account, so

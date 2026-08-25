@@ -22,7 +22,8 @@ from core.mail import Mailer
 from data.engine import transaction
 from data.models import User
 from identity import email_tokens, messages
-from identity.passwords import hash_password
+from identity.passwords import UNUSABLE, hash_password, needs_rehash
+from identity.passwords import verify as verify_password
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,14 @@ class WeakPasswordError(RegistrationError):
 
 class ConsentRequiredError(RegistrationError):
     """The privacy notice was not agreed to."""
+
+
+class AuthenticationError(Exception):
+    """Sign-in was refused.
+
+    One exception for every reason — unknown address, wrong password, unverified account —
+    because the caller gets one answer for all of them.
+    """
 
 
 class VerificationError(Exception):
@@ -146,3 +155,36 @@ def normalise(email: str) -> str:
     guess, and guessing wrong silently merges two people.
     """
     return email.strip().lower()
+
+
+def authenticate(session: Session, *, email: str, password: str) -> User:
+    """The account signing in, or a refusal that does not say why.
+
+    Unknown address, wrong password and unverified account are one answer. Separating them
+    turns sign-in into a way to ask who has an account here, and the third one additionally
+    says whether that person has read their email.
+
+    A missing account still pays for a hash. Argon2 takes long enough to measure, and a
+    sign-in that returns fast for unknown addresses and slowly for known ones has answered
+    the question the identical response was refusing to answer.
+    """
+    address = normalise(email)
+    user = session.scalar(select(User).where(func.lower(User.email) == address))
+
+    if user is None:
+        verify_password(password, UNUSABLE)
+        raise AuthenticationError("those credentials were not accepted")
+
+    if not verify_password(password, user.password_hash):
+        raise AuthenticationError("those credentials were not accepted")
+
+    if user.verified_at is None:
+        raise AuthenticationError("those credentials were not accepted")
+
+    if needs_rehash(user.password_hash):
+        # The parameters have been raised since this hash was made. Signing in is the only
+        # moment the plaintext exists, so it is the only chance to upgrade it.
+        with transaction(session):
+            user.password_hash = hash_password(password)
+
+    return user

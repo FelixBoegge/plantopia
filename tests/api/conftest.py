@@ -100,7 +100,18 @@ class _NotWired:
 
 @pytest.fixture
 def api_settings():
-    return Settings(_env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET)
+    """Settings for a test application.
+
+    ``secure_cookies`` is off because the test client speaks plain http, and a browser —
+    which is what the client emulates — will not send a Secure cookie back over http. The
+    attribute itself is asserted separately, against settings that leave it on.
+    """
+    return Settings(
+        _env_file=None,
+        openrouter_api_key="sk-test",
+        jwt_secret=TEST_JWT_SECRET,
+        secure_cookies=False,
+    )
 
 
 @pytest.fixture

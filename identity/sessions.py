@@ -13,6 +13,12 @@ family goes and the account signs in again.
 **The accepted cost.** A client that blindly retries a refresh after a dropped response
 presents a retired token and logs itself out. That is indistinguishable from a theft, and
 the frontend contract is therefore that refresh is not retried.
+
+**These functions commit their own work**, unlike the repositories, which leave that to the
+caller. They have to: detecting reuse invalidates a family and *then* refuses the request,
+and a caller that wrapped the call in one transaction would roll the invalidation back with
+the refusal — leaving the thief's token working, which is the one outcome this whole
+mechanism exists to prevent.
 """
 
 from dataclasses import dataclass
@@ -24,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from core.config import Settings
 from core.ids import new_id
+from data.engine import transaction
 from data.models import RefreshToken
 from identity.tokens import (
     fingerprint,
@@ -62,7 +69,9 @@ class IssuedSession:
 
 def start(session: Session, *, user_id: UUID, settings: Settings) -> IssuedSession:
     """Begin a new session. Each sign-in starts its own family."""
-    return _issue(session, user_id=user_id, family_id=new_id(), settings=settings)
+    with transaction(session):
+        issued = _issue(session, user_id=user_id, family_id=new_id(), settings=settings)
+    return issued
 
 
 def refresh(session: Session, *, presented: str, settings: Settings) -> IssuedSession:
@@ -80,8 +89,10 @@ def refresh(session: Session, *, presented: str, settings: Settings) -> IssuedSe
 
     if stored.used_at is not None:
         # Two parties hold this token. Which one is asking cannot be determined, so the
-        # session ends for both.
-        revoke_family(session, stored.family_id)
+        # session ends for both — and the ending is committed before the refusal, or the
+        # refusal would undo it.
+        with transaction(session):
+            revoke_family(session, stored.family_id)
         raise RefreshTokenReusedError("refresh token reused; the session has been ended")
 
     if stored.revoked_at is not None:
@@ -90,8 +101,12 @@ def refresh(session: Session, *, presented: str, settings: Settings) -> IssuedSe
     if has_expired(stored.expires_at):
         raise InvalidRefreshTokenError("this refresh token has expired")
 
-    stored.used_at = datetime.now(UTC)
-    return _issue(session, user_id=stored.user_id, family_id=stored.family_id, settings=settings)
+    with transaction(session):
+        stored.used_at = datetime.now(UTC)
+        issued = _issue(
+            session, user_id=stored.user_id, family_id=stored.family_id, settings=settings
+        )
+    return issued
 
 
 def end(session: Session, *, presented: str) -> None:
@@ -109,7 +124,8 @@ def end(session: Session, *, presented: str) -> None:
         select(RefreshToken).where(RefreshToken.token_hash == fingerprint(presented))
     )
     if stored is not None:
-        revoke_family(session, stored.family_id)
+        with transaction(session):
+            revoke_family(session, stored.family_id)
 
 
 def revoke_family(session: Session, family_id: UUID) -> int:

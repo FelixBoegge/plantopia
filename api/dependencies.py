@@ -16,10 +16,10 @@ from collections.abc import Iterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
-from agent.wiring import build_deps, default_owner_id, now_utc, open_session
+from agent.wiring import build_deps, now_utc, open_session
 from core.blobs import BlobStore, PostgresBlobStore
 from core.config import Settings, get_settings
 from core.mail import Mailer, build_mailer
@@ -30,6 +30,7 @@ from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.profile import ProfileRepository
 from data.repositories.roadmap import RoadmapRepository
+from identity.tokens import TokenExpiredError, TokenInvalidError, read_access_token
 from services.chat_service import ChatService
 from services.plant_service import PlantService
 from services.profile_service import ProfileService
@@ -71,14 +72,43 @@ def mailer_dep(settings: SettingsDep) -> Mailer:
 MailerDep = Annotated[Mailer, Depends(mailer_dep)]
 
 
-def current_owner(session: SessionDep) -> UUID:
+class NotSignedInError(Exception):
+    """No usable access token was presented."""
+
+
+class SessionExpiredError(Exception):
+    """The access token was ours and is past its lifetime.
+
+    Kept apart from ``NotSignedInError`` because the client's next move differs: this one
+    means refresh, the other means sign in again. A client that cannot tell them apart
+    either signs people out every fifteen minutes or retries forever.
+    """
+
+
+def current_owner(
+    settings: SettingsDep, authorization: Annotated[str | None, Header()] = None
+) -> UUID:
     """Whose request this is.
 
-    The seeded owner, until authentication exists. **This function is the seam.** Handlers
-    take the result and never ask how it was determined, so introducing real sessions
-    changes how an owner is established and nothing about what happens afterwards.
+    **This function is the seam.** Handlers take the result and never ask how it was
+    determined, which is what let the seeded owner become a real session without touching a
+    single handler.
+
+    The token is believed on its signature alone; no row is read. That is the deal a
+    stateless token makes, and it is why the lifetime is fifteen minutes: an account deleted
+    or disabled mid-token keeps working until the token expires, and shortening that window
+    is the only lever there is.
     """
-    return default_owner_id(session)
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise NotSignedInError("no access token was presented")
+
+    try:
+        return read_access_token(token, secret=settings.jwt_secret)
+    except TokenExpiredError as exc:
+        raise SessionExpiredError("the access token has expired") from exc
+    except TokenInvalidError as exc:
+        raise NotSignedInError("the access token could not be read") from exc
 
 
 OwnerDep = Annotated[UUID, Depends(current_owner)]

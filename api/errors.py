@@ -17,8 +17,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from api.dependencies import NotSignedInError, SessionExpiredError
 from data.repositories.errors import RecordNotFoundError
-from identity.accounts import RegistrationError, VerificationError
+from identity.accounts import AuthenticationError, RegistrationError, VerificationError
+from identity.sessions import SessionError
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,8 @@ TYPE_NOT_FOUND = "https://plantopia.example/problems/not-found"
 TYPE_INVALID_REQUEST = "https://plantopia.example/problems/invalid-request"
 TYPE_INTERNAL = "https://plantopia.example/problems/internal-error"
 TYPE_INVALID_LINK = "https://plantopia.example/problems/invalid-link"
+TYPE_UNAUTHENTICATED = "https://plantopia.example/problems/unauthenticated"
+TYPE_SESSION_EXPIRED = "https://plantopia.example/problems/session-expired"
 
 
 def problem(
@@ -59,6 +63,61 @@ def register(app: FastAPI) -> None:
             type_=TYPE_NOT_FOUND,
             title="Not found",
             detail="No such resource.",
+        )
+
+    @app.exception_handler(NotSignedInError)
+    def _not_signed_in(request: Request, exc: NotSignedInError) -> JSONResponse:
+        """No usable access token. The client signs in."""
+        return problem(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            type_=TYPE_UNAUTHENTICATED,
+            title="Not signed in",
+            detail="This endpoint needs a signed-in account.",
+        )
+
+    @app.exception_handler(SessionExpiredError)
+    def _expired(request: Request, exc: SessionExpiredError) -> JSONResponse:
+        """A token that was ours and has run out. The client refreshes.
+
+        Distinct from ``NotSignedInError`` so the client knows which of the two to do. One
+        that cannot tell them apart either signs people out every fifteen minutes or retries
+        a sign-in that will never work.
+        """
+        return problem(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            type_=TYPE_SESSION_EXPIRED,
+            title="Session expired",
+            detail="The access token has expired. Refresh it and try again.",
+        )
+
+    @app.exception_handler(AuthenticationError)
+    def _refused_sign_in(request: Request, exc: AuthenticationError) -> JSONResponse:
+        """One answer for every reason a sign-in fails.
+
+        Unknown address, wrong password and unverified account are indistinguishable here.
+        Separating them would turn sign-in into a way to ask who has an account, and the
+        third would additionally say whether that person has read their email.
+        """
+        return problem(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            type_=TYPE_UNAUTHENTICATED,
+            title="Not signed in",
+            detail="Those credentials were not accepted.",
+        )
+
+    @app.exception_handler(SessionError)
+    def _refused_refresh(request: Request, exc: SessionError) -> JSONResponse:
+        """A refresh that cannot be honoured, including a reused token whose family has
+        just been invalidated.
+
+        Both mean the same thing to the client — sign in again — so both get the same
+        answer. Which one it was is in the log, where it is somebody's job to look.
+        """
+        return problem(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            type_=TYPE_UNAUTHENTICATED,
+            title="Not signed in",
+            detail="This session has ended. Sign in again.",
         )
 
     @app.exception_handler(RegistrationError)

@@ -164,3 +164,22 @@ class VerifyIn(BaseModel):
     """The token from a verification link."""
 
     token: str = Field(min_length=1)
+
+
+class LoginIn(BaseModel):
+    """Credentials. Neither field is echoed anywhere."""
+
+    email: EmailStr
+    password: str
+
+
+class SessionOut(BaseModel):
+    """What a sign-in or a refresh hands back.
+
+    The refresh token is deliberately absent: it travels as an httpOnly cookie, and putting
+    it here as well would hand it to any script that can read the response.
+    """
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in_seconds: int

@@ -24,17 +24,17 @@
 
 ## 4. Sessions
 
-- [ ] 4.1 `POST /auth/login` issuing an access token in the body and a refresh cookie that is httpOnly, Secure and SameSite=Strict; verify tests for each cookie attribute and that the refresh token is absent from the body.
-- [ ] 4.2 Refuse sign-in for an unverified account; verify a test that no session is issued.
-- [ ] 4.3 Make an unknown address and a wrong password indistinguishable; verify a test comparing both responses.
-- [ ] 4.4 `POST /auth/refresh` rotating the token; verify tests for a new access token, a replaced refresh token, and the presented one ceasing to work.
-- [ ] 4.5 `POST /auth/logout` invalidating the token and clearing the cookie; verify a test that refreshing afterwards is refused.
-- [ ] 4.6 Distinguish an expired access token from a malformed one; verify a test that a client can tell "refresh" from "sign in again".
+- [x] 4.1 `POST /auth/login` issuing an access token in the body and a refresh cookie that is httpOnly, Secure and SameSite=Strict; verify tests for each cookie attribute and that the refresh token is absent from the body.
+- [x] 4.2 Refuse sign-in for an unverified account; verify a test that no session is issued.
+- [x] 4.3 Make an unknown address and a wrong password indistinguishable; verify a test comparing both responses.
+- [x] 4.4 `POST /auth/refresh` rotating the token; verify tests for a new access token, a replaced refresh token, and the presented one ceasing to work.
+- [x] 4.5 `POST /auth/logout` invalidating the token and clearing the cookie; verify a test that refreshing afterwards is refused.
+- [x] 4.6 Distinguish an expired access token from a malformed one; verify a test that a client can tell "refresh" from "sign in again".
 
 ## 5. The switchover
 
-- [ ] 5.1 Replace `current_owner` with session resolution; verify that no handler changed, by diffing the routers.
-- [ ] 5.2 Refuse owner-scoped endpoints without a session, while leaving auth and health endpoints open; verify a table-driven test over every route asserting which require a session and which do not.
+- [x] 5.1 Replace `current_owner` with session resolution; verify that no handler changed, by diffing the routers.
+- [x] 5.2 Refuse owner-scoped endpoints without a session, while leaving auth and health endpoints open; verify a table-driven test over every route asserting which require a session and which do not.
 - [ ] 5.3 Remove `default_owner_id` and the seeded owner; verify nothing imports it and the suite is green.
 - [ ] 5.4 **Decide what happens to Streamlit, and do it.** It resolves an owner through the seeded row and will break outright. Either give it a development-only sign-in or retire it in favour of the API. Surface the choice rather than picking silently — it is the control client the migration has leaned on, and retiring it early costs that. Verify whichever is chosen actually works end to end.
 
