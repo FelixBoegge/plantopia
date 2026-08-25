@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from core.config import Settings
+from tests.secrets import TEST_JWT_SECRET
 
 
 def test_settings_reads_required_key_from_env(monkeypatch):
@@ -112,3 +113,49 @@ def test_spend_limits_are_configurable(monkeypatch):
 
     assert settings.monthly_run_allowance == 3
     assert settings.daily_spend_cap_usd == 0.5
+
+
+class TestRunSettings:
+    """The knobs background runs read, and the one distinction among them that matters."""
+
+    def test_every_run_setting_has_a_default(self):
+        """A deployment that sets none of these still starts. Requiring a pool size before
+        anything can run would be a required setting with an obvious right answer."""
+        settings = Settings(_env_file=None, openrouter_api_key="k", jwt_secret=TEST_JWT_SECRET)
+
+        assert settings.run_pool_size >= 1
+        assert settings.run_queue_limit >= 1
+        assert settings.run_working_ceiling_minutes >= 1
+        assert settings.run_answering_ceiling_minutes >= 1
+        assert settings.run_keepalive_seconds >= 1
+
+    def test_the_two_ceilings_are_separately_configurable(self):
+        """Waiting for a person is not the same as being stuck. One number would either
+        reap live conversations or leave dead runs for hours."""
+        settings = Settings(
+            _env_file=None,
+            openrouter_api_key="k",
+            jwt_secret=TEST_JWT_SECRET,
+            run_working_ceiling_minutes=3,
+            run_answering_ceiling_minutes=180,
+        )
+
+        assert settings.run_working_ceiling_minutes == 3
+        assert settings.run_answering_ceiling_minutes == 180
+
+    def test_waiting_for_a_person_is_given_longer_than_working_by_default(self):
+        """Not a rule the type system can hold, but a default that reads as an accident if
+        it is ever inverted."""
+        settings = Settings(_env_file=None, openrouter_api_key="k", jwt_secret=TEST_JWT_SECRET)
+
+        assert settings.run_answering_ceiling_minutes > settings.run_working_ceiling_minutes
+
+    def test_a_pool_of_zero_is_refused(self):
+        """A pool that cannot run anything would accept runs and never start them."""
+        with pytest.raises(ValidationError):
+            Settings(
+                _env_file=None,
+                openrouter_api_key="k",
+                jwt_secret=TEST_JWT_SECRET,
+                run_pool_size=0,
+            )

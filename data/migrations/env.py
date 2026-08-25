@@ -18,7 +18,11 @@ from data.models import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # ``disable_existing_loggers`` defaults to True, which silences every logger configured
+    # before this ran. Harmless when `alembic upgrade head` is its own process, and not
+    # harmless at all when migrations run inside one that has already set up logging — a
+    # startup migration, or a test — where it turns the application mute for good.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

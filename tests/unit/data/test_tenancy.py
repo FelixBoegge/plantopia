@@ -40,6 +40,7 @@ from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.profile import ProfileRepository
 from data.repositories.roadmap import RoadmapRepository
+from data.repositories.runs import RunRepository
 
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
@@ -128,12 +129,17 @@ def records(db, owner):
         owner, fact="waters weekly", source="stated", confidence=0.8, now=NOW
     )
     ProfileRepository(db).set_cursor(owner, plant_id=plant_id, last_message_id=message_id)
+    run_id = RunRepository(db).create(
+        owner, plant_id=plant_id, kind="diagnosis", thread_id="t", now=NOW
+    )
+    RunRepository(db).append_event(run_id, kind="step", payload={"step": "one"}, now=NOW)
     return {
         "plant_id": plant_id,
         "observation_id": observation_id,
         "diagnosis_id": diagnosis_id,
         "step_id": step_ids[0],
         "message_id": message_id,
+        "run_id": run_id,
     }
 
 
@@ -169,6 +175,10 @@ READS = [
         "messages.list_for_plant",
         lambda s, u, r: MessageRepository(s).list_for_plant(u, r["plant_id"]),
     ),
+    ("runs.get", lambda s, u, r: RunRepository(s).get(u, r["run_id"])),
+    ("runs.list_for_user", lambda s, u, r: RunRepository(s).list_for_user(u)),
+    ("runs.thread_of", lambda s, u, r: RunRepository(s).thread_of(u, r["run_id"])),
+    ("runs.events", lambda s, u, r: RunRepository(s).events(u, r["run_id"])),
     (
         "messages.list_for_plant_after",
         lambda s, u, r: MessageRepository(s).list_for_plant_after(u, r["plant_id"], after=None),
@@ -287,3 +297,21 @@ def test_the_check_would_notice_a_missing_filter(db, owner, other_owner, records
         "without the user_id predicate the query returns another owner's row — "
         "which is exactly the failure the tenancy tests exist to catch"
     )
+
+
+def test_asking_to_cancel_another_owners_run_does_nothing(db, owner, other_owner, records):
+    """`RunRepository` reports a refused write by returning False rather than raising, and
+    is therefore not in the WRITES table above.
+
+    The difference is deliberate: a status transition has a legitimate reason to fail that
+    is not an error — a cancellation landing between two nodes, a second answer arriving —
+    and a caller has to be able to tell it lost a race. What that costs is this test, which
+    asserts the same property the table asserts for everybody else.
+    """
+    assert RunRepository(db).request_cancel(other_owner, records["run_id"]) is False
+    assert RunRepository(db).get(owner, records["run_id"]).status == "queued"
+
+
+def test_a_run_can_be_cancelled_by_the_owner_it_belongs_to(db, owner, records):
+    """The other half. A method that refused everybody would pass the test above."""
+    assert RunRepository(db).request_cancel(owner, records["run_id"]) is True

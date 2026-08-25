@@ -3,15 +3,15 @@
 - [x] 1.1 Add `Run` and `RunEvent` models — owner, plant, kind, thread id, status, timestamps, error, resulting diagnosis; and per-run sequence, kind, payload, time; verify the schema test asserts the new table names, that every timestamp carries a timezone, and that a run's sequence is unique within its run rather than globally.
 - [x] 1.2 Generate and apply the migration; verify `alembic upgrade head` on an empty database and `alembic check` reporting no drift.
 - [x] 1.3 Add a status constraint permitting only the six statuses; verify a test that writing an invented status is refused by the database, not only by Python.
-- [ ] 1.4 Add `RunRepository`, owner-scoped like every other; verify a test that another owner's run is unreachable through every method, added to the repository tenancy table.
-- [ ] 1.5 Add settings for pool size, queue depth, the working ceiling, the answering ceiling and the keep-alive interval, with `.env.example` documentation; verify a test that each has a default and that the two ceilings are separately configurable.
+- [x] 1.4 Add `RunRepository`, owner-scoped like every other; verify a test that another owner's run is unreachable through every method, added to the repository tenancy table.
+- [x] 1.5 Add settings for pool size, queue depth, the working ceiling, the answering ceiling and the keep-alive interval, with `.env.example` documentation; verify a test that each has a default and that the two ceilings are separately configurable.
 
 ## 2. Execution and the bus, without a graph behind them
 
-- [ ] 2.1 Add the `RunExecutor` port and a bounded thread-pool adapter; verify tests that work submitted is executed, that the pool does not exceed its size, and that a task raising does not kill the worker for the next one.
-- [ ] 2.2 Refuse submission when the queue is at its ceiling; verify a test that the refusal is distinguishable from an allowance and from the daily cap, since it is the only one that clears on its own.
-- [ ] 2.3 Add the event bus — publish to a run's subscribers, subscribe, unsubscribe; verify tests that two subscribers to one run both receive, that a subscriber to another run receives nothing, and that a subscriber that goes away does not block a publish.
-- [ ] 2.4 Make every status transition a conditional update on the current status; verify a test that two concurrent transitions from one status produce one winner and one caller that sees no rows changed.
+- [x] 2.1 Add the `RunExecutor` port and a bounded thread-pool adapter; verify tests that work submitted is executed, that the pool does not exceed its size, and that a task raising does not kill the worker for the next one.
+- [x] 2.2 Refuse submission when the queue is at its ceiling; verify a test that the refusal is distinguishable from an allowance and from the daily cap, since it is the only one that clears on its own.
+- [x] 2.3 Add the event bus — publish to a run's subscribers, subscribe, unsubscribe; verify tests that two subscribers to one run both receive, that a subscriber to another run receives nothing, and that a subscriber that goes away does not block a publish.
+- [x] 2.4 Make every status transition a conditional update on the current status; verify a test that two concurrent transitions from one status produce one winner and one caller that sees no rows changed.
 
 ## 3. Starting a run
 

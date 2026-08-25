@@ -146,6 +146,27 @@ class Settings(BaseSettings):
     auth_rate_limit: int = Field(default=10, ge=1)
     auth_rate_window_seconds: int = Field(default=300, ge=1)
 
+    # Background runs. The pool is small because the work is IO-bound waiting on a
+    # provider, not CPU — more threads buy queue depth, not throughput, and each one
+    # holds a database connection while it works.
+    run_pool_size: int = Field(default=4, ge=1, le=64)
+
+    # What the queue will hold before a run is refused at the door. Unbounded, a burst
+    # becomes a pile of runs that each take minutes and each hold a checkpoint; refusing
+    # is the only answer that tells somebody to come back shortly.
+    run_queue_limit: int = Field(default=32, ge=1)
+
+    # Two ceilings, because waiting for a person is not the same as being stuck. A run
+    # still `running` past the first is a process that died. One `awaiting_answers` past
+    # the second is somebody who closed the tab. A single number would either reap live
+    # conversations or leave dead runs for hours.
+    run_working_ceiling_minutes: int = Field(default=10, ge=1)
+    run_answering_ceiling_minutes: int = Field(default=60, ge=1)
+
+    # How often an idle event stream says something. A run can spend a minute inside one
+    # model call, and intermediaries close connections that look idle.
+    run_keepalive_seconds: int = Field(default=15, ge=1, le=300)
+
     retrieval_score_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
     species_confidence_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     diagnosis_confidence_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
