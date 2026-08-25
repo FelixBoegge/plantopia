@@ -40,9 +40,9 @@
 
 ## 6. Password reset
 
-- [ ] 6.1 `POST /auth/reset/request` sending a single-use, time-limited link, answering identically for unregistered addresses; verify tests for both cases and that nothing is sent to an address with no account.
-- [ ] 6.2 `POST /auth/reset/confirm` setting a new password and invalidating every existing session; verify tests for the password changing, the token not working twice, and prior sessions being refused afterwards.
-- [ ] 6.3 Invalidate an outstanding reset token when a second is requested; verify a test that a link found later cannot be used.
+- [x] 6.1 `POST /auth/reset/request` sending a single-use, time-limited link, answering identically for unregistered addresses; verify tests for both cases and that nothing is sent to an address with no account.
+- [x] 6.2 `POST /auth/reset/confirm` setting a new password and invalidating every existing session; verify tests for the password changing, the token not working twice, and prior sessions being refused afterwards.
+- [x] 6.3 Invalidate an outstanding reset token when a second is requested; verify a test that a link found later cannot be used.
 
 ## 7. Spend control
 

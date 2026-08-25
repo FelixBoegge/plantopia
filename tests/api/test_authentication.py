@@ -25,6 +25,8 @@ OPEN = {
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/refresh"),
     ("POST", "/api/v1/auth/logout"),
+    ("POST", "/api/v1/auth/reset/request"),
+    ("POST", "/api/v1/auth/reset/confirm"),
     ("GET", "/api/v1/health"),
     ("GET", "/api/v1/ready"),
 }

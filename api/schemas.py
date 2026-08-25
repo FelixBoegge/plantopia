@@ -183,3 +183,16 @@ class SessionOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in_seconds: int
+
+
+class ResetRequestIn(BaseModel):
+    """An address to send a reset link to, whether or not it has an account."""
+
+    email: EmailStr
+
+
+class ResetConfirmIn(BaseModel):
+    """A reset link and the password to set with it."""
+
+    token: str = Field(min_length=1)
+    password: str

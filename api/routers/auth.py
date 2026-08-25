@@ -13,7 +13,7 @@ from fastapi import APIRouter, Cookie, Response, status
 
 from api import cookies
 from api.dependencies import MailerDep, SessionDep, SettingsDep
-from api.schemas import LoginIn, RegisterIn, SessionOut, VerifyIn
+from api.schemas import LoginIn, RegisterIn, ResetConfirmIn, ResetRequestIn, SessionOut, VerifyIn
 from identity import accounts, sessions
 
 RefreshCookie = Annotated[str | None, Cookie(alias=cookies.NAME)]
@@ -107,3 +107,28 @@ def logout(
     if presented:
         sessions.end(session, presented=presented)
     cookies.clear(response, settings=settings)
+
+
+@router.post("/reset/request", status_code=status.HTTP_202_ACCEPTED)
+def request_reset(
+    body: ResetRequestIn, session: SessionDep, settings: SettingsDep, mailer: MailerDep
+) -> dict:
+    """Ask for a reset link.
+
+    202 and the same sentence whether or not the address has an account. Anything else is
+    an endpoint that answers who is registered here.
+    """
+    accounts.request_reset(session, email=body.email, settings=settings, mailer=mailer)
+    return {"detail": "If that address has an account, a reset link is on its way."}
+
+
+@router.post("/reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_reset(body: ResetConfirmIn, session: SessionDep, settings: SettingsDep) -> None:
+    """Set a new password with a reset link.
+
+    Every existing session ends. Somebody resetting a password they may not have chosen to
+    forget should not leave the reason for the reset signed in.
+    """
+    accounts.reset_password(
+        session, presented=body.token, password=body.password, settings=settings
+    )

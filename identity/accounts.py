@@ -21,7 +21,7 @@ from core.config import Settings
 from core.mail import Mailer
 from data.engine import transaction
 from data.models import User
-from identity import email_tokens, messages
+from identity import email_tokens, messages, sessions
 from identity.passwords import UNUSABLE, hash_password, needs_rehash
 from identity.passwords import verify as verify_password
 
@@ -188,3 +188,74 @@ def authenticate(session: Session, *, email: str, password: str) -> User:
             user.password_hash = hash_password(password)
 
     return user
+
+
+class ResetError(Exception):
+    """A reset link could not be honoured."""
+
+
+def request_reset(session: Session, *, email: str, settings: Settings, mailer: Mailer) -> None:
+    """Send a reset link, if there is anywhere to send it.
+
+    Answers the same way for an address with no account: nothing is sent, nothing is
+    written, and the caller cannot tell. An endpoint that behaved differently would be a
+    way to ask this system who has an account, available to anybody with a list of
+    addresses.
+
+    Issuing retires any outstanding reset token, so a link abandoned in an old inbox cannot
+    be used later against the person who abandoned it.
+    """
+    address = normalise(email)
+    user = session.scalar(select(User).where(func.lower(User.email) == address))
+    if user is None:
+        return
+
+    with transaction(session):
+        token = email_tokens.issue(
+            session,
+            user_id=user.id,
+            purpose=email_tokens.RESET,
+            lifetime_hours=settings.reset_token_hours,
+        )
+
+    mailer.send(
+        messages.compose(
+            user.email,
+            messages.password_reset(
+                base_url=settings.app_url, token=token, hours=settings.reset_token_hours
+            ),
+        )
+    )
+
+
+def reset_password(session: Session, *, presented: str, password: str, settings: Settings) -> UUID:
+    """Spend a reset link and set a new password.
+
+    Every existing session ends. Somebody resetting a password they may not have chosen to
+    forget is the case this protects, and leaving their sessions alive would leave the
+    reason for the reset signed in.
+
+    The account is also marked verified if it was not. Following a link that only arrives
+    by email is the same proof that verification asks for, and refusing to accept it here
+    would leave an unverified account that has proved its address unable to sign in.
+    """
+    if len(password) < settings.minimum_password_length:
+        raise WeakPasswordError(
+            f"a password must be at least {settings.minimum_password_length} characters"
+        )
+
+    try:
+        token = email_tokens.find(session, presented=presented, purpose=email_tokens.RESET)
+    except email_tokens.EmailTokenError as exc:
+        raise ResetError(str(exc)) from exc
+
+    with transaction(session):
+        user_id = email_tokens.spend(session, token)
+        user = session.get(User, user_id)
+        if user is None:  # pragma: no cover - only if an account is deleted mid-flight
+            raise ResetError("no such account")
+        user.password_hash = hash_password(password)
+        if user.verified_at is None:
+            user.verified_at = datetime.now(UTC)
+        sessions.revoke_all_for_user(session, user.id)
+    return user_id

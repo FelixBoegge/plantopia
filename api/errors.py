@@ -19,7 +19,12 @@ from fastapi.responses import JSONResponse
 
 from api.dependencies import NotSignedInError, SessionExpiredError
 from data.repositories.errors import RecordNotFoundError
-from identity.accounts import AuthenticationError, RegistrationError, VerificationError
+from identity.accounts import (
+    AuthenticationError,
+    RegistrationError,
+    ResetError,
+    VerificationError,
+)
 from identity.sessions import SessionError
 
 logger = logging.getLogger(__name__)
@@ -133,6 +138,16 @@ def register(app: FastAPI) -> None:
             type_=TYPE_INVALID_REQUEST,
             title="Invalid request",
             detail=str(exc),
+        )
+
+    @app.exception_handler(ResetError)
+    def _bad_reset_link(request: Request, exc: ResetError) -> JSONResponse:
+        """A reset link that cannot be honoured, answered like a verification one."""
+        return problem(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            type_=TYPE_INVALID_LINK,
+            title="This link cannot be used",
+            detail="The link is invalid, has expired, or has already been used. Request a new one.",
         )
 
     @app.exception_handler(VerificationError)
