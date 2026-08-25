@@ -2,6 +2,7 @@
 
 import streamlit as st
 
+from agent.threads import recheck_thread
 from core.guards import UploadRejected
 from services.diagnosis_service import FinalResult, StartResult
 from ui import bootstrap
@@ -68,9 +69,9 @@ def _rotate_recheck_thread() -> None:
 
 
 def _recheck_thread_id() -> str:
-    latest_diagnosis_id = detail.diagnoses[0].id if detail.diagnoses else 0
+    latest_diagnosis_id = detail.diagnoses[0].id if detail.diagnoses else None
     attempt = st.session_state.get("recheck_attempt", 0)
-    return f"recheck-{plant_id}-{latest_diagnosis_id}-{attempt}"
+    return recheck_thread(bootstrap.get_service().user_id, plant_id, latest_diagnosis_id, attempt)
 
 
 if st.session_state.recheck_stage == "closed":

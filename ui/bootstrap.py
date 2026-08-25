@@ -7,15 +7,14 @@ re-executes each page top to bottom.
 """
 
 import logging
-from pathlib import Path
 
 import streamlit as st
-from langgraph.checkpoint.sqlite import SqliteSaver
 
+from agent.checkpoints import build_checkpointer, checkpointer_url
 from agent.diagnosis_graph import build_diagnosis_graph
 from agent.wiring import build_deps, build_profile_service, default_owner_id, now_utc, open_session
+from core.blobs import PostgresBlobStore
 from core.config import get_settings
-from data.db import connect
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.feedback import FeedbackRepository
 from data.repositories.messages import MessageRepository
@@ -37,8 +36,7 @@ def get_service() -> DiagnosisService:
     profile = get_profile_service()
     deps = build_deps(profile_facts=profile.facts_for_prompt, settings=settings)
 
-    checkpointer = SqliteSaver(connect(Path(str(settings.db_path) + ".checkpoints")))
-    graph = build_diagnosis_graph(deps, checkpointer)
+    graph = build_diagnosis_graph(deps, build_checkpointer(checkpointer_url(settings)))
 
     return DiagnosisService(deps, graph, profile=profile)
 
@@ -81,11 +79,10 @@ def get_chat_service() -> ChatService:
     constructing a second one — the chat agent's tools are read-only wrappers over
     exactly what the diagnosis pipeline already has.
 
-    The ReAct loop gets its own ``SqliteSaver`` file rather than sharing the
-    diagnosis graph's. Thread ids alone would keep the two apart (``chat:{id}`` vs
-    the wizard's uuid/``recheck-…`` threads), but the diagnosis checkpoint file grows
-    by ~100 MB per run (M15) because graph state carries whole images, and a chat
-    transcript has no business sharing a file that gets pruned on that schedule.
+    Shares the diagnosis graph's checkpointer now. The two had separate SQLite files
+    because the diagnosis one grew by ~100 MB per run (M15) and a chat transcript had no
+    business sharing a file pruned on that schedule. State carries blob keys rather than
+    images, so that reason is gone, and thread ids keep the two apart by construction.
     """
     settings = get_settings()
     session = open_session(settings)
@@ -94,7 +91,13 @@ def get_chat_service() -> ChatService:
     return ChatService(
         deps=service._deps,
         messages=MessageRepository(session),
-        checkpointer=SqliteSaver(connect(Path(str(settings.db_path) + ".chat-checkpoints"))),
+        checkpointer=build_checkpointer(checkpointer_url(settings)),
         now=now_utc,
         profile=get_profile_service(),
     )
+
+
+@st.cache_resource
+def get_blob_store() -> PostgresBlobStore:
+    """The photograph store, for pages that render one."""
+    return PostgresBlobStore(open_session())

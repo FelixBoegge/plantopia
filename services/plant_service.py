@@ -59,6 +59,11 @@ class PlantService:
         self._feedback = feedback
         self._now = now
 
+    @property
+    def user_id(self) -> UUID:
+        """Whose service this is — see DiagnosisService.user_id."""
+        return self._user_id
+
     def list_plants(self) -> list[PlantSummary]:
         """Every plant, newest first, with its latest diagnosis and pending step count.
 

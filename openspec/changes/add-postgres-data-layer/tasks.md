@@ -49,11 +49,11 @@
 
 ## 8. Checkpointers
 
-- [ ] 8.1 Move both graphs to `PostgresSaver` and add a thread-id helper that prefixes every handle with the owner; verify a test that a diagnosis paused at the interrupt resumes with identification and symptoms intact after the saver is rebuilt.
-- [ ] 8.2 Verify ownership on every resume path, including the re-check entry point; verify a test that a foreign owner presenting a valid handle is refused and no state is disclosed.
-- [ ] 8.3 Preserve the `U7` thread rotation on the rejected and retake branches under the new handle scheme; verify the existing rotation tests port and still prove an abandoned attempt does not merge into the next.
-- [ ] 8.4 Add checkpoint removal for one owner to the deletion path; verify a test that after removal none of that owner's runs resume and other owners' threads still do.
-- [ ] 8.5 Remove `langgraph-checkpoint-sqlite` and the two checkpoint file paths from configuration; verify `uv sync` and the full suite.
+- [x] 8.1 Move both graphs to `PostgresSaver` and add a thread-id helper that prefixes every handle with the owner; verify a test that a diagnosis paused at the interrupt resumes with identification and symptoms intact after the saver is rebuilt.
+- [x] 8.2 Verify ownership on every resume path, including the re-check entry point; verify a test that a foreign owner presenting a valid handle is refused and no state is disclosed.
+- [x] 8.3 Preserve the `U7` thread rotation on the rejected and retake branches under the new handle scheme; verify the existing rotation tests port and still prove an abandoned attempt does not merge into the next.
+- [x] 8.4 Add checkpoint removal for one owner to the deletion path; verify a test that after removal none of that owner's runs resume and other owners' threads still do.
+- [x] 8.5 Remove `langgraph-checkpoint-sqlite` and the two checkpoint file paths from configuration; verify `uv sync` and the full suite.
 
 ## 9. Documentation
 

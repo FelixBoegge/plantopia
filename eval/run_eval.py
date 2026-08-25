@@ -75,7 +75,9 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
     from langgraph.checkpoint.memory import MemorySaver
 
     from agent.diagnosis_graph import build_diagnosis_graph
-    from data.db import apply_schema, connect
+    from agent.threads import diagnosis_thread
+    from agent.wiring import default_owner_id, open_session
+    from core.blobs import PostgresBlobStore
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.observations import ObservationRepository
     from data.repositories.plants import PlantRepository
@@ -86,20 +88,25 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
     from tools.web_search import web_search_plant_info
 
     settings = get_settings()
-    conn = connect(":memory:")
-    apply_schema(conn)
+    # The real database, not a throwaway one. A harness run writes plants and diagnoses
+    # like any other run; keeping them is what lets a surprising score be investigated
+    # afterwards rather than only re-run.
+    session = open_session(settings)
+    user_id = default_owner_id(session)
 
     gate, vision = case_models(case)
     deps = Deps(
         settings=settings,
+        user_id=user_id,
         gate_model=gate,
         vision_model=vision,
         chat_model=build_reasoning_model(),
         retriever=_retriever(),
-        plants=PlantRepository(conn),
-        observations=ObservationRepository(conn),
-        diagnoses=DiagnosisRepository(conn),
-        roadmap=RoadmapRepository(conn),
+        blobs=PostgresBlobStore(session),
+        plants=PlantRepository(session),
+        observations=ObservationRepository(session),
+        diagnoses=DiagnosisRepository(session),
+        roadmap=RoadmapRepository(session),
         weather=get_local_weather,
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
         care_profile=lookup_plant_care_profile,
@@ -108,10 +115,13 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
     )
 
     graph = build_diagnosis_graph(deps, MemorySaver())
+    # MemorySaver, not the Postgres one: a harness run has no interrupt to survive — the
+    # answers are scripted — and a checkpoint per case would be litter with no reader.
+    thread_id = diagnosis_thread(user_id)
     try:
-        return run_case(case, deps=deps, graph=graph, thread_id=f"eval-{case.id}-{suffix}")
+        return run_case(case, deps=deps, graph=graph, thread_id=thread_id)
     finally:
-        conn.close()
+        session.close()
 
 
 @lru_cache(maxsize=1)

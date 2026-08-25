@@ -1,9 +1,9 @@
 """The engine, sessions, and the unit of work.
 
-Replaces what ``data/db.py`` did for SQLite. Two things that file needed disappear here,
+Replaces what the SQLite module did. Two things it needed disappear here,
 and both are worth naming because their absence is the point.
 
-**The module-level write lock is gone.** ``data.db`` serialised every ``transaction()``
+**The module-level write lock is gone.** The old module serialised every ``transaction()``
 across threads because SQLite keeps implicit-transaction state on the *connection*, so
 one thread's commit could land on another thread's open transaction — and because a
 SQLite database file has a single write lock regardless of how many connections address

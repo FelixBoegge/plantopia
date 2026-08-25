@@ -76,10 +76,8 @@ class Settings(BaseSettings):
     # installed has a service on 5432 that the container would otherwise contend with.
     database_url: str = "postgresql+psycopg://plantopia:plantopia@localhost:5433/plantopia"
 
-    db_path: Path = Path("data/plantopia.db")
     chroma_path: Path = Path("data/chroma")
     corpus_path: Path = Path("knowledge/corpus")
-    upload_path: Path = Path("data/uploads")
 
     retrieval_score_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
     species_confidence_threshold: float = Field(default=0.50, ge=0.0, le=1.0)

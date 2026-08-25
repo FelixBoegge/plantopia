@@ -43,104 +43,119 @@ def service(make_deps, pipeline_models, tmp_path):
     return DiagnosisService(deps, graph)
 
 
-def test_start_returns_questions(service):
+def _thread(owner, label: str) -> str:
+    """A real handle for this owner, readable as the label it replaces.
+
+    Bare labels like "rc1" stopped working when handles began carrying their owner —
+    which is the point: a handle nobody owns cannot resume anybody's run.
+    """
+    from agent.threads import SEPARATOR
+
+    return f"{owner}{SEPARATOR}diagnose{SEPARATOR}{label}"
+
+
+def test_start_returns_questions(owner, service):
     result = service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t1",
+        thread_id=_thread(owner, "t1"),
     )
     assert result.status == "questions"
     assert {q.key for q in result.questions} >= {"watering", "drainage"}
 
 
-def test_start_reports_the_identified_species(service):
+def test_start_reports_the_identified_species(owner, service):
     result = service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t1a",
+        thread_id=_thread(owner, "t1a"),
     )
     assert result.species is not None
     assert result.species.common_name == "Basil"
 
 
-def test_a_species_correction_is_written_into_state(service):
+def test_a_species_correction_is_written_into_state(owner, service):
     service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t1b",
+        thread_id=_thread(owner, "t1b"),
     )
-    service.answer({"watering": "daily"}, thread_id="t1b", species_override="Thai basil")
-    snapshot = service._graph.get_state({"configurable": {"thread_id": "t1b"}})
+    service.answer(
+        {"watering": "daily"}, thread_id=_thread(owner, "t1b"), species_override="Thai basil"
+    )
+    snapshot = service._graph.get_state({"configurable": {"thread_id": _thread(owner, "t1b")}})
     assert snapshot.values["species"].common_name == "Thai basil"
 
 
-def test_a_species_correction_is_treated_as_certain(service):
+def test_a_species_correction_is_treated_as_certain(owner, service):
     service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t1c",
+        thread_id=_thread(owner, "t1c"),
     )
-    service.answer({"watering": "daily"}, thread_id="t1c", species_override="Thai basil")
-    snapshot = service._graph.get_state({"configurable": {"thread_id": "t1c"}})
+    service.answer(
+        {"watering": "daily"}, thread_id=_thread(owner, "t1c"), species_override="Thai basil"
+    )
+    snapshot = service._graph.get_state({"configurable": {"thread_id": _thread(owner, "t1c")}})
     assert snapshot.values["species"].confidence == 1.0
 
 
-def test_no_override_leaves_the_species_alone(service):
+def test_no_override_leaves_the_species_alone(owner, service):
     service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t1d",
+        thread_id=_thread(owner, "t1d"),
     )
-    service.answer({"watering": "daily"}, thread_id="t1d")
-    snapshot = service._graph.get_state({"configurable": {"thread_id": "t1d"}})
+    service.answer({"watering": "daily"}, thread_id=_thread(owner, "t1d"))
+    snapshot = service._graph.get_state({"configurable": {"thread_id": _thread(owner, "t1d")}})
     assert snapshot.values["species"].common_name == "Basil"
 
 
-def test_a_blank_override_is_ignored(service):
+def test_a_blank_override_is_ignored(owner, service):
     service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t1e",
+        thread_id=_thread(owner, "t1e"),
     )
-    service.answer({"watering": "daily"}, thread_id="t1e", species_override="   ")
-    snapshot = service._graph.get_state({"configurable": {"thread_id": "t1e"}})
+    service.answer({"watering": "daily"}, thread_id=_thread(owner, "t1e"), species_override="   ")
+    snapshot = service._graph.get_state({"configurable": {"thread_id": _thread(owner, "t1e")}})
     assert snapshot.values["species"].common_name == "Basil"
 
 
-def test_answer_completes_the_diagnosis(service):
+def test_answer_completes_the_diagnosis(owner, service):
     service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t2",
+        thread_id=_thread(owner, "t2"),
     )
-    final = service.answer({"watering": "every other day"}, thread_id="t2")
+    final = service.answer({"watering": "every other day"}, thread_id=_thread(owner, "t2"))
     assert final.differential is not None
     assert final.roadmap is not None
     assert final.diagnosis_id is not None
 
 
-def test_a_rejected_upload_returns_a_rejection(make_deps, tmp_path):
+def test_a_rejected_upload_returns_a_rejection(owner, make_deps, tmp_path):
     gate = ScriptedStructuredModel(
         [PlantCheck(is_plant=False, what_it_is="a photograph of a person")]
     )
@@ -152,13 +167,13 @@ def test_a_rejected_upload_returns_a_rejection(make_deps, tmp_path):
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t3",
+        thread_id=_thread(owner, "t3"),
     )
     assert result.status == "rejected"
     assert "person" in result.message
 
 
-def test_an_invalid_file_raises_before_the_graph_runs(service):
+def test_an_invalid_file_raises_before_the_graph_runs(owner, service):
     with pytest.raises(UploadRejected):
         service.start(
             uploads=[b"#!/bin/sh"],
@@ -166,11 +181,11 @@ def test_an_invalid_file_raises_before_the_graph_runs(service):
             location_kind="indoor",
             location_text=None,
             user_notes=None,
-            thread_id="t4",
+            thread_id=_thread(owner, "t4"),
         )
 
 
-def test_no_uploads_raises(service):
+def test_no_uploads_raises(owner, service):
     with pytest.raises(ValueError, match="at least one"):
         service.start(
             uploads=[],
@@ -178,11 +193,11 @@ def test_no_uploads_raises(service):
             location_kind="indoor",
             location_text=None,
             user_notes=None,
-            thread_id="t5",
+            thread_id=_thread(owner, "t5"),
         )
 
 
-def test_too_many_uploads_raises(service):
+def test_too_many_uploads_raises(owner, service):
     with pytest.raises(ValueError, match="at most"):
         service.start(
             uploads=[PNG] * 20,
@@ -190,7 +205,7 @@ def test_too_many_uploads_raises(service):
             location_kind="indoor",
             location_text=None,
             user_notes=None,
-            thread_id="t6",
+            thread_id=_thread(owner, "t6"),
         )
 
 
@@ -208,7 +223,7 @@ def test_uploads_are_stored_and_retrievable(service, db, owner):
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t7",
+        thread_id=_thread(owner, "t7"),
     )
 
     keys = list(db.scalars(select(Blob.id).where(Blob.user_id == owner)))
@@ -216,21 +231,21 @@ def test_uploads_are_stored_and_retrievable(service, db, owner):
     assert PostgresBlobStore(db).get(owner, keys[0]) == PNG
 
 
-def test_answering_an_unknown_thread_raises(service):
+def test_answering_an_unknown_thread_raises(owner, service):
     with pytest.raises(ValueError, match="thread"):
-        service.answer({"watering": "daily"}, thread_id="never-started")
+        service.answer({"watering": "daily"}, thread_id=_thread(owner, "never-started"))
 
 
-def test_the_final_result_exposes_the_tools_that_ran(service):
+def test_the_final_result_exposes_the_tools_that_ran(owner, service):
     service.start(
         uploads=[PNG],
         plant_name="Basil",
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t8",
+        thread_id=_thread(owner, "t8"),
     )
-    final = service.answer({"watering": "daily"}, thread_id="t8")
+    final = service.answer({"watering": "daily"}, thread_id=_thread(owner, "t8"))
     assert "search_plant_knowledge" in final.tools_used
 
 
@@ -247,7 +262,7 @@ def recheck_service(make_deps, tmp_path):
 
 
 def test_start_recheck_returns_a_final_result_on_success(
-    recheck_service, sample_plant, sample_images
+    owner, recheck_service, sample_plant, sample_images
 ):
     from agent.schemas import (
         ImageQuality,
@@ -306,7 +321,7 @@ def test_start_recheck_returns_a_final_result_on_success(
         plant_id=sample_plant,
         uploads=[PNG],
         user_notes=None,
-        thread_id="rc1",
+        thread_id=_thread(owner, "rc1"),
     )
     assert isinstance(result, FinalResult)
     assert result.differential is not None
@@ -317,7 +332,7 @@ def test_start_recheck_returns_a_final_result_on_success(
     assert result.verdict_reasoning == "Fewer symptoms."
 
 
-def test_a_first_time_diagnosis_has_no_verdict(service):
+def test_a_first_time_diagnosis_has_no_verdict(owner, service):
     """``verdict`` is only meaningful against a prior diagnosis. A first-time run
     never visits ``compare_progress``, so the field must stay ``None`` rather than
     inventing a comparison that never happened."""
@@ -327,20 +342,20 @@ def test_a_first_time_diagnosis_has_no_verdict(service):
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t9",
+        thread_id=_thread(owner, "t9"),
     )
-    final = service.answer({"watering": "daily"}, thread_id="t9")
+    final = service.answer({"watering": "daily"}, thread_id=_thread(owner, "t9"))
     assert final.verdict is None
     assert final.verdict_reasoning is None
 
 
-def test_start_recheck_reports_a_rejection_like_start_does(recheck_service, sample_plant):
+def test_start_recheck_reports_a_rejection_like_start_does(owner, recheck_service, sample_plant):
     gate = ScriptedStructuredModel([PlantCheck(is_plant=False, what_it_is="a screenshot")])
     service = recheck_service(
         gate=gate, vision=ScriptedStructuredModel([]), chat=ScriptedStructuredModel([])
     )
     result = service.start_recheck(
-        plant_id=sample_plant, uploads=[PNG], user_notes=None, thread_id="rc2"
+        plant_id=sample_plant, uploads=[PNG], user_notes=None, thread_id=_thread(owner, "rc2")
     )
     assert isinstance(result, StartResult)
     assert result.status == "rejected"
@@ -423,7 +438,10 @@ def test_start_recheck_of_a_never_identified_plant_acquires_a_species(
     service = recheck_service(gate=gate, vision=vision, chat=chat)
 
     result = service.start_recheck(
-        plant_id=plant_id, uploads=[PNG], user_notes=None, thread_id="rc-unidentified"
+        plant_id=plant_id,
+        uploads=[PNG],
+        user_notes=None,
+        thread_id=_thread(owner, "rc-unidentified"),
     )
 
     assert isinstance(result, FinalResult)
@@ -467,14 +485,16 @@ def _differential_for_recheck():
     )
 
 
-def test_start_recheck_raises_for_an_unknown_plant(recheck_service):
+def test_start_recheck_raises_for_an_unknown_plant(owner, recheck_service):
     service = recheck_service(
         gate=ScriptedStructuredModel([]),
         vision=ScriptedStructuredModel([]),
         chat=ScriptedStructuredModel([]),
     )
     with pytest.raises(ValueError, match="No plant"):
-        service.start_recheck(plant_id=new_id(), uploads=[PNG], user_notes=None, thread_id="rc3")
+        service.start_recheck(
+            plant_id=new_id(), uploads=[PNG], user_notes=None, thread_id=_thread(owner, "rc3")
+        )
 
 
 def test_one_collector_spans_start_and_answer(
@@ -516,7 +536,7 @@ def test_collectors_are_evicted_at_a_terminal_outcome(owner, make_deps, pipeline
 
     service._release("thread-a")
 
-    assert "thread-a" not in service._collectors
+    assert _thread(owner, "thread-a") not in service._collectors
 
 
 def test_releasing_an_unknown_thread_is_harmless(owner, make_deps, pipeline_models, tmp_path):
@@ -541,10 +561,10 @@ def test_an_exception_out_of_invoke_releases_the_collector_in_start(
             location_kind="indoor",
             location_text=None,
             user_notes=None,
-            thread_id="t-boom",
+            thread_id=_thread(owner, "t-boom"),
         )
 
-    assert "t-boom" not in service._collectors
+    assert _thread(owner, "t-boom") not in service._collectors
 
 
 def test_an_exception_out_of_invoke_releases_the_collector_in_answer(
@@ -557,20 +577,22 @@ def test_an_exception_out_of_invoke_releases_the_collector_in_answer(
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t-boom-2",
+        thread_id=_thread(owner, "t-boom-2"),
     )
-    assert "t-boom-2" in service._collectors  # start() left the collector for answer()
+    assert (
+        _thread(owner, "t-boom-2") in service._collectors
+    )  # start() left the collector for answer()
 
     service._graph.invoke = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
 
     with pytest.raises(RuntimeError, match="boom"):
-        service.answer({"watering": "daily"}, thread_id="t-boom-2")
+        service.answer({"watering": "daily"}, thread_id=_thread(owner, "t-boom-2"))
 
-    assert "t-boom-2" not in service._collectors
+    assert _thread(owner, "t-boom-2") not in service._collectors
 
 
 def test_an_exception_out_of_invoke_releases_the_collector_in_start_recheck(
-    recheck_service, sample_plant
+    owner, recheck_service, sample_plant
 ):
     service = recheck_service(
         gate=ScriptedStructuredModel([]),
@@ -581,10 +603,13 @@ def test_an_exception_out_of_invoke_releases_the_collector_in_start_recheck(
 
     with pytest.raises(RuntimeError, match="boom"):
         service.start_recheck(
-            plant_id=sample_plant, uploads=[PNG], user_notes=None, thread_id="rc-boom"
+            plant_id=sample_plant,
+            uploads=[PNG],
+            user_notes=None,
+            thread_id=_thread(owner, "rc-boom"),
         )
 
-    assert "rc-boom" not in service._collectors
+    assert _thread(owner, "rc-boom") not in service._collectors
 
 
 def test_a_pending_clarifying_question_session_still_keeps_its_collector(
@@ -601,11 +626,11 @@ def test_a_pending_clarifying_question_session_still_keeps_its_collector(
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="t-pending",
+        thread_id=_thread(owner, "t-pending"),
     )
 
     assert result.status == "questions"
-    assert "t-pending" in service._collectors
+    assert _thread(owner, "t-pending") in service._collectors
 
 
 def test_a_completed_diagnosis_triggers_profile_learning(
@@ -625,9 +650,9 @@ def test_a_completed_diagnosis_triggers_profile_learning(
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="p1",
+        thread_id=_thread(owner, "p1"),
     )
-    service.answer({"watering": "daily"}, thread_id="p1")
+    service.answer({"watering": "daily"}, thread_id=_thread(owner, "p1"))
 
     assert len(calls) == 1
 
@@ -646,8 +671,8 @@ def test_a_failing_profile_service_does_not_break_the_diagnosis(
         location_kind="indoor",
         location_text=None,
         user_notes=None,
-        thread_id="p2",
+        thread_id=_thread(owner, "p2"),
     )
-    final = service.answer({"watering": "daily"}, thread_id="p2")
+    final = service.answer({"watering": "daily"}, thread_id=_thread(owner, "p2"))
 
     assert final.differential is not None

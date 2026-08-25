@@ -2,7 +2,6 @@
 
 import streamlit as st
 
-from core.config import get_settings
 from ui import bootstrap
 from ui.components.plant_photo import render_plant_photo
 
@@ -10,7 +9,8 @@ st.title("🌿 My Plants")
 
 service = bootstrap.get_plant_service()
 summaries = service.list_plants()
-upload_dir = get_settings().upload_path
+blobs = bootstrap.get_blob_store()
+owner = service.user_id
 
 # Three across. The photo is portrait (ui/components/plant_photo.py) and sits beside
 # the details rather than above them, so a card needs roughly twice the width of the
@@ -81,7 +81,7 @@ else:
             with column, st.container(border=True, height="stretch", key=key):
                 photo, details = st.columns(_CARD_SPLIT)
                 with photo:
-                    render_plant_photo(summary.plant.photo_ref, upload_dir)
+                    render_plant_photo(summary.plant.photo_ref, blobs, owner)
                 with details:
                     # A heading for the name and body text for the rest, rather than
                     # bold-and-caption: the details share half a card with a photo,

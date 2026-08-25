@@ -22,6 +22,7 @@ from agent.schemas import (
     SpeciesGuess,
 )
 from agent.state import DiagnosisState
+from agent.threads import verify_owner
 from core.cost import UsageCollector, UsageSnapshot
 from core.images import store_upload
 from services.profile_service import ProfileService
@@ -91,6 +92,16 @@ class DiagnosisService:
         # session-end signal here that would tell us it never will.
         self._collectors: dict[str, UsageCollector] = {}
 
+    @property
+    def user_id(self) -> UUID:
+        """Whose service this is.
+
+        Pages build thread handles from it. Asking the service rather than a separate
+        accessor means the handle and the check that validates it cannot be derived from
+        two different answers to the same question.
+        """
+        return self._deps.user_id
+
     def start(
         self,
         *,
@@ -106,7 +117,9 @@ class DiagnosisService:
         Raises:
             ValueError: if the upload count is outside the allowed range.
             UploadRejected: if any upload fails validation.
+            ThreadOwnershipError: if the handle belongs to a different owner.
         """
+        verify_owner(thread_id, self._deps.user_id)
         images = self._prepare_images(uploads)
 
         state = DiagnosisState(
@@ -159,7 +172,11 @@ class DiagnosisService:
 
         Raises:
             ValueError: if no paused run exists for this thread.
+            ThreadOwnershipError: if the handle belongs to a different owner. A paused
+                run holds that owner's photographs and has already been paid for; the
+                handle is the only thing standing between a stranger and continuing it.
         """
+        verify_owner(thread_id, self._deps.user_id)
         config = self._config(thread_id)
 
         snapshot = self._graph.get_state(config)
@@ -216,6 +233,7 @@ class DiagnosisService:
             ValueError: if the plant does not exist, or the upload count is outside
                 the allowed range.
         """
+        verify_owner(thread_id, self._deps.user_id)
         plant = self._deps.plants.get(self._deps.user_id, plant_id)
         if plant is None:
             raise ValueError(f"No plant with id {plant_id!r}.")

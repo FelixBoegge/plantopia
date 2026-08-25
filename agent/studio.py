@@ -48,11 +48,11 @@ async def _wiring() -> Deps:
 
     Both factories are async and offload for one reason: the dev server calls them
     from its event loop and watches for blocking calls, and this wiring is thoroughly
-    blocking — ``mkdir``, SQLite, Chroma, an embeddings request. Left inline it trips
+    blocking — a connection pool, Chroma, an embeddings request. Left inline it trips
     the server's blocking-call detector and the graph fails to load at all, which
-    ``langgraph dev --allow-blocking`` would paper over rather than fix. The
-    connections are opened with ``check_same_thread=False`` (see ``data/db.py``), so
-    building them on a worker thread and using them from another is safe.
+    ``langgraph dev --allow-blocking`` would paper over rather than fix. A SQLAlchemy
+    session is not shared across threads, and the pool hands each caller its own
+    connection, so building on a worker thread and using it from another is safe.
     """
     return await asyncio.to_thread(_deps)
 

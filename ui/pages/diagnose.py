@@ -5,6 +5,7 @@ from uuid import UUID
 
 import streamlit as st
 
+from agent.threads import diagnosis_thread
 from core.guards import UploadRejected
 from ui import bootstrap
 from ui.components.cost_badge import render_cost_badge
@@ -26,9 +27,7 @@ _CONFIDENT_SPECIES = 0.7
 def _rotate_thread() -> None:
     """Start the next attempt on a fresh thread so an abandoned run's checkpoint
     (a rejection or a retake) never merges into the retry (U7)."""
-    import uuid
-
-    st.session_state.thread_id = uuid.uuid4().hex
+    st.session_state.thread_id = diagnosis_thread(bootstrap.get_service().user_id)
 
 
 def _reset() -> None:
