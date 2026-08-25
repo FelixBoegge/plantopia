@@ -56,18 +56,27 @@ answers, the way a clinician takes a history.
 
 ## Getting started
 
-Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.12, [uv](https://docs.astral.sh/uv/) and Docker.
 
 ```bash
 git clone <your-repo-url>
 cd plantopia
 uv sync
 
+docker compose up -d db          # PostgreSQL 17 with pgvector, on port 5433
+uv run alembic upgrade head      # create the schema
+
 cp .env.example .env
 # add your PLANTOPIA_OPENROUTER_API_KEY
 
 uv run streamlit run app.py
 ```
+
+**Port 5433, not 5432.** A machine with PostgreSQL already installed has a service on
+5432, and on Windows both it and Docker's proxy will bind the port — so connections reach
+whichever won, and the symptom is `password authentication failed for user "plantopia"`
+from a container that is demonstrably healthy. Publishing elsewhere removes the ambiguity
+rather than asking anyone to stop their own database.
 
 **One key, four models.** Everything — chat *and* embeddings — is routed through
 [OpenRouter](https://openrouter.ai), which mirrors the OpenAI API shape on both its
@@ -215,12 +224,19 @@ name. It is a shortlist for *reading*, never a conclusion: nothing there writes 
 differential, and `diagnose` is free to reject every hypothesis it offered. If the call
 fails the pipeline falls back to similarity search alone.
 
-**Memory.** Short-term state lives in a LangGraph SQLite checkpointer, which is what
-lets the graph pause for your answers and survive a page reload. Long-term memory is
-the application's own SQLite tables — plants, observations, diagnoses, roadmap steps and
-learned facts about the owner — which is what makes contagion triage, the re-check flow
-and the learned profile possible. Chat keeps its own checkpoint file, separate from the
-diagnosis one: the two graphs have separate lifetimes.
+**Memory.** Short-term state lives in a LangGraph Postgres checkpointer, which is what
+lets the graph pause for your answers and survive a page reload — or a redeploy. Long-term
+memory is the application's own tables — plants, observations, diagnoses, roadmap steps
+and learned facts about the owner — which is what makes contagion triage, the re-check
+flow and the learned profile possible. Both live in the same PostgreSQL, along with the
+photographs themselves.
+
+Both graphs share one checkpointer. They used to have a SQLite file each, because the
+diagnosis one grew by ~100 MB per run: graph state carried whole photographs as base64
+and LangGraph re-serialises state at every superstep. State carries blob keys now, so a
+completed diagnosis leaves under a kilobyte behind and there is nothing to keep apart.
+What does keep runs apart is the thread id, which carries its owner — a handle resumes a
+paused diagnosis that has already been paid for, so it is checked before use.
 
 ## Safety
 
@@ -240,16 +256,26 @@ diagnosis one: the two graphs have separate lifetimes.
 ## Development
 
 ```bash
-uv run pytest                    # unit + graph tests, no network, ~1 minute
+docker compose up -d db          # a prerequisite: the suite uses a real database
+uv run pytest                    # unit + graph tests, ~1.5 minutes
 uv run pytest -m ui --no-cov     # Streamlit AppTest page tests
 uv run ruff check . && uv run ruff format .
 ```
 
-953 tests, 95% coverage, gated at 85%. Unit tests make **no LLM calls and no network
-calls**. Models arrive through `core/llm.py`, which tests replace with a scripted fake;
-HTTP is mocked at the transport layer with `respx`. Tests assert on structure and control
-flow, never on generated prose — model output is not deterministic enough to assert on,
-even at temperature 0.
+1,024 tests in the gated run at 95% coverage (gated at 85%), plus 97 in the `ui` tier.
+
+**Tests make no LLM calls.** That constraint is absolute: models arrive through
+`core/llm.py`, which tests replace with a scripted fake, and HTTP is mocked at the
+transport layer with `respx`. Tests assert on structure and control flow, never on
+generated prose — model output is not deterministic enough to assert on, even at
+temperature 0.
+
+They do talk to a database. The suite used to advertise "no network calls" as well, and
+that claim is retired rather than quietly falsified: repository, blob-store, retriever and
+checkpoint tests run against real PostgreSQL in a container, on a throwaway database
+created per session and dropped afterwards, each test inside a transaction that is rolled
+back. Mocking the database in a project whose subject is the database would produce tests
+that assert on the mock.
 
 **Run the `ui` tier separately whenever you touch a page or component.** `ui/pages/*`,
 `ui/components/*` and `ui/bootstrap.py` are omitted from coverage, because counting
@@ -341,7 +367,7 @@ the shipped app never imports them.
 | `agent/` | Both graphs, nodes, state, schemas, prompts |
 | `tools/` | The seven function tools |
 | `knowledge/` | Disorder corpus, ingestion, retrieval |
-| `data/` | SQLite schema and repositories |
+| `data/` | Models, repositories, Alembic migrations |
 | `core/` | Config, model factory, guards, image handling, cost, tracing |
 | `eval/` | Golden set, harness, metrics, report renderer |
 | `tests/` | `unit/`, `graph/` and `ui/` tiers |
@@ -357,13 +383,19 @@ the shipped app never imports them.
   most worth buying next
 - The corpus covers common houseplant and small-garden disorders. Unusual species fall
   back to web search and generic physiology, with lower confidence
-- Single user, no authentication — this runs locally
+- Single user, no authentication — the schema is multi-tenant and every query is scoped to an owner, but there is one seeded owner and no way to become a different one yet
 - Photographs cannot show root condition, so root disorders always depend on the
   confirming test rather than the image
 - **Chat context grows without bound.** Every turn replays the whole conversation to the
-  model, and neither checkpoint file is ever pruned. Chat token usage is not tracked at all
-- Uploads are not downscaled before they reach the vision model, which is the main reason
-  a diagnosis leaves ~100 MB of checkpoint blobs behind
+  model, and checkpoints are never pruned. Chat token usage is not tracked at all
+- Uploads are not downscaled before they reach the vision model. Storage is no longer the
+  reason to care — photographs live in the database once rather than in every checkpoint —
+  but a full-size image is still sent to the vision tier on every diagnosis, and that is
+  cost. Left alone deliberately: downscaling changes what the model sees, and nothing here
+  can measure the vision layer
+- **The corpus is in two places and only one is used.** `corpus_chunks` holds all 301
+  sections in pgvector, and retrieval still runs on Chroma. The move waits until the
+  embedding model is chosen, since a different model means re-embedding anyway
 
 A fuller accounting — every gap raised in review, why it was carried, and what fixing it
 would take — is in [`docs/known-limitations.md`](docs/known-limitations.md).

@@ -57,6 +57,6 @@
 
 ## 9. Documentation
 
-- [ ] 9.1 Update the README — prerequisites, the compose command, the project structure table, the retired network claim and the corpus ingestion step; verify every command in it runs as written on a clean clone.
-- [ ] 9.2 Update `docs/known-limitations.md` — strike `M15` and `M3` as resolved with today's date, amend `M17` to record that the migration path now exists, and add a row for the suite's new Postgres dependency; verify the referenced identifiers and dates against the file's existing conventions.
-- [ ] 9.3 Run `openspec validate add-postgres-data-layer --strict` and the full suite including the `ui` tier; verify both are clean before the change is considered done.
+- [x] 9.1 Update the README — prerequisites, the compose command, the project structure table, the retired network claim and the corpus ingestion step; verify every command in it runs as written on a clean clone.
+- [x] 9.2 Update `docs/known-limitations.md` — strike `M15` and `M3` as resolved with today's date, amend `M17` to record that the migration path now exists, and add a row for the suite's new Postgres dependency; verify the referenced identifiers and dates against the file's existing conventions.
+- [x] 9.3 Run `openspec validate add-postgres-data-layer --strict` and the full suite including the `ui` tier; verify both are clean before the change is considered done. Verified 2026-08-25: validate clean, 1,024 gated tests at 95.48% coverage, 97 in the `ui` tier, ruff clean.
