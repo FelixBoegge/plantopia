@@ -87,7 +87,14 @@ target-version = "py312"
 # ruff format reformats fenced ```python blocks inside .md files by default, which
 # would otherwise rewrite code samples embedded in docs/plans every time `ruff
 # format .` runs at the repo root.
-extend-exclude = ["*.md"]
+extend-exclude = [
+    "*.md",
+    # Alembic writes these. Reformatting a generated migration to satisfy the
+    # linter means editing a file the generator will write differently next time,
+    # for a file whose correctness is proved by `alembic upgrade` and `alembic
+    # check` rather than by import order.
+    "data/migrations/versions/*",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "PTH"]

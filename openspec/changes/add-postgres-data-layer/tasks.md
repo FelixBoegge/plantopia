@@ -1,7 +1,7 @@
 ## 1. Dependencies and database bring-up
 
 - [x] 1.1 Resolve the dependency set — `sqlalchemy`, `alembic`, `psycopg[binary]`, `pgvector`, a UUIDv7 generator, `langgraph-checkpoint-postgres` — against the pinned LangGraph version; verify `uv sync` succeeds and `uv run python -c "from langgraph.checkpoint.postgres import PostgresSaver"` imports. If it cannot resolve, stop and take the fallback in design.md — Risks (checkpointers move in the background-runs change instead).
-- [ ] 1.2 Add `docker-compose.yml` with a `db` service on `pgvector/pgvector:pg17`, a named volume and a healthcheck; verify `docker compose up -d db` reaches healthy and `CREATE EXTENSION IF NOT EXISTS vector` succeeds.
+- [x] 1.2 Add `docker-compose.yml` with a `db` service on `pgvector/pgvector:pg17`, a named volume and a healthcheck; verify `docker compose up -d db` reaches healthy and `CREATE EXTENSION IF NOT EXISTS vector` succeeds.
 - [x] 1.3 Add `database_url` to `Settings` with `.env.example` documentation; verify `tests/unit/core/test_config.py` covers the default and an override, constructed with `_env_file=None`.
 
 ## 2. Models and migrations
@@ -9,12 +9,12 @@
 - [x] 2.1 Add a UUIDv7 helper in `core/`; verify a test that generates 100 identifiers in sequence and asserts they sort ascending and are all distinct.
 - [x] 2.2 Write typed `Mapped[]` models for `users` and the eight existing tables, with UUIDv7 primary keys and `timestamptz` columns; verify a test asserting `Base.metadata.tables` holds exactly the expected nine names.
 - [x] 2.3 Add `user_id` to `plants`, `user_profile` and `messages`, change `UNIQUE(fact)` to `UNIQUE(user_id, fact)`, and carry the existing `ON DELETE CASCADE` chains across; verify tests that two owners may hold the same learned fact and that deleting a plant removes its observations, diagnoses and roadmap steps.
-- [ ] 2.4 Scaffold Alembic and autogenerate the initial migration from the models; verify `alembic upgrade head` builds every table on an empty database and `alembic check` reports no drift afterwards.
-- [ ] 2.5 Replace `data/db.py`'s sqlite3 connection and `transaction()` helper with a SQLAlchemy engine, session factory and transaction context manager; verify the existing transaction tests port unchanged and still prove rollback on exception.
+- [x] 2.4 Scaffold Alembic and autogenerate the initial migration from the models; verify `alembic upgrade head` builds every table on an empty database and `alembic check` reports no drift afterwards.
+- [x] 2.5 Add a SQLAlchemy engine, session factory and transaction context manager; verify a test proves commit on success and rollback on exception. Adjusted during implementation: this lands as a new `data/engine.py` rather than a rewrite of `data/db.py` in place. Twenty modules import `data.db`, and replacing it before the repositories move (group 4) would leave the suite red across the whole of groups 2 and 3. `data/db.py` is deleted in 4.6, when its last caller is gone.
 
 ## 3. Test infrastructure
 
-- [ ] 3.1 Add pytest fixtures that create the schema once per session against the compose database and wrap each test in a transaction rolled back at teardown; verify two tests writing the same natural key both pass in either execution order.
+- [x] 3.1 Add pytest fixtures that create the schema once per session against the compose database and wrap each test in a transaction rolled back at teardown; verify two tests writing the same natural key both pass in either execution order.
 - [ ] 3.2 Add a `pgvector` extension fixture and a corpus-loading fixture for retriever tests; verify a smoke test that stores and queries one vector.
 - [ ] 3.3 Document `docker compose up -d db` as a prerequisite in the README's Development section and retire the "no network calls" claim, keeping the no-LLM-calls claim explicit; verify by reading the section back against what the suite now does.
 

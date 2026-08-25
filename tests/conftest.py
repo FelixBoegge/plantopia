@@ -18,6 +18,10 @@ from knowledge.retriever import ChromaRetriever, build_vectorstore
 from tests.fakes.chat_models import ScriptedStructuredModel
 from tests.fakes.embeddings import HashingEmbeddings
 
+# Real-PostgreSQL fixtures, defined in tests/postgres.py so this file stays about
+# wiring rather than about database lifecycle. `docker compose up -d db` first.
+from tests.postgres import pg_engine, pg_session  # noqa: F401
+
 
 @pytest.fixture(autouse=True)
 def _test_env(monkeypatch):

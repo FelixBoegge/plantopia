@@ -71,8 +71,10 @@ class Settings(BaseSettings):
     # checkpointers. The driver is named explicitly because SQLAlchemy's bare
     # ``postgresql://`` still resolves to psycopg2, which is not installed —
     # the failure is an obscure ImportError rather than anything that names the URL.
-    # The default matches docker-compose.yml so a fresh clone needs no .env entry.
-    database_url: str = "postgresql+psycopg://plantopia:plantopia@localhost:5432/plantopia"
+    # The default matches docker-compose.yml so a fresh clone needs no .env entry —
+    # including its port, which is 5433 because a machine with PostgreSQL already
+    # installed has a service on 5432 that the container would otherwise contend with.
+    database_url: str = "postgresql+psycopg://plantopia:plantopia@localhost:5433/plantopia"
 
     db_path: Path = Path("data/plantopia.db")
     chroma_path: Path = Path("data/chroma")

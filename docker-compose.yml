@@ -17,7 +17,14 @@ services:
     ports:
       # Published so the application and the test suite can reach it from the host
       # while they still run outside compose. The API container joins this network later.
-      - "5432:5432"
+      #
+      # 5433 on the host, deliberately. A machine with PostgreSQL already installed has
+      # a service on 5432, and Windows lets both it and Docker's proxy bind the port —
+      # so connections reach whichever won, and the symptom is "password authentication
+      # failed for user plantopia" from a container that is demonstrably healthy and
+      # accepts the same credentials from inside. Publishing elsewhere removes the
+      # ambiguity rather than requiring anyone to stop their own database.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
