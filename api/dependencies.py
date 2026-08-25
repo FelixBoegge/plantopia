@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from agent.wiring import build_deps, default_owner_id, now_utc, open_session
 from core.blobs import BlobStore, PostgresBlobStore
 from core.config import Settings, get_settings
+from core.mail import Mailer, build_mailer
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.feedback import FeedbackRepository
 from data.repositories.messages import MessageRepository
@@ -56,6 +57,18 @@ def session_dep(settings: SettingsDep) -> Iterator[Session]:
 
 
 SessionDep = Annotated[Session, Depends(session_dep)]
+
+
+def mailer_dep(settings: SettingsDep) -> Mailer:
+    """Where email goes.
+
+    The console unless a provider is configured, which is why a machine that has never been
+    given a key cannot mail a real person.
+    """
+    return build_mailer(settings)
+
+
+MailerDep = Annotated[Mailer, Depends(mailer_dep)]
 
 
 def current_owner(session: SessionDep) -> UUID:

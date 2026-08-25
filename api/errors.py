@@ -18,6 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from data.repositories.errors import RecordNotFoundError
+from identity.accounts import RegistrationError, VerificationError
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ CONTENT_TYPE = "application/problem+json"
 TYPE_NOT_FOUND = "https://plantopia.example/problems/not-found"
 TYPE_INVALID_REQUEST = "https://plantopia.example/problems/invalid-request"
 TYPE_INTERNAL = "https://plantopia.example/problems/internal-error"
+TYPE_INVALID_LINK = "https://plantopia.example/problems/invalid-link"
 
 
 def problem(
@@ -57,6 +59,36 @@ def register(app: FastAPI) -> None:
             type_=TYPE_NOT_FOUND,
             title="Not found",
             detail="No such resource.",
+        )
+
+    @app.exception_handler(RegistrationError)
+    def _registration(request: Request, exc: RegistrationError) -> JSONResponse:
+        """A registration the caller can fix: a password below the minimum, or a privacy
+        notice not agreed to.
+
+        The detail is safe to return because neither refusal depends on whether the address
+        is registered — they are decided before anything is looked up.
+        """
+        return problem(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            type_=TYPE_INVALID_REQUEST,
+            title="Invalid request",
+            detail=str(exc),
+        )
+
+    @app.exception_handler(VerificationError)
+    def _bad_link(request: Request, exc: VerificationError) -> JSONResponse:
+        """A verification link that cannot be honoured.
+
+        One answer for unknown, expired and already-spent, and one detail that does not say
+        which. A stranger holding a link should not learn from the refusal whether it was
+        ever real.
+        """
+        return problem(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            type_=TYPE_INVALID_LINK,
+            title="This link cannot be used",
+            detail="The link is invalid, has expired, or has already been used. Request a new one.",
         )
 
     @app.exception_handler(ValueError)

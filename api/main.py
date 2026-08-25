@@ -35,10 +35,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     errors.register(app)
     _add_cors(app, settings)
 
-    from api.routers import care, chat, health, photos, plants, profile
+    from api.routers import auth, care, chat, health, photos, plants, profile
 
     routers = (
         health.router,
+        auth.router,
         plants.router,
         chat.router,
         care.router,

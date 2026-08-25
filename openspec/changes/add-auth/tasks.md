@@ -14,13 +14,13 @@
 
 ## 3. Registration and verification
 
-- [ ] 3.1 Add the email port with a console adapter and a Resend adapter; verify tests that the console adapter writes where a developer can read it, that no adapter sends in tests, and that a provider failure is logged rather than raised.
-- [ ] 3.2 `POST /auth/register` creating an unverified account and sending a verification message; verify tests for the account being created unverified, the message being sent, and the password appearing nowhere in the response.
-- [ ] 3.3 Refuse registration without consent, and record the notice version and time; verify tests both ways.
-- [ ] 3.4 Refuse passwords below the minimum length; verify a test that no account is created.
-- [ ] 3.5 Make registering an existing address indistinguishable from registering a new one, notifying that address instead; verify a test comparing both responses field by field, and one asserting no second account exists.
-- [ ] 3.6 `POST /auth/verify` consuming a single-use token; verify tests for verifying, for a second use being refused while the account stays verified, and for an expired token being refused.
-- [ ] 3.7 Assert email tokens are stored hashed; verify a test that the stored value cannot be used to construct a working link.
+- [x] 3.1 Add the email port with a console adapter and a Resend adapter; verify tests that the console adapter writes where a developer can read it, that no adapter sends in tests, and that a provider failure is logged rather than raised.
+- [x] 3.2 `POST /auth/register` creating an unverified account and sending a verification message; verify tests for the account being created unverified, the message being sent, and the password appearing nowhere in the response.
+- [x] 3.3 Refuse registration without consent, and record the notice version and time; verify tests both ways.
+- [x] 3.4 Refuse passwords below the minimum length; verify a test that no account is created.
+- [x] 3.5 Make registering an existing address indistinguishable from registering a new one, notifying that address instead; verify a test comparing both responses field by field, and one asserting no second account exists.
+- [x] 3.6 `POST /auth/verify` consuming a single-use token; verify tests for verifying, for a second use being refused while the account stays verified, and for an expired token being refused.
+- [x] 3.7 Assert email tokens are stored hashed; verify a test that the stored value cannot be used to construct a working link.
 
 ## 4. Sessions
 

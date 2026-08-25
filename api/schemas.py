@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class PlantOut(BaseModel):
@@ -143,3 +143,24 @@ class HealthOut(BaseModel):
 class ReadyOut(BaseModel):
     status: Literal["ready", "not ready"]
     database: bool
+
+
+class RegisterIn(BaseModel):
+    """What creating an account needs.
+
+    The password has no upper bound worth enforcing here beyond argon2's own: a length
+    limit on a hashed secret protects nothing except against somebody posting a megabyte,
+    which the body-size limit already covers.
+    """
+
+    email: EmailStr
+    password: str
+    accepted_privacy_notice: bool = Field(
+        description="Whether the privacy notice was agreed to. Registration is refused without it."
+    )
+
+
+class VerifyIn(BaseModel):
+    """The token from a verification link."""
+
+    token: str = Field(min_length=1)
