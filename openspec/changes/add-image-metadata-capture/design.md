@@ -93,6 +93,28 @@ a weather window somewhere the plant has never been in time.
 Where several photographs disagree, the earliest is used: an upload is one observation, and
 the earliest is the one whose weather window covers all of them.
 
+### The location moves from the upload form to the pause, as a prefilled question
+
+Nobody is asked where the plant is before the run starts. The photograph usually knows, and
+asking somebody to type what the file already says is asking them to do the machine's work.
+Where it does not know, the question is put at the pause the run already makes — one
+interruption rather than two.
+
+It rides the existing question mechanism rather than becoming a block of its own, which the
+identification chooser needed. A location genuinely *is* a clarifying question: a key, a
+sentence, a text answer. What it needs that a question could not previously express is a
+prefilled answer and a requirement, so `Question` gains `prefill` and `required` — two fields
+that are generally meaningful rather than special cases for this one.
+
+Prefilled *as the answer* rather than shown as a suggestion beside an empty box. It is what
+will be used unless somebody says otherwise, and a suggestion asks the common case to do work
+while a filled field asks only the uncommon one.
+
+`required` is true only outdoors. Weather frequently is the diagnosis for an outdoor plant, so
+a missing place costs a real part of the answer; indoors the connection is weak enough that
+demanding one would be demanding it for nothing. The check lives on the server as well as in
+the form, because a form is a convenience and not a guarantee.
+
 ### What is detected is returned to the client, not applied on the server
 
 The upload endpoint answers with what it read. The wizard shows it, lets it be edited, and
@@ -144,7 +166,13 @@ that exists today, which is also what happens for a photograph that carries noth
 
 ## Open Questions
 
+- **Whether the detected capture date should be correctable, and where.** The place is now a
+  prefilled answer at the pause, and the same argument — a forwarded photograph carries
+  somebody else's — applies to the date. But a date wants a date control rather than a text
+  answer, so it does not ride the question mechanism, and it is not obvious it earns a
+  surface of its own. Deferred to the wizard work, where the alternatives can be looked at
+  rather than imagined.
 - **Whether a coarse position should replace a typed town when both exist.** Today the typed
-  one would win by being what the person left in the field. That is probably right and it is
-  not obviously right, and it can be settled when `add-granular-weather` makes the position
-  worth more than the name.
+  one wins by being what the person left in the field. That is probably right and it is not
+  obviously right, and it can be settled when `add-granular-weather` makes the position worth
+  more than the name.

@@ -85,30 +85,64 @@ A pair of decimal numbers is not something somebody can confirm or correct. A to
 - **WHEN** a place name obtained from an external source is displayed
 - **THEN** that source is credited on the same surface
 
-### Requirement: What was detected is shown and can be corrected
+### Requirement: A detected place is offered as the answer, not imposed as a fact
 
-The system SHALL show the owner any date or place it detected before a run starts, SHALL
-allow either to be changed or cleared, and SHALL use what the owner leaves in place.
+The system SHALL put a place detected from a photograph into the location question as its
+answer, SHALL allow that answer to be changed, and SHALL use whatever the owner leaves.
 
-Detected is not the same as true. A photograph copied from a message carries its original
-sender's metadata; a picture of a plant at somebody else's house carries their address, not
-the owner's. Showing what was read is what makes those correctable rather than silently wrong.
+Detected is not the same as true. A photograph forwarded from a message carries its original
+sender's position; a picture taken at somebody else's house carries theirs. Neither can be
+told apart from the owner's own automatically, so the correction has to be available — and it
+has to be somewhere a person will see it, which is the pause they are already answering
+questions at rather than a screen they clicked past.
 
-#### Scenario: Something was detected
+Offered *as the answer* rather than as a suggestion beside an empty field, because that is
+what it is: it will be used unless somebody says otherwise. A suggestion asks the common case
+to do work; a filled field asks only the uncommon one.
 
-- **WHEN** a date or place is detected from an upload
-- **THEN** it is shown before the run is started
-- **AND** it can be edited or removed
+#### Scenario: A place was detected
+
+- **WHEN** a place is detected from an upload
+- **THEN** the location question is asked with that place as its answer
+
+#### Scenario: Leaving it alone
+
+- **WHEN** the owner submits without changing the detected place
+- **THEN** the run proceeds on that place
 
 #### Scenario: Correcting it
 
-- **WHEN** the owner changes or clears a detected value
+- **WHEN** the owner changes the location answer
 - **THEN** the run uses what they left, not what was detected
 
-#### Scenario: The photograph already answered a question
+#### Scenario: Nothing was detected
 
-- **WHEN** a place was detected for an outdoor plant
-- **THEN** the run does not also ask the owner where the plant is
+- **WHEN** no place is detected from an upload
+- **THEN** the location question is asked with no answer filled in
+
+### Requirement: An outdoor plant must end up with a place
+
+The system SHALL require an answer to the location question when the plant lives outdoors and
+no place was detected, and SHALL treat the answer as optional when it lives indoors.
+
+Weather frequently is the diagnosis for an outdoor plant — a late frost, a heatwave, three
+weeks of rain — and without a place there is no weather to read. Indoors the connection is
+weak enough that demanding an answer would be demanding it for nothing.
+
+#### Scenario: Outdoors with nothing detected
+
+- **WHEN** an outdoor plant's run pauses and no place was detected
+- **THEN** the answers cannot be submitted until a place is given
+
+#### Scenario: Outdoors with a place detected
+
+- **WHEN** an outdoor plant's run pauses and a place was detected
+- **THEN** the requirement is already satisfied by the detected answer
+
+#### Scenario: Indoors
+
+- **WHEN** an indoor plant's run pauses
+- **THEN** the answers can be submitted with no place given
 
 ### Requirement: A photograph that says nothing changes nothing
 

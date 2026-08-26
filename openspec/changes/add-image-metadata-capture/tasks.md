@@ -6,11 +6,11 @@ change established as the way to avoid `U2`.
 
 ## 1. Reading what a photograph declares
 
-- [ ] 1.1 Add `core/metadata.py` reading the capture date and any position from image bytes; verify a test reads both from a photograph in `test_pics/` with known metadata.
-- [ ] 1.2 Return nothing rather than raising for bytes with no metadata, unreadable metadata, or a malformed block; verify a table-driven test covers each and asserts nothing raises.
-- [ ] 1.3 Ignore a capture date in the future or before digital photography; verify a test covers both bounds and that a plausible date survives.
-- [ ] 1.4 Coarsen a position to one decimal degree inside the reading function, and never return the precise value; verify a test asserts the precise fix is not among what the function returns.
-- [ ] 1.5 Take the earliest capture date when several photographs disagree; verify a test covers disagreement and one photograph having no date at all.
+- [x] 1.1 Add `core/metadata.py` reading the capture date and any position from image bytes; verify a test reads both from a photograph in `test_pics/` with known metadata.
+- [x] 1.2 Return nothing rather than raising for bytes with no metadata, unreadable metadata, or a malformed block; verify a table-driven test covers each and asserts nothing raises.
+- [x] 1.3 Ignore a capture date in the future or before digital photography; verify a test covers both bounds and that a plausible date survives.
+- [x] 1.4 Coarsen a position to one decimal degree inside the reading function, and never return the precise value; verify a test asserts the precise fix is not among what the function returns.
+- [x] 1.5 Take the earliest capture date when several photographs disagree; verify a test covers disagreement and one photograph having no date at all.
 
 ## 2. Reading before normalising
 
@@ -38,22 +38,25 @@ change established as the way to avoid `U2`.
 ## 5. Through the run
 
 - [ ] 5.1 Carry the detected date and place on the run's initial state; verify a test asserts both reach the graph and that absent means absent.
-- [ ] 5.2 Skip the location question when a place was detected for an outdoor plant; verify a test asserts the question is absent, and present when nothing was detected.
-- [ ] 5.3 Return what was detected from the upload path so a client can show it; verify the client-type agreement test covers the new fields.
-- [ ] 5.4 Use what the person left rather than what was detected; verify a test asserts a corrected value wins over the detected one.
+- [ ] 5.2 Give `Question` a prefilled answer and a required flag; verify the question-shape agreement test covers both and fails when either side is renamed.
+- [ ] 5.3 Ask the location question on every run, prefilled with any detected place, required only when the plant is outdoors; verify tests cover detected/not-detected against indoors/outdoors.
+- [ ] 5.4 Refuse an answer submission that leaves a required question empty; verify a test asserts the run stays paused and says which question is missing.
+- [ ] 5.5 Use what the person left rather than what was detected; verify a test asserts a corrected place wins over the detected one.
 
 ## 6. The wizard
 
-- [ ] 6.1 Show a detected date and place after photographs are chosen, before the run starts; verify a component test asserts nothing is shown when nothing was detected.
-- [ ] 6.2 Make both editable and clearable; verify a component test asserts a cleared value is sent as absent rather than as the detected one.
-- [ ] 6.3 Credit the naming source wherever a detected place name is shown; verify a test asserts the credit appears with a name and not without one.
-- [ ] 6.4 Keep the whole thing reachable and operable from the keyboard; verify the accessibility suite covers it and the axe pass is clean.
-- [ ] 6.5 Add a browser flow uploading a photograph with metadata, correcting what was detected, and starting the run; verify it passes against the real stack.
+- [ ] 6.1 Remove the location field from the upload step; verify a component test asserts a run starts without anybody being asked where the plant is.
+- [ ] 6.2 Render a prefilled question with its answer already in the field; verify a component test asserts submitting untouched sends the prefilled value.
+- [ ] 6.3 Mark a required question and refuse submission while it is empty; verify a component test covers outdoors-with-nothing-detected and indoors-with-nothing-detected.
+- [ ] 6.4 Credit the naming source wherever a detected place name is shown; verify a test asserts the credit appears with a name and not without one.
+- [ ] 6.5 Keep the whole thing reachable and operable from the keyboard, and announce a refused submission; verify the accessibility suite covers it and the axe pass is clean.
+- [ ] 6.6 Add a browser flow uploading a photograph with metadata, correcting the prefilled place, and starting the run; verify it passes against the real stack.
+- [ ] 6.7 Add a browser flow for an outdoor plant whose photograph knew nothing; verify the run cannot be resumed until a place is given.
 
 ## 7. Proving it works, and closing
 
 - [ ] 7.1 Run a diagnosis end to end with a photograph carrying a real capture date and position; verify the detected values appear, the observation is dated by the photograph, and no precise position is anywhere in the database.
-- [ ] 7.2 Run the same diagnosis with a photograph carrying nothing; verify it behaves exactly as before this change and asks for a location as it used to.
+- [ ] 7.2 Run the same diagnosis with a photograph carrying nothing; verify the location question is asked empty at the pause and the run cannot continue without it outdoors.
 - [ ] 7.3 Confirm the evaluation harness is unmoved; verify the harness-wiring and independence tests pass and that no golden case reaches this code.
 - [ ] 7.4 Update the README: what is read, what is discarded, the new settings, and the attribution obligation; verify every command runs as written on a clean clone.
 - [ ] 7.5 Record what this change leaves undone — anything detected that is still unused, and the privacy surface it opens; verify identifiers and dates against the file's conventions.
