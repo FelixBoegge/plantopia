@@ -22,12 +22,12 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 3. Organs and the second identification
 
-- [ ] 3.1 Extend the vision identification's structured output to report each photograph's organ alongside the species guess; verify a node test asserts one model call is made, not two.
-- [ ] 3.2 Map an organ the vision model returns that is outside the vocabulary to "unknown"; verify a test asserts an unrecognised value is sent as no organ rather than as a guess.
-- [ ] 3.3 Call the adapter from `identify_plant` with the photographs and their organs, after the vision call; verify a test asserts the organs sent match the ones the vision model reported.
-- [ ] 3.4 Carry both results as candidates on the state, deduplicating where the two methods name the same species; verify a test covers agreement, disagreement, and one method returning nothing.
-- [ ] 3.5 Record an adapter failure against the run's errors without failing the node; verify a test asserts the diagnosis proceeds and the error is recorded.
-- [ ] 3.6 Keep `identify_plant`'s existing early return for an already-identified plant; verify the re-check tests still pass unchanged.
+- [x] 3.1 Extend the vision identification's structured output to report each photograph's organ alongside the species guess; verify a node test asserts one model call is made, not two.
+- [x] 3.2 Map an organ the vision model returns that is outside the vocabulary to "unknown"; verify a test asserts an unrecognised value is sent as no organ rather than as a guess.
+- [x] 3.3 Call the adapter from `identify_plant` with the photographs and their organs, after the vision call; verify a test asserts the organs sent match the ones the vision model reported.
+- [x] 3.4 Carry both results as candidates on the state, deduplicating where the two methods name the same species; verify a test covers agreement, disagreement, and one method returning nothing.
+- [x] 3.5 Record an adapter failure against the run's errors without failing the node; verify a test asserts the diagnosis proceeds and the error is recorded.
+- [x] 3.6 Keep `identify_plant`'s existing early return for an already-identified plant; verify the re-check tests still pass unchanged.
 
 ## 4. The species somebody typed
 

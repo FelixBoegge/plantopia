@@ -18,7 +18,13 @@ from langchain_core.outputs import ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
 from pydantic import BaseModel
 
-from agent.schemas import ImageQuality, PlantCheck, SpeciesGuess, SymptomSet
+from agent.schemas import (
+    ImageQuality,
+    PlantCheck,
+    SpeciesGuess,
+    SymptomSet,
+    VisionIdentification,
+)
 from eval.cases import GoldenCase
 
 
@@ -28,18 +34,28 @@ def _response_for(schema: Any, case: GoldenCase) -> BaseModel:
         return PlantCheck(is_plant=True, what_it_is=f"a {case.plant.name}")
     if schema is ImageQuality:
         return ImageQuality(usable=True, problem=None, guidance=None)
-    if schema is SpeciesGuess:
+    if schema is SpeciesGuess or schema is VisionIdentification:
         # An unidentified plant is a real case (a re-check routes through
         # identify_plant precisely to fix one), but common_name has min_length=1,
         # so the unknown case is expressed as zero confidence rather than an
         # empty string the schema would reject.
-        if case.plant.species:
-            return SpeciesGuess(
-                common_name=case.plant.species,
-                scientific_name=None,
-                confidence=case.species_confidence,
-            )
-        return SpeciesGuess(common_name="Unidentified plant", scientific_name=None, confidence=0.0)
+        #
+        # Both schemas answer from the same two fields, so the species a case is scored
+        # against is identical either way. ``identify_plant`` asks for the richer one; the
+        # organs it also carries are left empty, because the harness never reaches the
+        # identification service — see ``organs`` below.
+        name = case.plant.species or "Unidentified plant"
+        confidence = case.species_confidence if case.plant.species else 0.0
+
+        if schema is SpeciesGuess:
+            return SpeciesGuess(common_name=name, scientific_name=None, confidence=confidence)
+
+        # No organs. The harness's ``Deps`` binds an identifier that returns nothing, so
+        # organs would be tagged and then thrown away — and a golden case supplies its
+        # symptoms as text, so there is frequently no photograph to have an organ.
+        return VisionIdentification(
+            common_name=name, scientific_name=None, confidence=confidence, organs=[]
+        )
     if schema is SymptomSet:
         return case.symptoms
     raise ValueError(

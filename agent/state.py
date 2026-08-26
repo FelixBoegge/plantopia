@@ -18,6 +18,7 @@ from agent.schemas import (
     ProgressVerdict,
     Question,
     Roadmap,
+    SpeciesCandidate,
     SpeciesGuess,
     SymptomSet,
     WeatherSummary,
@@ -44,6 +45,16 @@ class DiagnosisState(BaseModel):
 
     # Analysis
     species: SpeciesGuess | None = None
+
+    # Every answer to "what is this plant?", with the method that produced each. The
+    # species above is whichever of these is currently believed; this is the working out.
+    # Kept because two methods disagreeing is information — it is what the owner is shown
+    # at the pause, and what makes a wrong diagnosis attributable afterwards.
+    candidates: list[SpeciesCandidate] = Field(default_factory=list)
+
+    # Whether a person picked the species, as opposed to it being the best guess going.
+    species_confirmed: bool = False
+
     symptoms: SymptomSet | None = None
 
     # Human in the loop

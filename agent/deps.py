@@ -11,7 +11,13 @@ from uuid import UUID
 
 from langchain_core.language_models import BaseChatModel
 
-from agent.schemas import CareProfile, Passage, WeatherSummary
+from agent.schemas import (
+    CareProfile,
+    ImageOrgan,
+    Passage,
+    SpeciesCandidate,
+    WeatherSummary,
+)
 from core.blobs import BlobStore
 from core.config import Settings
 from data.repositories.diagnoses import DiagnosisRepository
@@ -51,6 +57,12 @@ class Deps:
 
     weather: Callable[[str, int], WeatherSummary | None]
     web_search: Callable[[str], list[Passage]]
+
+    # The second identification. A callable like the others, so the node cannot know
+    # whether a key is configured — an unconfigured service returns nothing, which is the
+    # same thing the node does with a failure, and the node is better for not having a
+    # branch on configuration in it.
+    identify_species: Callable[[list[tuple[bytes, ImageOrgan]]], list[SpeciesCandidate]]
     care_profile: Callable[[str], CareProfile | None]
 
     # What the agent has learned about the owner, rendered for a prompt. A callable

@@ -375,10 +375,10 @@ def test_start_recheck_of_a_never_identified_plant_acquires_a_species(
         Roadmap,
         RoadmapStep,
         Severity,
-        SpeciesGuess,
         Symptom,
         SymptomPosition,
         SymptomSet,
+        VisionIdentification,
     )
     from data.repositories.plants import PlantRepository
 
@@ -401,7 +401,9 @@ def test_start_recheck_of_a_never_identified_plant_acquires_a_species(
     )
     vision = ScriptedStructuredModel(
         [
-            SpeciesGuess(common_name="Sweet basil", scientific_name=None, confidence=0.8),
+            VisionIdentification(
+                common_name="Sweet basil", scientific_name=None, confidence=0.8, organs=["leaf"]
+            ),
             SymptomSet(
                 symptoms=[
                     Symptom(

@@ -135,6 +135,10 @@ def make_deps(db, owner, now, chroma_retriever):
             "roadmap": RoadmapRepository(db),
             "weather": lambda location, days: None,
             "web_search": lambda query: [],
+            # No second identification unless a test asks for one. The same default the
+            # application has without a key, so a node test that does not care about
+            # identification exercises the path most deployments are on.
+            "identify_species": lambda photographs: [],
             "care_profile": lambda species: None,
             "profile_facts": lambda: "",
             "now": now,
@@ -261,7 +265,7 @@ def _pipeline_models():
     Returns ``(gate, vision, chat)``:
 
     - gate answers two calls in order: PlantCheck, ImageQuality
-    - vision answers two: SpeciesGuess, SymptomSet
+    - vision answers two: VisionIdentification, SymptomSet
     - chat answers three: QuestionSet, Differential, Roadmap
 
     Because each model's script is ordered, these fixtures also assert the pipeline's
@@ -279,10 +283,10 @@ def _pipeline_models():
         Roadmap,
         RoadmapStep,
         Severity,
-        SpeciesGuess,
         Symptom,
         SymptomPosition,
         SymptomSet,
+        VisionIdentification,
     )
     from tests.fakes.chat_models import ScriptedStructuredModel
 
@@ -295,7 +299,15 @@ def _pipeline_models():
 
     vision = ScriptedStructuredModel(
         [
-            SpeciesGuess(common_name="Basil", scientific_name="Ocimum basilicum", confidence=0.9),
+            # The identification and what each photograph shows, in one response — which
+            # is what `identify_plant` asks for, so that the organs can go to the second
+            # identifier without a second model call.
+            VisionIdentification(
+                common_name="Basil",
+                scientific_name="Ocimum basilicum",
+                confidence=0.9,
+                organs=["leaf"],
+            ),
             SymptomSet(
                 symptoms=[
                     Symptom(

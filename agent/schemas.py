@@ -9,7 +9,7 @@ from enum import IntEnum, StrEnum
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SymptomPosition(StrEnum):
@@ -100,6 +100,63 @@ class SpeciesGuess(BaseModel):
     common_name: str = Field(min_length=1)
     scientific_name: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class VisionIdentification(BaseModel):
+    """What the vision model reports after looking at the photographs.
+
+    The species *and* what each photograph shows, in one response. Flat rather than nested
+    because a model asked for a nested object gets it wrong more often, and one call rather
+    than two because the organs exist to be sent to a second identifier — a separate call to
+    tag them would add model spend to save a second or two of a ninety-second run.
+
+    ``organs`` is positional: one entry per photograph, in the order they were supplied.
+    """
+
+    common_name: str = Field(min_length=1)
+    scientific_name: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    organs: list[ImageOrgan] = Field(default_factory=list)
+
+    @field_validator("organs", mode="before")
+    @classmethod
+    def _tolerate_an_unknown_organ(cls, value: object) -> object:
+        """Coerce an organ outside the vocabulary rather than rejecting the whole response.
+
+        Strict validation is right almost everywhere in this file, and wrong here. The organ
+        is a hint for a second identifier; the species is the answer. Refusing the response
+        because the model called something a "stem" would throw away a good identification
+        over a bad hint — so an unrecognised value becomes ``UNKNOWN``, which is the value
+        that is deliberately never sent.
+        """
+        if not isinstance(value, list):
+            return value
+
+        known = {organ.value for organ in ImageOrgan}
+        return [
+            item if isinstance(item, ImageOrgan) or item in known else ImageOrgan.UNKNOWN
+            for item in value
+        ]
+
+    def species(self) -> "SpeciesGuess":
+        """The identification alone, for the state field that only wants that."""
+        return SpeciesGuess(
+            common_name=self.common_name,
+            scientific_name=self.scientific_name,
+            confidence=self.confidence,
+        )
+
+    def organ_for(self, index: int) -> ImageOrgan:
+        """The organ of the photograph at ``index``, or unknown.
+
+        Tolerant of a model that returned the wrong number of organs, which is a thing they
+        do: too few and the rest are unknown, too many and the extras are ignored. Neither
+        is worth failing an identification over.
+        """
+        try:
+            return self.organs[index]
+        except IndexError:
+            return ImageOrgan.UNKNOWN
 
 
 class SpeciesCandidate(BaseModel):

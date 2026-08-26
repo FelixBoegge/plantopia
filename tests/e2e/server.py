@@ -33,7 +33,7 @@ from sqlalchemy.engine import make_url
 # names at import time, so patching only the defining module would arrive after the binding
 # and do nothing — which is why each one is replaced in both places.
 import core.llm
-from tests.e2e.models import ScriptedGraphModel
+from tests.e2e.models import ScriptedGraphModel, scripted_second_opinion
 from tests.fakes.embeddings import HashingEmbeddings
 
 core.llm.build_reasoning_model = lambda **_: ScriptedGraphModel()
@@ -52,6 +52,11 @@ agent.wiring.build_gate_model = core.llm.build_gate_model
 # give the corpus a real vector space with real word overlap, so the chat agent's lookup
 # returns genuine passages rather than a stub.
 agent.wiring.build_embeddings = lambda: HashingEmbeddings()
+
+# The second identification, scripted rather than absent. Clearing the key (see `exports`)
+# would also work and would offer no choice at all — and the choice between two methods that
+# disagree is the part of this worth driving a browser through.
+agent.wiring.plantnet_identify = lambda photographs, **_: scripted_second_opinion(photographs)
 
 # Mail goes to a file the browser tests read, so a test can click the link a person would
 # have been sent rather than reaching past it into the database.
@@ -124,6 +129,23 @@ def exports() -> Settings:
     # only after a run has already been started.
     os.environ["PLANTOPIA_CHROMA_PATH"] = str(configured.chroma_path)
     os.environ["PLANTOPIA_AUTH_RATE_LIMIT"] = str(configured.auth_rate_limit)
+
+    # **Every third-party credential blanked, by name.**
+    #
+    # `settings()` above passes `_env_file=None`, but the worker does not: it builds its
+    # own `Settings` from the environment, which reads `.env`. So a developer's real
+    # Pl@ntNet or Tavily key reaches the graph and a browser run makes real calls to real
+    # services — spending someone's daily allowance, and quietly making a test suite that
+    # promises to make no network calls into one that does. It depends on what is in a file
+    # that is not in the repository, which means it would work on CI and not on the machine
+    # of whoever added the key.
+    #
+    # Cleared rather than overwritten with a fake: an empty key is the configured-absent
+    # path each adapter already handles, and the browser tests script the second opinion in
+    # `Deps` anyway.
+    for credential in ("PLANTOPIA_PLANTNET_API_KEY", "PLANTOPIA_TAVILY_API_KEY"):
+        os.environ[credential] = ""
+
     return configured
 
 

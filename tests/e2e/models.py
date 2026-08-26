@@ -28,6 +28,7 @@ from agent.schemas import (
     Candidate,
     Differential,
     Hypotheses,
+    ImageOrgan,
     ImageQuality,
     IPMTier,
     PlantCheck,
@@ -37,10 +38,13 @@ from agent.schemas import (
     Roadmap,
     RoadmapStep,
     Severity,
+    SpeciesCandidate,
     SpeciesGuess,
+    SpeciesMethod,
     Symptom,
     SymptomPosition,
     SymptomSet,
+    VisionIdentification,
 )
 
 # The two questions the wizard pauses on. `drainage` is the mandatory one the graph adds
@@ -123,6 +127,17 @@ def _for(schema: Any) -> BaseModel:
     if schema is SpeciesGuess:
         return SpeciesGuess(
             common_name="Basil", scientific_name="Ocimum basilicum", confidence=0.88
+        )
+    if schema is VisionIdentification:
+        # What `identify_plant` actually asks for: the species and each photograph's organ,
+        # in one response. The organ then goes to the identification service, which a
+        # browser run never reaches — `Deps.identify_species` is bound to a scripted
+        # second opinion in `server.py`, not to the real adapter.
+        return VisionIdentification(
+            common_name="Basil",
+            scientific_name="Ocimum basilicum",
+            confidence=0.88,
+            organs=[ImageOrgan.LEAF],
         )
     if schema is SymptomSet:
         return SymptomSet(
@@ -209,3 +224,33 @@ class ScriptedGraphModel(BaseChatModel):
 
     def with_structured_output(self, schema: Any, **kwargs: Any) -> Runnable:
         return RunnableLambda(lambda _messages, _schema=schema: _for(_schema))
+
+
+# What the scripted identification service answers. Deliberately *disagrees* with the vision
+# model above, which says "Basil": two methods naming different plants is the case the choice
+# screen exists for, and the one a browser test should be walking through. Agreement is the
+# easy case and is covered by unit tests.
+SECOND_OPINION = [
+    SpeciesCandidate(
+        common_name="Thai basil",
+        scientific_name="Ocimum africanum",
+        confidence=0.71,
+        method=SpeciesMethod.PLANTNET,
+    ),
+    SpeciesCandidate(
+        common_name="Holy basil",
+        scientific_name="Ocimum tenuiflorum",
+        confidence=0.19,
+        method=SpeciesMethod.PLANTNET,
+    ),
+]
+
+
+def scripted_second_opinion(_photographs) -> list[SpeciesCandidate]:
+    """Stands in for the identification service in a browser run.
+
+    Bound in place of the real adapter rather than relying on an absent key, because an
+    absent key means no choice is ever offered — and the choice is the thing worth driving
+    a browser for.
+    """
+    return list(SECOND_OPINION)

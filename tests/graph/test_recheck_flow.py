@@ -23,6 +23,7 @@ from agent.schemas import (
     Symptom,
     SymptomPosition,
     SymptomSet,
+    VisionIdentification,
 )
 from agent.state import DiagnosisState
 from data.models import Observation
@@ -141,12 +142,14 @@ class TestRecheckRouting:
         a species, however many re-checks it went through.
 
         Two vision calls are scripted: identification, then symptoms. If routing still
-        skipped ``identify_plant``, ``assess_symptoms`` would consume the SpeciesGuess
+        skipped ``identify_plant``, ``assess_symptoms`` would consume the identification
         and the SymptomSet assertion below would fail.
         """
         vision = ScriptedStructuredModel(
             [
-                SpeciesGuess(common_name="Sweet basil", scientific_name=None, confidence=0.8),
+                VisionIdentification(
+                    common_name="Sweet basil", scientific_name=None, confidence=0.8, organs=["leaf"]
+                ),
                 _symptoms(),
             ]
         )
