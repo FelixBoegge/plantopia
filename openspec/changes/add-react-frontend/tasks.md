@@ -71,9 +71,9 @@
 
 ## 8. Proving it works, and closing
 
-- [ ] 8.1 Add Playwright against the real stack with scripted models; verify the harness starts the API and the frontend and that one trivial flow passes.
-- [ ] 8.2 A Playwright flow for registering, verifying and signing in; verify it passes against a clean database.
-- [ ] 8.3 A Playwright flow for a diagnosis through the interrupt to a differential; verify it passes and that the reasoning panel showed more than one step.
+- [x] 8.1 Add Playwright against the real stack with scripted models; verify the harness starts the API and the frontend and that one trivial flow passes.
+- [x] 8.2 A Playwright flow for registering, verifying and signing in; verify it passes against a clean database.
+- [x] 8.3 A Playwright flow for a diagnosis through the interrupt to a differential; verify it passes and that the reasoning panel showed more than one step.
 - [ ] 8.4 A Playwright flow that drops the stream mid-run and reconnects; verify the run completes and no step is shown twice.
 - [ ] 8.5 A Playwright flow for a chat reply with a lookup; verify the lookup is announced before the reply arrives.
 - [ ] 8.6 Confirm the evaluation harness is untouched and its numbers are not expected to move; verify the harness-independence test still passes and that nothing in this change added a prompt, a model call or a retrieval.

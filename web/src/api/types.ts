@@ -151,9 +151,23 @@ export interface Evaluation {
   results: Record<string, unknown> | null;
 }
 
-/** The question a paused run asks. */
+/**
+ * The question a paused run asks.
+ *
+ * These arrive in a stream event rather than in a response body, so they are the one shape
+ * here that the OpenAPI document does not describe and `tests/api/test_client_types.py`
+ * therefore cannot check. That is not a small caveat: this interface said `prompt` where the
+ * graph says `text`, and carried no `kind` at all, so every question rendered as an
+ * unlabelled text box — including the ones with four fixed options. It looked correct in
+ * every component test, because the fixtures were written from this interface rather than
+ * from the graph.
+ *
+ * `tests/api/test_question_shape_agrees.py` now compares this against `agent/schemas.py`
+ * directly.
+ */
 export interface Question {
   key: string;
-  prompt: string;
-  options?: string[];
+  text: string;
+  kind: "text" | "choice" | "boolean";
+  options: string[];
 }

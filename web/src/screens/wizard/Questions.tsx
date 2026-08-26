@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { readable } from "@/api/problems";
-import type { Question } from "@/api/types";
-import { Field } from "@/components/Field";
+import type { Question as Asked } from "@/api/types";
 import { Notice } from "@/components/Notice";
+import { Question } from "@/screens/wizard/Question";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -22,7 +22,7 @@ export function Questions({
   busy,
   failure,
 }: {
-  questions: Question[];
+  questions: Asked[];
   onAnswer: (answers: Record<string, string>) => void;
   busy: boolean;
   failure: unknown;
@@ -51,19 +51,22 @@ export function Questions({
         className="grid gap-4"
         onSubmit={(event) => {
           event.preventDefault();
-          onAnswer(answers);
+          // Only what was actually answered. An empty string is somebody who left a
+          // question alone, and sending it as an answer is inventing one.
+          onAnswer(
+            Object.fromEntries(
+              Object.entries(answers).filter(([, given]) => given !== ""),
+            ),
+          );
         }}
       >
         {questions.map((question) => (
-          <Field
+          <Question
             key={question.key}
-            label={question.prompt}
+            question={question}
             value={answers[question.key] ?? ""}
-            onChange={(event) =>
-              setAnswers((given) => ({
-                ...given,
-                [question.key]: event.target.value,
-              }))
+            onChange={(given) =>
+              setAnswers((so_far) => ({ ...so_far, [question.key]: given }))
             }
           />
         ))}

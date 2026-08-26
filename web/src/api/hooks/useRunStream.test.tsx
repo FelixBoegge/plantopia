@@ -107,7 +107,7 @@ describe("watching a run", () => {
     serve(() =>
       frames(
         step(1, "checking", "Checking the photographs"),
-        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","prompt":"How often do you water it?"}]}\n\n',
+        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often do you water it?","kind":"text","options":[]}]}\n\n',
       ),
     );
 
@@ -122,7 +122,7 @@ describe("watching a run", () => {
     serve(() =>
       frames(
         step(1, "checking", "Checking the photographs"),
-        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","prompt":"How often?"}]}\n\n',
+        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often?","kind":"text","options":[]}]}\n\n',
       ),
     );
 
@@ -332,5 +332,48 @@ describe("watching nothing", () => {
 
     expect(result.current.steps).toEqual([]);
     expect(result.current.connected).toBe(false);
+  });
+});
+
+describe("steps that share a sentence", () => {
+  it("shows a repeated step once rather than twice in a row", async () => {
+    // `guard_input` and `quality_check` are both "Checking the photographs" by design. Two
+    // nodes, two events, one thing a person is being told.
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        step(2, "checking", "Checking the photographs"),
+        step(3, "identifying", "Identifying the species"),
+        completed(4),
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    expect(result.current.steps.map((s) => s.description)).toEqual([
+      "Checking the photographs",
+      "Identifying the species",
+    ]);
+  });
+
+  it("still shows a step that comes back later in the run", async () => {
+    // Consecutive is the rule, not "ever seen". A run that checks, diagnoses and checks
+    // again has done the second check.
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        step(2, "diagnosing", "Weighing the evidence"),
+        step(3, "checking", "Checking the photographs"),
+        completed(4),
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    expect(result.current.steps).toHaveLength(3);
   });
 });

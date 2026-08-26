@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -11,6 +12,7 @@ import {
 import { hasFinished, useRunStream } from "@/api/hooks/useRunStream";
 import { allowance, useAccount } from "@/api/hooks/account";
 import { usePlant } from "@/api/hooks/plants";
+import { keys } from "@/app/queries";
 import { LinkButton } from "@/components/LinkButton";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
@@ -90,6 +92,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
   const { data: run } = useRun(runId);
   const answer = useAnswerRun(runId);
   const cancel = useCancelRun(runId);
+  const queries = useQueryClient();
   const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   // The stream is the live view; the run is the record. After a reload the stream replays
@@ -102,6 +105,17 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
   useEffect(() => {
     if (answer.isSuccess) setConfirmingCancel(false);
   }, [answer.isSuccess]);
+
+  // A run creates a plant, and the grid was fetched before it existed. Without this,
+  // finishing a first diagnosis and clicking home shows "Nothing here yet" — the query is
+  // cached, nothing here writes through it, and it stays that way until it goes stale on its
+  // own. The plant is real the whole time, which is what makes it look like data loss.
+  const finishedPlantId = ending?.kind === "completed" ? ending.plantId : null;
+  useEffect(() => {
+    if (!finishedPlantId) return;
+    void queries.invalidateQueries({ queryKey: keys.plants });
+    void queries.invalidateQueries({ queryKey: keys.plant(finishedPlantId) });
+  }, [finishedPlantId, queries]);
 
   return (
     <div className="grid gap-8">

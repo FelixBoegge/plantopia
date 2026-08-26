@@ -36,3 +36,8 @@ web/coverage/
 # tsc -b's incremental cache: a build artefact that changes on every build.
 web/*.tsbuildinfo
 web/.playwright-mcp/
+# The browser tests' own state: a vector store, a mail sink, traces and reports.
+tests/e2e/.chroma/
+tests/e2e/mail.jsonl
+web/test-results/
+web/playwright-report/

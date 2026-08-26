@@ -119,17 +119,30 @@ export function useRunStream(runId: string | null): Watched {
       const payload = (data ?? {}) as Record<string, unknown>;
 
       if (kind === "step") {
-        setWatched((seen) => ({
-          ...seen,
-          steps: [
-            ...seen.steps,
-            {
-              sequence,
-              id: String(payload.step ?? ""),
-              description: String(payload.description ?? ""),
-            },
-          ],
-        }));
+        setWatched((seen) => {
+          const id = String(payload.step ?? "");
+          // Several graph nodes deliberately share one sentence — `guard_input` and
+          // `quality_check` are both "Checking the photographs", because the distinction is
+          // internal and the sentence is what somebody reads. Two nodes then produce two
+          // events, and rendering both shows the same line twice in a row, which reads as
+          // something having happened twice.
+          //
+          // Consecutive only: a step that genuinely recurs later in a run is a different
+          // thing from a node boundary, and is still worth showing.
+          if (seen.steps.at(-1)?.id === id) return seen;
+
+          return {
+            ...seen,
+            steps: [
+              ...seen.steps,
+              {
+                sequence,
+                id,
+                description: String(payload.description ?? ""),
+              },
+            ],
+          };
+        });
         return;
       }
 

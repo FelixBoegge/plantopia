@@ -129,7 +129,7 @@ function watching(frames: string[], runState = run()) {
 const STEP =
   'id: 1\nevent: step\ndata: {"step":"checking","description":"Checking the photographs"}\n\n';
 const QUESTIONS =
-  'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","prompt":"How often do you water it?"}]}\n\n';
+  'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often do you water it?","kind":"text","options":[]},{"key":"drainage","text":"Does the pot have drainage holes?","kind":"choice","options":["Drainage holes, no saucer","No drainage holes"]}]}\n\n';
 const COMPLETED = `id: 3\nevent: completed\ndata: {"diagnosis_id":"${DIAGNOSIS}","plant_id":"${PLANT}","rejected":false,"reason":null}\n\n`;
 
 describe("starting a check", () => {

@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 
 import { request } from "@/api/client";
 import type { Account, Session } from "@/api/types";
-import { forget, onSessionLost, setToken } from "@/api/session";
+import { forget, onSessionLost, renew, setToken } from "@/api/session";
 
 /**
  * Who is signed in, as far as the rest of the application is concerned.
@@ -57,13 +57,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Re-establish from the refresh cookie. Nothing was stored to make this work: the
     // cookie is httpOnly and the browser sends it, which is the whole design.
+    //
+    // **Through `renew`, not by requesting `/auth/refresh` here.** Renewal is serialised in
+    // one place precisely because each refresh rotates the token, and a second concurrent
+    // one presents a token the first has already spent — which the server reads as a stolen
+    // token being replayed and revokes the whole family. This effect running twice is not
+    // hypothetical: StrictMode does it on every mount in development. The symptom was a
+    // reload that worked, followed by a reload that signed the person out, and it was
+    // invisible to the component suite because a mocked refresh endpoint has no rotation to
+    // get wrong.
     onSessionLost(clear);
     (async () => {
+      const token = await renew();
+      if (token === null) return; // `renew` has already reported the loss.
       try {
-        const session = await request<Session>("/auth/refresh", {
-          method: "POST",
-        });
-        setToken(session.access_token);
         await load();
       } catch {
         clear();
