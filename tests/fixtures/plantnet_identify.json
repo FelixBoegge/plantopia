@@ -1,0 +1,122 @@
+{
+  "query": {
+    "project": "all",
+    "images": [
+      "7fde316a0cca2853de760b4a56828f0f",
+      "7a78a3201f095b0661b8a00c17cb3895"
+    ],
+    "organs": [
+      "habit",
+      "habit"
+    ],
+    "includeRelatedImages": false,
+    "noReject": false,
+    "type": null
+  },
+  "predictedOrgans": [
+    {
+      "image": "7fde316a0cca2853de760b4a56828f0f",
+      "filename": "photo-0.jpg",
+      "organ": "leaf",
+      "score": 0.86554
+    },
+    {
+      "image": "7a78a3201f095b0661b8a00c17cb3895",
+      "filename": "photo-1.jpg",
+      "organ": "leaf",
+      "score": 0.8405
+    }
+  ],
+  "language": "en",
+  "preferedReferential": "k-world-flora",
+  "bestMatch": "Rhaphidophora tetrasperma Hook.f.",
+  "results": [
+    {
+      "score": 0.63113,
+      "species": {
+        "scientificNameWithoutAuthor": "Rhaphidophora tetrasperma",
+        "scientificNameAuthorship": "Hook.f.",
+        "genus": {
+          "scientificNameWithoutAuthor": "Rhaphidophora",
+          "scientificNameAuthorship": "",
+          "scientificName": "Rhaphidophora"
+        },
+        "family": {
+          "scientificNameWithoutAuthor": "Araceae",
+          "scientificNameAuthorship": "",
+          "scientificName": "Araceae"
+        },
+        "commonNames": [
+          "Mini monstera",
+          "Swiss Cheese plant",
+          "برگ انجیری"
+        ],
+        "scientificName": "Rhaphidophora tetrasperma Hook.f."
+      },
+      "gbif": {
+        "id": "5329745"
+      },
+      "powo": {
+        "id": "88594-1"
+      }
+    },
+    {
+      "score": 0.42587,
+      "species": {
+        "scientificNameWithoutAuthor": "Monstera deliciosa",
+        "scientificNameAuthorship": "Liebm.",
+        "genus": {
+          "scientificNameWithoutAuthor": "Monstera",
+          "scientificNameAuthorship": "",
+          "scientificName": "Monstera"
+        },
+        "family": {
+          "scientificNameWithoutAuthor": "Araceae",
+          "scientificNameAuthorship": "",
+          "scientificName": "Araceae"
+        },
+        "commonNames": [
+          "Monstera",
+          "Tarovine",
+          "Swiss Cheese Plant"
+        ],
+        "scientificName": "Monstera deliciosa Liebm."
+      },
+      "gbif": {
+        "id": "2868241"
+      },
+      "powo": {
+        "id": "87478-1"
+      }
+    },
+    {
+      "score": 0.11884,
+      "species": {
+        "scientificNameWithoutAuthor": "Monstera minima",
+        "scientificNameAuthorship": "Madison",
+        "genus": {
+          "scientificNameWithoutAuthor": "Monstera",
+          "scientificNameAuthorship": "",
+          "scientificName": "Monstera"
+        },
+        "family": {
+          "scientificNameWithoutAuthor": "Araceae",
+          "scientificNameAuthorship": "",
+          "scientificName": "Araceae"
+        },
+        "commonNames": [
+          "Mini monstera"
+        ],
+        "scientificName": "Monstera minima Madison"
+      },
+      "gbif": {
+        "id": "2868240"
+      },
+      "powo": {
+        "id": "163942-2"
+      }
+    }
+  ],
+  "version": "2026-03-20 (7.5)",
+  "remainingIdentificationRequests": 498
+}

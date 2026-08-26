@@ -15,10 +15,10 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 2. The real request, verified once against the real service
 
-- [ ] 2.1 Make one manual call with a real key and at least two photographs from `test_pics/`, and save the raw response under `tests/fixtures/`; verify the file exists and contains a ranked result with scores.
-- [ ] 2.2 Reconcile the adapter's request against the service's reference — field names, the organ vocabulary, the multipart shape, the ranking order; verify by the call in 2.1 succeeding, and record any correction made.
-- [ ] 2.3 Build the adapter's parsing tests from the recorded fixture rather than from a hand-written body; verify the tests fail if the fixture is replaced with an empty result set.
-- [ ] 2.4 Record in `docs/known-limitations.md` what remains unverified about the integration and what would settle it; verify identifiers and dates against the file's conventions.
+- [x] 2.1 Make one manual call with a real key and at least two photographs from `test_pics/`, and save the raw response under `tests/fixtures/`; verify the file exists and contains a ranked result with scores.
+- [x] 2.2 Reconcile the adapter's request against the service's reference — field names, the organ vocabulary, the multipart shape, the ranking order; verify by the call in 2.1 succeeding, and record any correction made.
+- [x] 2.3 Build the adapter's parsing tests from the recorded fixture rather than from a hand-written body; verify the tests fail if the fixture is replaced with an empty result set.
+- [x] 2.4 Record in `docs/known-limitations.md` what remains unverified about the integration and what would settle it; verify identifiers and dates against the file's conventions.
 
 ## 3. Organs and the second identification
 

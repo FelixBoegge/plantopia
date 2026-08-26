@@ -12,13 +12,24 @@ third party can stop is a diagnosis somebody paid for and did not get. No key, a
 them mean the diagnosis proceeds on the vision model's identification alone, exactly as it
 did before this file existed.
 
-**The request shape here is written from documentation and is not yet verified.** `U2` in
-`docs/known-limitations.md` records what that is worth: a model slug taken from a docs fetch,
-flagged unverified because it might be wrong, which was. Two readings of Pl@ntNet's own
-documentation disagree about whether `habit` is an accepted organ. So the organ vocabulary
-sits in one table below, `WIRE_ORGANS`, to be confirmed against the service with a real key —
-and until it is, a request that names an organ the service rejects would disable the feature
-silently, which is why `omit_organs` exists.
+**The request shape was verified against the live service on 2026-08-26**, not taken from
+documentation. That distinction is `U2`: a model slug read out of a docs fetch, flagged as
+unverified because it might be wrong, which it was. Two readings of Pl@ntNet's own
+documentation disagreed about whether ``habit`` is an accepted organ — the live service
+settled it, and it is.
+
+What the same call established, and what the tests here rest on:
+
+- ``api-key`` and ``nb-results`` as query parameters; ``images`` and ``organs`` as multipart
+  fields, one ``organs`` entry per image.
+- Results are ranked, each with ``score`` and a ``species`` carrying
+  ``scientificNameWithoutAuthor`` and ``commonNames``.
+- An organ outside the vocabulary fails the **whole request** with a 400 rather than being
+  ignored. Omitting ``organs`` entirely is accepted and lets the service detect them, which
+  is what the retry below falls back on.
+
+`tests/fixtures/plantnet_identify.json` is that response, recorded rather than written, and
+every parsing test here is built from it.
 """
 
 import logging
@@ -59,6 +70,10 @@ WIRE_ORGANS: dict[ImageOrgan, str] = {
 # have run out until tomorrow" and "something broke" want different responses from whoever
 # reads the log — and identically otherwise, because the diagnosis does the same thing.
 _QUOTA_STATUS = 429
+
+# What the service answers when the request itself is malformed — which, confirmed against
+# the real service, includes naming an organ outside its vocabulary. See the retry below.
+_BAD_REQUEST_STATUS = 400
 
 
 def identify_species(
@@ -111,14 +126,32 @@ def identify_species(
                 if organ in WIRE_ORGANS
             )
 
-        response = client.post(
-            IDENTIFY_URL,
-            params={"api-key": api_key, "nb-results": max_results},
-            files=files,
-        )
+        params = {"api-key": api_key, "nb-results": max_results}
+        response = client.post(IDENTIFY_URL, params=params, files=files)
+
         if response.status_code == _QUOTA_STATUS:
             logger.warning("plantnet daily allowance is spent; proceeding without it")
             return []
+
+        # An organ the service does not recognise fails the *whole request* with a 400
+        # rather than being ignored — confirmed against the real service, which is what
+        # makes this worth handling rather than assuming. Left alone, a single wrong value
+        # in `WIRE_ORGANS` would disable identification for every diagnosis, silently and
+        # for ever, while every unit test went on passing.
+        #
+        # So one retry without organs. The answer is slightly worse — the service detects
+        # the organs itself — and slightly worse beats absent.
+        if response.status_code == _BAD_REQUEST_STATUS and not omit_organs:
+            logger.warning(
+                "plantnet refused the request; retrying without organs. "
+                "If this persists, an organ in WIRE_ORGANS is not one the service accepts."
+            )
+            response = client.post(
+                IDENTIFY_URL,
+                params=params,
+                files=[entry for entry in files if entry[0] != "organs"],
+            )
+
         response.raise_for_status()
         return _candidates(response.json(), max_results)
     except Exception as exc:  # noqa: BLE001 - see the module docstring
