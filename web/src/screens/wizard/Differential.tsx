@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
 import type { DiagnosisDetail } from "@/api/types";
@@ -14,13 +15,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  */
 export function Differential({ detail }: { detail: DiagnosisDetail }) {
   const { diagnosis } = detail;
+  const heading = useRef<HTMLHeadingElement>(null);
+
+  // The result replaces the reasoning panel in place, with no navigation. Without this,
+  // somebody using a screen reader is left wherever the last step put them while the thing
+  // they waited for is elsewhere on the page — the same reason the questions step takes
+  // focus when it arrives.
+  useEffect(() => {
+    heading.current?.focus();
+  }, []);
+
   const ranked = [...diagnosis.candidates].sort(
     (a, b) => b.probability - a.probability,
   );
 
   return (
     <section aria-labelledby="differential" className="grid gap-4">
-      <h2 id="differential" className="text-lg font-medium">
+      <h2
+        id="differential"
+        ref={heading}
+        tabIndex={-1}
+        className="text-lg font-medium"
+      >
         What this looks like
       </h2>
 

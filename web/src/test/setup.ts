@@ -1,6 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, expect } from "vitest";
+import * as axeMatchers from "vitest-axe/matchers";
 import { server } from "./server";
+
+// So an accessibility failure reads as a failure with a named rule, rather than as a wall
+// of JSON somebody has to interpret before they know what to fix.
+expect.extend(axeMatchers);
 
 // The API is mocked at the network boundary rather than by replacing the client. What is
 // under test is then the code that will run in a browser, including its fetch wrapper and

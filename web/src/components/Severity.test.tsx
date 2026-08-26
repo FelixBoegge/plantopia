@@ -43,3 +43,32 @@ describe("a severity", () => {
     expect(severityText(null)).toBeNull();
   });
 });
+
+describe("everywhere else", () => {
+  it("is the only place a severity is turned into something readable", async () => {
+    // The words live in one table so that a fourth severity is one edit. A screen that
+    // wrote its own would keep rendering the old three and silently miss the new one —
+    // which is exactly the kind of thing a passing suite would not notice.
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          if (path.includes("Severity")) continue;
+          const source = readFileSync(path, "utf8");
+          // A severity's stored values, appearing anywhere but the component that maps them.
+          if (/["']act_(today|this_week)["']|["']monitor["']/.test(source)) {
+            offenders.push(path);
+          }
+        }
+      }
+    };
+    walk("src");
+
+    expect(offenders).toEqual([]);
+  });
+});

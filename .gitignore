@@ -33,3 +33,6 @@ MY_QUESTION.md
 web/node_modules/
 web/dist/
 web/coverage/
+# tsc -b's incremental cache: a build artefact that changes on every build.
+web/*.tsbuildinfo
+web/.playwright-mcp/

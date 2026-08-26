@@ -437,6 +437,29 @@ describe("when it asks something", () => {
 });
 
 describe("the result", () => {
+  it("moves focus to it when it arrives", async () => {
+    // The result replaces the reasoning panel in place, after a wait long enough that
+    // somebody will have gone elsewhere. Arriving without focus means the thing they waited
+    // for is announced nowhere.
+    signedIn();
+    watching(
+      [STEP, COMPLETED],
+      run({ status: "completed", diagnosis_id: DIAGNOSIS, plant_id: PLANT }),
+    );
+    server.use(
+      http.get(`/api/v1/diagnoses/${DIAGNOSIS}`, () =>
+        HttpResponse.json(DETAIL),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    const heading = await screen.findByRole("heading", {
+      name: "What this looks like",
+    });
+
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
+
   it("ranks the candidates rather than naming one", async () => {
     signedIn();
     watching(

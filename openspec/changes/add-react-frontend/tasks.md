@@ -63,11 +63,11 @@
 
 ## 7. Accessibility and finish
 
-- [ ] 7.1 A `Severity` component carrying a text label; verify tests that every severity renders its label and that no other component renders a severity directly.
-- [ ] 7.2 Focus management through the wizard; verify tests that focus moves to each new step rather than staying where it was.
-- [ ] 7.3 `aria-live` on the reasoning panel and the chat reply; verify tests that content arriving without a navigation is announced.
-- [ ] 7.4 Keyboard paths through every flow; verify tests that starting, answering and reading a diagnosis are reachable without a pointer.
-- [ ] 7.5 Run an automated accessibility check over each route; verify no violations at the level the check reports, and record any accepted exception with its reason.
+- [x] 7.1 A `Severity` component carrying a text label; verify tests that every severity renders its label and that no other component renders a severity directly.
+- [x] 7.2 Focus management through the wizard; verify tests that focus moves to each new step rather than staying where it was.
+- [x] 7.3 `aria-live` on the reasoning panel and the chat reply; verify tests that content arriving without a navigation is announced.
+- [x] 7.4 Keyboard paths through every flow; verify tests that starting, answering and reading a diagnosis are reachable without a pointer.
+- [x] 7.5 Run an automated accessibility check over each route; verify no violations at the level the check reports, and record any accepted exception with its reason.
 
 ## 8. Proving it works, and closing
 
