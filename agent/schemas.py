@@ -32,6 +32,41 @@ class SymptomPosition(StrEnum):
     WHOLE_PLANT = "whole_plant"
 
 
+class ImageOrgan(StrEnum):
+    """Which part of the plant a photograph shows.
+
+    The vocabulary is not ours. Pl@ntNet accepts the organ as an input and is markedly more
+    accurate given it, so these are the values *it* recognises — which is why they are here
+    rather than being folded into ``SymptomPosition``, whose vocabulary is about where a
+    symptom appears and answers a different question.
+
+    ``UNKNOWN`` is ours, and is the only member that is not sent. A photograph whose organ
+    the vision model cannot determine is sent without a claimed organ; guessing one would
+    feed a specialist classifier a wrong hint, which is worse than no hint.
+    """
+
+    LEAF = "leaf"
+    FLOWER = "flower"
+    FRUIT = "fruit"
+    BARK = "bark"
+    HABIT = "habit"
+    UNKNOWN = "unknown"
+
+
+class SpeciesMethod(StrEnum):
+    """What produced a species candidate.
+
+    Carried with every candidate because a name on its own cannot be argued with. Knowing
+    that the vision model and the specialist classifier disagree — and which said what — is
+    the whole reason the choice is worth putting to somebody.
+    """
+
+    TYPED = "typed"  # The person starting the diagnosis said so.
+    VISION = "vision"  # The general-purpose vision model's guess.
+    PLANTNET = "plantnet"  # The specialist identification service.
+    AGREED = "agreed"  # Vision and the service named the same species.
+
+
 class Severity(StrEnum):
     """How urgently the user needs to act."""
 
@@ -65,6 +100,20 @@ class SpeciesGuess(BaseModel):
     common_name: str = Field(min_length=1)
     scientific_name: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class SpeciesCandidate(BaseModel):
+    """One answer to "what is this plant?", with where it came from.
+
+    ``method`` has no default on purpose. A candidate whose provenance is unstated is a
+    candidate nobody can weigh, and defaulting it would let one be constructed by accident
+    at exactly the site where somebody forgot to say.
+    """
+
+    common_name: str = Field(min_length=1)
+    scientific_name: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    method: SpeciesMethod
 
 
 class Hypotheses(BaseModel):

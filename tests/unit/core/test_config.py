@@ -42,6 +42,7 @@ def test_settings_applies_defaults(monkeypatch):
     assert settings.max_clarifying_questions == 4
     assert 0.0 < settings.retrieval_score_threshold < 1.0
     assert settings.tavily_api_key is None
+    assert settings.plantnet_api_key is None
 
 
 def test_the_database_url_names_its_driver(monkeypatch):
@@ -159,3 +160,27 @@ class TestRunSettings:
                 jwt_secret=TEST_JWT_SECRET,
                 run_pool_size=0,
             )
+
+
+def test_every_credential_is_named_in_the_example_environment():
+    """A key a deployment must supply and cannot guess belongs in `.env.example`.
+
+    The rule is credentials specifically, not every setting: most of `Settings` is tuning
+    with a sensible default, and listing all of it would make the example file a second
+    copy of the class. A credential is different — nothing can infer it, so a deployment
+    that does not know it exists simply runs without it, which is precisely how the
+    web-search path spent months unexercised (`U1`).
+    """
+    import pathlib
+
+    example = pathlib.Path(".env.example").read_text(encoding="utf-8")
+
+    credentials = [
+        name
+        for name in Settings.model_fields
+        if name.endswith("_api_key") or name.endswith("_secret")
+    ]
+    assert credentials, "the rule found nothing to check, which means the rule is wrong"
+
+    missing = [name for name in credentials if f"PLANTOPIA_{name.upper()}" not in example]
+    assert missing == []

@@ -6,12 +6,12 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 1. The adapter, and the path with no key
 
-- [ ] 1.1 Add `plantnet_api_key: str | None` to `Settings` and document it in `.env.example`; verify a settings test asserts it defaults to `None` and that `.env.example` names it.
-- [ ] 1.2 Add an `ImageOrgan` enum to `agent/schemas.py` covering the service's vocabulary plus an explicit "unknown"; verify a test asserts every member except "unknown" is a value the adapter will send.
-- [ ] 1.3 Add a `SpeciesCandidate` schema carrying species, optional scientific name, confidence and the method that produced it; verify a test asserts a candidate cannot be constructed without a method.
-- [ ] 1.4 Write `tools/plantnet.py` with the signature the design describes, returning an empty list for a missing key without making a request; verify a test asserts no HTTP call is attempted when the key is `None`.
-- [ ] 1.5 Return an empty list on timeout, transport error, 4xx, 5xx and an unparseable body; verify a table-driven test covers each with `respx` and asserts nothing raises.
-- [ ] 1.6 Treat the quota response distinctly in the log and identically in the return; verify a test asserts an exhausted allowance logs at warning and still returns an empty list.
+- [x] 1.1 Add `plantnet_api_key: str | None` to `Settings` and document it in `.env.example`; verify a settings test asserts it defaults to `None` and that `.env.example` names it.
+- [x] 1.2 Add an `ImageOrgan` enum to `agent/schemas.py` covering the service's vocabulary plus an explicit "unknown"; verify a test asserts every member except "unknown" is a value the adapter will send.
+- [x] 1.3 Add a `SpeciesCandidate` schema carrying species, optional scientific name, confidence and the method that produced it; verify a test asserts a candidate cannot be constructed without a method.
+- [x] 1.4 Write `tools/plantnet.py` with the signature the design describes, returning an empty list for a missing key without making a request; verify a test asserts no HTTP call is attempted when the key is `None`.
+- [x] 1.5 Return an empty list on timeout, transport error, 4xx, 5xx and an unparseable body; verify a table-driven test covers each with `respx` and asserts nothing raises.
+- [x] 1.6 Treat the quota response distinctly in the log and identically in the return; verify a test asserts an exhausted allowance logs at warning and still returns an empty list.
 
 ## 2. The real request, verified once against the real service
 

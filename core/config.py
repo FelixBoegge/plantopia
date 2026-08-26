@@ -57,6 +57,13 @@ class Settings(BaseSettings):
 
     tavily_api_key: str | None = None
 
+    # Pl@ntNet's identification API. Optional in exactly the way tavily_api_key is: absent,
+    # the second identification simply does not happen and the diagnosis proceeds on the
+    # vision model's guess alone. That is not a degraded mode bolted on — it is what this
+    # project did before the service existed, and it stays the path a deployment without a
+    # key takes.
+    plantnet_api_key: str | None = None
+
     # LangSmith tracing. Optional in exactly the way tavily_api_key is: absent, the
     # application runs unchanged and tracing is simply off (spec §2.4). Because
     # LangChain's tracer is itself a callback, a key is all the wiring there is —
