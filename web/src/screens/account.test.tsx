@@ -1,0 +1,302 @@
+/**
+ * The account screen, and the one screen not everybody can reach.
+ *
+ * The account screen is the answer to a promise made at registration: that the facts
+ * Plantopia infers about somebody can be seen and removed. A system that infers durable
+ * facts and offers neither is one a person cannot correct.
+ */
+
+import { HttpResponse, http } from "msw";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+
+import { PROBLEM } from "@/api/problems";
+import { AppRoutes } from "@/routes/routes";
+import { render, screen, waitFor } from "@/test/render";
+import { server } from "@/test/server";
+
+function account(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "01a0-owner",
+    email: "ada@example.com",
+    created_at: "2026-03-01T12:00:00Z",
+    tier: "free",
+    role: "member",
+    consent_version: "2026-08-25",
+    consent_at: "2026-03-01T12:00:00Z",
+    runs_used: 2,
+    runs_allowed: 20,
+    allowance_resets_at: "2026-04-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+const FACT = {
+  fact: "waters the kitchen basil about twice a week",
+  source: "inferred" as const,
+  confidence: 0.82,
+  first_seen: "2026-03-02T12:00:00Z",
+  last_confirmed: "2026-03-09T12:00:00Z",
+};
+
+function signedIn(who = account(), facts: unknown[] = []) {
+  server.use(
+    http.post("/api/v1/auth/refresh", () =>
+      HttpResponse.json({ access_token: "fresh" }),
+    ),
+    http.get("/api/v1/me", () => HttpResponse.json(who)),
+    http.get("/api/v1/profile/facts", () => HttpResponse.json(facts)),
+  );
+}
+
+describe("the account", () => {
+  it("shows who is signed in", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
+  });
+
+  it("shows what was agreed to, and when", async () => {
+    // A system that cannot say what somebody consented to has no evidence of consent.
+    signedIn();
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(
+      await screen.findByText(/privacy notice of 2026-08-25/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows how much of the allowance is left", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(
+      await screen.findByText(/2 of 20 checks used this month/),
+    ).toBeInTheDocument();
+  });
+
+  it("says plainly when there are none left", async () => {
+    signedIn(account({ runs_used: 20 }));
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(
+      await screen.findByText("No checks left this month"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("what has been learned", () => {
+  it("lists each fact with when it was noticed", async () => {
+    signedIn(account(), [FACT]);
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText(FACT.fact)).toBeInTheDocument();
+    expect(screen.getByText(/first noticed/)).toBeInTheDocument();
+  });
+
+  it("says how sure it is in words rather than a number", async () => {
+    // "0.82" alone invites being read as a certainty.
+    signedIn(account(), [FACT]);
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText(/fairly sure/)).toBeInTheDocument();
+    expect(screen.queryByText(/0\.82/)).not.toBeInTheDocument();
+  });
+
+  it("distinguishes what it was told from what it worked out", async () => {
+    signedIn(account(), [
+      { ...FACT, source: "stated", fact: "lives in Berlin" },
+      FACT,
+    ]);
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText(/You told it this/)).toBeInTheDocument();
+    expect(screen.getByText(/It worked this out/)).toBeInTheDocument();
+  });
+
+  it("forgets one", async () => {
+    let sent: unknown = null;
+    let forgotten = false;
+    server.use(
+      http.post("/api/v1/auth/refresh", () =>
+        HttpResponse.json({ access_token: "fresh" }),
+      ),
+      http.get("/api/v1/me", () => HttpResponse.json(account())),
+      http.get("/api/v1/profile/facts", () =>
+        HttpResponse.json(forgotten ? [] : [FACT]),
+      ),
+      http.post(
+        "/api/v1/profile/facts/forget",
+        async ({ request: incoming }) => {
+          sent = await incoming.json();
+          forgotten = true;
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Forget this" }),
+    );
+
+    await waitFor(() => expect(sent).toEqual({ fact: FACT.fact }));
+  });
+
+  it("stops showing a fact once it is forgotten", async () => {
+    let forgotten = false;
+    server.use(
+      http.post("/api/v1/auth/refresh", () =>
+        HttpResponse.json({ access_token: "fresh" }),
+      ),
+      http.get("/api/v1/me", () => HttpResponse.json(account())),
+      http.get("/api/v1/profile/facts", () =>
+        HttpResponse.json(forgotten ? [] : [FACT]),
+      ),
+      http.post("/api/v1/profile/facts/forget", () => {
+        forgotten = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Forget this" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText(FACT.fact)).not.toBeInTheDocument(),
+    );
+  });
+
+  it("says so when nothing has been learned yet", async () => {
+    signedIn(account(), []);
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText(/Nothing yet/)).toBeInTheDocument();
+  });
+});
+
+describe("the evaluation screen", () => {
+  it("is not offered to an account that cannot reach it", async () => {
+    signedIn();
+    server.use(http.get("/api/v1/plants", () => HttpResponse.json([])));
+
+    render(<AppRoutes />, { route: "/" });
+    await screen.findByRole("heading", { name: "Your plants" });
+
+    expect(
+      screen.queryByRole("link", { name: "Evaluation" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows what a refused account is shown", async () => {
+    // 404, the same as any route that does not exist. A screen that said "you may not"
+    // would tell a stranger it is there.
+    signedIn();
+    server.use(
+      http.get("/api/v1/evaluation/latest", () =>
+        HttpResponse.json(
+          {
+            type: PROBLEM.notFound,
+            title: "Not found",
+            status: 404,
+            detail: "No such resource.",
+          },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/admin/evaluation" });
+
+    expect(await screen.findByText("Not available")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/permission|forbidden|not allowed/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the newest result for an account that may see it", async () => {
+    signedIn(account({ role: "admin" }));
+    server.use(
+      http.get("/api/v1/evaluation/latest", () =>
+        HttpResponse.json({
+          generated_at: "2026-08-19T10:51:29Z",
+          results: { accuracy: { top_1: 0.75, top_3: 0.89 } },
+        }),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/admin/evaluation" });
+
+    expect(await screen.findByText("75%")).toBeInTheDocument();
+    expect(screen.getByText("89%")).toBeInTheDocument();
+  });
+
+  it("says so plainly before any harness has run", async () => {
+    // The ordinary state of a fresh clone. Failing here would send somebody looking for a
+    // bug instead of a command.
+    signedIn(account({ role: "admin" }));
+    server.use(
+      http.get("/api/v1/evaluation/latest", () =>
+        HttpResponse.json({ generated_at: null, results: null }),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/admin/evaluation" });
+
+    expect(await screen.findByText("No results yet")).toBeInTheDocument();
+    expect(screen.getByText(/eval\.run_eval/)).toBeInTheDocument();
+  });
+});
+
+describe("before starting a check", () => {
+  it("warns when the allowance is nearly gone", async () => {
+    signedIn(account({ runs_used: 18 }));
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByText("2 checks left this month"),
+    ).toBeInTheDocument();
+  });
+
+  it("says so before rather than after when there are none left", async () => {
+    // Being told by a failed diagnosis is being told too late.
+    signedIn(account({ runs_used: 20 }));
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByText("No checks left this month"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not let a check be started that would be refused", async () => {
+    signedIn(account({ runs_used: 20 }));
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByRole("button", { name: "Start the check" }),
+    ).toBeDisabled();
+  });
+
+  it("says nothing when there is plenty left", async () => {
+    signedIn(account({ runs_used: 1 }));
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    await screen.findByRole("button", { name: "Start the check" });
+    expect(screen.queryByText(/left this month/)).not.toBeInTheDocument();
+  });
+});

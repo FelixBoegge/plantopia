@@ -16,11 +16,14 @@ import type { StartRun } from "@/api/hooks/runs";
 export function Upload({
   onStart,
   busy,
+  blocked = false,
   failure,
   fixedPlant,
 }: {
   onStart: (start: Omit<StartRun, "plantId">) => void;
   busy: boolean;
+  /** The allowance is used up, so the server would refuse this. */
+  blocked?: boolean;
   failure: unknown;
   fixedPlant?: { id: string; name: string };
 }) {
@@ -121,7 +124,10 @@ export function Upload({
       />
 
       <div>
-        <Button type="submit" disabled={busy || photographs.length === 0}>
+        <Button
+          type="submit"
+          disabled={busy || blocked || photographs.length === 0}
+        >
           {busy ? "Starting…" : "Start the check"}
         </Button>
       </div>

@@ -5,6 +5,8 @@ import { Register } from "@/screens/auth/Register";
 import { ResetPassword } from "@/screens/auth/ResetPassword";
 import { SignIn } from "@/screens/auth/SignIn";
 import { VerifyEmail } from "@/screens/auth/VerifyEmail";
+import { Account } from "@/screens/Account";
+import { Evaluation } from "@/screens/Evaluation";
 import { SignedIn } from "@/screens/SignedIn";
 import { PlantDetail } from "@/screens/plants/PlantDetail";
 import { Plants } from "@/screens/plants/Plants";
@@ -16,10 +18,6 @@ import { Wizard } from "@/screens/wizard/Wizard";
  * One file, so that "what is behind a session" is a question with one answer rather than a
  * property distributed across a dozen components.
  */
-
-function Placeholder({ name }: { name: string }) {
-  return <h1>{name}</h1>;
-}
 
 export function AppRoutes() {
   return (
@@ -35,14 +33,8 @@ export function AppRoutes() {
           <Route path="/plants/:plantId" element={<PlantDetail />} />
           <Route path="/plants/:plantId/diagnose" element={<Wizard />} />
           <Route path="/diagnose" element={<Wizard />} />
-          <Route
-            path="/account"
-            element={<Placeholder name="Your account" />}
-          />
-          <Route
-            path="/admin/evaluation"
-            element={<Placeholder name="Evaluation" />}
-          />
+          <Route path="/account" element={<Account />} />
+          <Route path="/admin/evaluation" element={<Evaluation />} />
         </Route>
       </Route>
 

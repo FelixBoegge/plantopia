@@ -9,6 +9,7 @@ import {
   useStartRun,
 } from "@/api/hooks/runs";
 import { hasFinished, useRunStream } from "@/api/hooks/useRunStream";
+import { allowance, useAccount } from "@/api/hooks/account";
 import { usePlant } from "@/api/hooks/plants";
 import { LinkButton } from "@/components/LinkButton";
 import { Notice } from "@/components/Notice";
@@ -33,13 +34,33 @@ export function Wizard() {
   const start = useStartRun();
   const { data: run } = useRun(runId);
   const plant = usePlant(plantId);
+  const { data: account } = useAccount();
+
+  const left = allowance(account);
 
   return runId ? (
     <Watching runId={runId} finished={hasFinished(run?.status)} />
   ) : (
     <>
       <h1 className="mb-6 text-2xl font-semibold">Check a plant</h1>
+
+      {/* Said before, not after. Being told "you have used your twenty checks" by a failed
+          diagnosis is being told too late — and the number comes from the same computation
+          the server refuses with, so the two cannot disagree. */}
+      {left?.exhausted ? (
+        <Notice tone="failure" title="No checks left this month">
+          You have used all {left.limit}. You can start another after{" "}
+          {left.resetsAt.toLocaleDateString()}.
+        </Notice>
+      ) : left && left.remaining <= 3 ? (
+        <Notice
+          title={`${left.remaining} check${left.remaining === 1 ? "" : "s"} left this month`}
+        >
+          Your allowance resets on {left.resetsAt.toLocaleDateString()}.
+        </Notice>
+      ) : null}
       <Upload
+        blocked={Boolean(left?.exhausted)}
         busy={start.isPending}
         failure={start.error}
         fixedPlant={

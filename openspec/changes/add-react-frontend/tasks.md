@@ -56,10 +56,10 @@
 
 ## 6. Account and evaluation
 
-- [ ] 6.1 The account screen showing learned facts with when and how confident, and forgetting one; verify tests that forgetting removes it and that the list reflects the server afterwards.
-- [ ] 6.2 Show the consent record and the allowance; verify tests for the notice version and date, and for the remaining runs and reset date.
-- [ ] 6.3 Warn before a run that would be refused; verify a test that somebody at their allowance is told before starting rather than after.
-- [ ] 6.4 The evaluation screen for permitted accounts; verify tests that it renders the newest result, that it says so plainly before any harness has run, and that an ordinary account sees what it would see for any unknown route.
+- [x] 6.1 The account screen showing learned facts with when and how confident, and forgetting one; verify tests that forgetting removes it and that the list reflects the server afterwards.
+- [x] 6.2 Show the consent record and the allowance; verify tests for the notice version and date, and for the remaining runs and reset date.
+- [x] 6.3 Warn before a run that would be refused; verify a test that somebody at their allowance is told before starting rather than after.
+- [x] 6.4 The evaluation screen for permitted accounts; verify tests that it renders the newest result, that it says so plainly before any harness has run, and that an ordinary account sees what it would see for any unknown route.
 
 ## 7. Accessibility and finish
 
