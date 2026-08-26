@@ -13,7 +13,7 @@ from langgraph.types import interrupt
 from agent.deps import Deps
 from agent.nodes.intake import NodeFn
 from agent.prompts.context import SELECT_QUESTIONS
-from agent.schemas import Question, QuestionSet, SpeciesGuess
+from agent.schemas import Question, QuestionSet, SpeciesGuess, SpeciesMethod
 from agent.state import DiagnosisState
 from agent.structured import StructuredOutputFailed, invoke_structured
 
@@ -126,6 +126,18 @@ def make_select_questions(deps: Deps) -> NodeFn:
     return select_questions_node
 
 
+def _method_of(name: str, candidates) -> SpeciesMethod:
+    """Which method produced the candidate with this name.
+
+    ``TYPED`` when nothing matches, because the only route to a species that was never
+    offered is a person having said it.
+    """
+    for candidate in candidates:
+        if candidate.common_name.casefold() == name.casefold():
+            return candidate.method
+    return SpeciesMethod.TYPED
+
+
 def make_gather_context(deps: Deps) -> NodeFn:
     """Halt until the user answers the questions ``select_questions`` chose.
 
@@ -158,12 +170,12 @@ def make_gather_context(deps: Deps) -> NodeFn:
         # a species could be chosen, and what an older client still sends — or a mapping
         # carrying both. Reading both shapes rather than requiring the new one keeps a run
         # that was paused before a deployment resumable after it.
-        return _resumed(given)
+        return _resumed(given, state.candidates)
 
     return gather_context
 
 
-def _resumed(given) -> dict:
+def _resumed(given, candidates=()) -> dict:
     """What a resume payload means for state.
 
     The chosen species is written here rather than in ``select_questions`` for the reason
@@ -183,13 +195,19 @@ def _resumed(given) -> dict:
     if not chosen:
         return {"answers": dict(answers)}
 
+    name = chosen.get("common_name") or "Unknown"
     return {
         "answers": dict(answers),
         "species": SpeciesGuess(
-            common_name=chosen.get("common_name") or "Unknown",
+            common_name=name,
             scientific_name=chosen.get("scientific_name"),
             confidence=float(chosen.get("confidence") or 0.0),
         ),
+        # Looked up here rather than taken from what the client sent. The client knows which
+        # candidate it offered, but this field is the record used to attribute a wrong
+        # diagnosis afterwards, and a record whose provenance is whatever a client claimed
+        # is not evidence of anything.
+        "species_method": _method_of(name, candidates),
         # Somebody looked at the candidates and picked one. That is a different fact from
         # the leading candidate happening to be right, and the difference is what makes a
         # wrong diagnosis attributable later.

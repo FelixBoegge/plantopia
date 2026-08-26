@@ -93,6 +93,8 @@ def make_persist(deps: Deps) -> NodeFn:
                 now=now,
                 token_usage=usage.as_token_usage() if usage else None,
                 cost_usd=usage.cost_usd if usage else None,
+                species_method=(state.species_method.value if state.species_method else None),
+                species_confirmed=state.species_confirmed,
             )
 
             if state.roadmap is not None:

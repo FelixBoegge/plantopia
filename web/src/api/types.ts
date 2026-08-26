@@ -101,6 +101,10 @@ export interface Diagnosis {
   is_healthy: boolean;
   reasoning: string;
   candidates: Candidate[];
+  /** Which method produced the species this was reasoned from; null means unknown. */
+  species_method: "typed" | "vision" | "plantnet" | "agreed" | null;
+  /** Whether a person picked that species, as opposed to it being the leading candidate. */
+  species_confirmed: boolean;
   created_at: string;
   cost_usd: number | null;
 }

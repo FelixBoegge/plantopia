@@ -44,6 +44,12 @@ class DiagnosisOut(BaseModel):
     created_at: datetime
     cost_usd: float | None
 
+    # Where the species this was reasoned from came from, and whether a person agreed to
+    # it. `null` means unknown, which is what every diagnosis made before this was recorded
+    # honestly says about itself.
+    species_method: Literal["typed", "vision", "plantnet", "agreed"] | None = None
+    species_confirmed: bool = False
+
 
 class ObservationOut(BaseModel):
     id: UUID

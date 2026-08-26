@@ -332,3 +332,69 @@ def test_token_usage_is_none_when_not_written(db, owner, now):
     record = repo.get(owner, diagnosis_id)
     assert record.token_usage is None
     assert record.cost_usd is None
+
+
+class TestTheSpeciesProvenance:
+    """Which method produced the species, and whether a person agreed to it.
+
+    Two columns whose only purpose is telling apart the two ways a diagnosis can be wrong:
+    bad reasoning about the right plant, or good reasoning about the wrong one. They look
+    identical afterwards without this.
+    """
+
+    @pytest.mark.parametrize(
+        ("method", "confirmed"),
+        [
+            ("vision", False),
+            ("vision", True),
+            ("plantnet", True),
+            ("agreed", False),
+            ("typed", True),
+            (None, False),
+        ],
+        ids=[
+            "vision-unconfirmed",
+            "vision-confirmed",
+            "plantnet-confirmed",
+            "agreed-unconfirmed",
+            "typed-confirmed",
+            "unknown-unconfirmed",
+        ],
+    )
+    def test_it_round_trips(self, db, owner, now, method, confirmed):
+        repo = DiagnosisRepository(db)
+
+        diagnosis_id = _create_minimal_diagnosis(
+            repo, db, owner, now, species_method=method, species_confirmed=confirmed
+        )
+
+        record = repo.get(owner, diagnosis_id)
+        assert record.species_method == method
+        assert record.species_confirmed is confirmed
+
+    def test_a_diagnosis_written_without_it_reads_as_unknown(self, db, owner, now):
+        """Every row that existed before these columns did. Null means unknown, and a
+        backfill would have had to invent a provenance for exactly the field whose job is
+        being trustworthy about provenance."""
+        repo = DiagnosisRepository(db)
+
+        diagnosis_id = _create_minimal_diagnosis(repo, db, owner, now)
+
+        record = repo.get(owner, diagnosis_id)
+        assert record.species_method is None
+        assert record.species_confirmed is False
+
+    def test_an_existing_row_can_be_read_after_the_migration(self, db, owner, now):
+        """The column is NOT NULL with a server default, so a row inserted without it —
+        which is what every pre-migration row is — still reads."""
+        from sqlalchemy import text
+
+        repo = DiagnosisRepository(db)
+        diagnosis_id = _create_minimal_diagnosis(repo, db, owner, now)
+        db.execute(
+            text("UPDATE diagnoses SET species_method = NULL WHERE id = :id"),
+            {"id": diagnosis_id},
+        )
+
+        record = repo.get(owner, diagnosis_id)
+        assert record.species_method is None

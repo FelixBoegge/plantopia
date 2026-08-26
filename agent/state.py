@@ -20,6 +20,7 @@ from agent.schemas import (
     Roadmap,
     SpeciesCandidate,
     SpeciesGuess,
+    SpeciesMethod,
     SymptomSet,
     WeatherSummary,
 )
@@ -60,6 +61,11 @@ class DiagnosisState(BaseModel):
 
     # Whether a person picked the species, as opposed to it being the best guess going.
     species_confirmed: bool = False
+
+    # Which method produced the species above. Carried rather than derived at the end,
+    # because by then the only way back to it is matching a name against the candidate list
+    # — and a diagnosis's provenance should not rest on string comparison run an hour later.
+    species_method: SpeciesMethod | None = None
 
     symptoms: SymptomSet | None = None
 

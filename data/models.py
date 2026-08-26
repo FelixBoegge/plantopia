@@ -218,6 +218,19 @@ class Diagnosis(Base):
     observation_id: Mapped[UUID] = mapped_column(ForeignKey("observations.id", ondelete="CASCADE"))
     plant_id: Mapped[UUID] = _plant()
     differential_json: Mapped[str] = mapped_column(Text)
+
+    # Where the species came from, and whether a person agreed to it.
+    #
+    # A wrong diagnosis has two causes that look identical afterwards: bad reasoning about
+    # the right plant, or good reasoning about the wrong one. These two columns are what
+    # separates them.
+    #
+    # `species_method` is nullable and means unknown when it is null — which is the honest
+    # answer for every row written before this existed, and for a run whose identification
+    # failed outright. A backfill would have to invent one.
+    species_method: Mapped[str | None] = mapped_column(Text)
+    species_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     primary_candidate: Mapped[str | None] = mapped_column(Text)
     primary_confidence: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[str | None] = mapped_column(Text)

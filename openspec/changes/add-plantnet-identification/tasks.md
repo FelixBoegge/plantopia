@@ -45,10 +45,10 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 6. What the diagnosis records
 
-- [ ] 6.1 Add the provenance and confirmation columns to `Diagnosis` with a migration; verify the migration test passes and that it mentions no checkpoint table.
-- [ ] 6.2 Persist which method produced the species and whether a person confirmed it; verify a test asserts each of the four combinations round-trips.
-- [ ] 6.3 Report an older diagnosis's provenance as unknown rather than inventing one; verify a test asserts a row written before this change reads as unknown.
-- [ ] 6.4 Expose both on the diagnosis endpoint; verify the client-type agreement test covers the new fields.
+- [x] 6.1 Add the provenance and confirmation columns to `Diagnosis` with a migration; verify the migration test passes and that it mentions no checkpoint table.
+- [x] 6.2 Persist which method produced the species and whether a person confirmed it; verify a test asserts each of the four combinations round-trips.
+- [x] 6.3 Report an older diagnosis's provenance as unknown rather than inventing one; verify a test asserts a row written before this change reads as unknown.
+- [x] 6.4 Expose both on the diagnosis endpoint; verify the client-type agreement test covers the new fields.
 
 ## 7. The wizard
 

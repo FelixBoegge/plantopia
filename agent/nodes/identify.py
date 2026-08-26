@@ -87,6 +87,9 @@ def make_identify_plant(deps: Deps) -> NodeFn:
             # than a missing second opinion.
             return {
                 "species": UNKNOWN_SPECIES,
+                # No method produced it, and saying one did would be a lie in the field
+                # that exists to make a wrong diagnosis attributable.
+                "species_method": None,
                 "errors": [*state.errors, f"identify_plant: {exc}"],
             }
 
@@ -110,6 +113,7 @@ def make_identify_plant(deps: Deps) -> NodeFn:
                 confidence=leader.confidence,
             ),
             "candidates": candidates,
+            "species_method": leader.method,
             **({"errors": [*state.errors, *errors]} if errors else {}),
         }
 

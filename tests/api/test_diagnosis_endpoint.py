@@ -40,3 +40,21 @@ def test_it_carries_only_that_diagnosis_plan(client, db, owner, seeded):
 
 def test_an_unknown_diagnosis_is_absent(client):
     assert client.get(f"/api/v1/diagnoses/{new_id()}").status_code == 404
+
+
+def test_it_says_where_the_species_came_from(client, seeded):
+    """The two fields that tell a bad identification apart from bad reasoning about a good
+    one. A client that cannot read them cannot show anybody why to doubt a diagnosis."""
+    body = client.get(f"/api/v1/diagnoses/{seeded['diagnosis_id']}").json()
+
+    assert "species_method" in body["diagnosis"]
+    assert "species_confirmed" in body["diagnosis"]
+
+
+def test_a_diagnosis_with_no_recorded_provenance_says_so(client, seeded):
+    """Not a guess and not an omission: null, meaning nothing recorded it. Every diagnosis
+    made before this existed is in exactly this position."""
+    body = client.get(f"/api/v1/diagnoses/{seeded['diagnosis_id']}").json()
+
+    assert body["diagnosis"]["species_method"] is None
+    assert body["diagnosis"]["species_confirmed"] is False

@@ -33,6 +33,13 @@ class DiagnosisRecord:
     cost_usd: float | None
     created_at: datetime
 
+    # Which method produced the species this diagnosis was reasoned from, and whether a
+    # person picked it. ``None`` means unknown rather than none: a diagnosis written before
+    # provenance was recorded cannot say, and claiming otherwise would put invented data in
+    # the field that exists to attribute failures.
+    species_method: str | None = None
+    species_confirmed: bool = False
+
 
 def _to_record(row: Diagnosis) -> DiagnosisRecord:
     return DiagnosisRecord(
@@ -50,6 +57,8 @@ def _to_record(row: Diagnosis) -> DiagnosisRecord:
         token_usage=json.loads(row.token_usage_json) if row.token_usage_json else None,
         cost_usd=row.cost_usd,
         created_at=row.created_at,
+        species_method=row.species_method,
+        species_confirmed=bool(row.species_confirmed),
     )
 
 
@@ -79,6 +88,8 @@ class DiagnosisRepository:
         now: datetime,
         cost_usd: float | None = None,
         token_usage: dict[str, int] | None = None,
+        species_method: str | None = None,
+        species_confirmed: bool = False,
     ) -> UUID:
         require_plant(self._session, user_id, plant_id)
         primary = differential.primary
@@ -95,6 +106,8 @@ class DiagnosisRepository:
             token_usage_json=json.dumps(token_usage) if token_usage else None,
             cost_usd=cost_usd,
             created_at=now,
+            species_method=species_method,
+            species_confirmed=species_confirmed,
         )
         self._session.add(diagnosis)
         self._session.flush()
