@@ -173,7 +173,7 @@ def test_a_run_still_working_streams_events_as_they_are_published(client, db, ow
     """The live half: the client is connected before anything happens."""
 
     def _work():
-        time.sleep(0.3)
+        time.sleep(0.05)
         _publish(run, steps.STEP, {"step": "identifying", "description": "Looking"}, 1)
         _publish(run, steps.COMPLETED, {"diagnosis_id": None}, 2)
 
@@ -228,7 +228,7 @@ def test_an_event_covered_by_the_replay_is_not_sent_twice(client, db, run):
     sequence = _record(db, run, steps.STEP, step, publish=False)
 
     def _work():
-        time.sleep(0.2)
+        time.sleep(0.05)
         _publish(run, steps.STEP, step, sequence)  # the duplicate
         _publish(run, steps.COMPLETED, {"diagnosis_id": None}, sequence + 1)
 
@@ -243,10 +243,14 @@ def test_the_stream_survives_the_pause_for_questions(client, db, run):
     """One connection spans both halves of a run. The pause is a gap between publishes."""
 
     def _work():
-        time.sleep(0.2)
+        # Short gaps. They only need to be non-zero to be a pause — and every second spent
+        # here is a second of margin against the read deadline, which a loaded machine will
+        # eat. This test failed exactly once, during a full run with two servers left
+        # running beside it.
+        time.sleep(0.05)
         _publish(run, steps.STEP, {"step": "checking", "description": "Checking"}, 1)
         _publish(run, steps.QUESTIONS, {"questions": [{"key": "watering"}]}, 2)
-        time.sleep(0.5)  # the person reading their screen
+        time.sleep(0.1)  # the person reading their screen
         _publish(run, steps.STEP, {"step": "diagnosing", "description": "Weighing"}, 3)
         _publish(run, steps.COMPLETED, {"diagnosis_id": None}, 4)
 
