@@ -20,6 +20,7 @@ from data.repositories import runs as run_status
 from data.repositories.plants import PlantRepository
 from data.repositories.runs import RunRepository
 from data.repositories.usage import UsageRepository
+from runs import steps
 from runs.bus import bus
 from services.run_service import RunService
 from tests.runs import make_run
@@ -215,12 +216,54 @@ def test_cancelling_an_unfinished_run_is_accepted(client, db, waiting, executor)
     assert response.status_code == 204
 
 
-def test_cancelling_asks_the_worker_to_stop(client, db, waiting, executor):
-    """A flag the worker reads between nodes, not a status. The run is still legitimately
-    whatever it was until the worker notices."""
+def test_cancelling_a_running_run_asks_the_worker_to_stop(client, db, owner, executor):
+    """A flag read between nodes, not a status: the run is still legitimately running until
+    the worker notices, and a status meaning "will stop shortly" is one every client would
+    have to special-case."""
+    run = make_run(db, owner, status=run_status.RUNNING)
+    run_id = run.id
+    db.commit()
+
+    client.delete(f"/api/v1/runs/{run_id}")
+
+    assert RunRepository(db).cancel_requested(run_id) is True
+    assert client.get(f"/api/v1/runs/{run_id}").json()["status"] == run_status.RUNNING
+
+
+def test_cancelling_a_paused_run_ends_it_immediately(client, db, waiting, executor):
+    """Nothing is executing, so there is no worker to notice a flag. A run told to stop
+    would otherwise sit paused until the sweeper gave up on it an hour later."""
     client.delete(f"/api/v1/runs/{waiting}")
 
-    assert RunRepository(db).cancel_requested(waiting) is True
+    assert client.get(f"/api/v1/runs/{waiting}").json()["status"] == run_status.CANCELLED
+
+
+def test_a_cancelled_paused_run_cannot_then_be_answered(client, db, waiting, executor):
+    """Answering it would restart work somebody has already said they do not want."""
+    client.delete(f"/api/v1/runs/{waiting}")
+
+    response = _answer(client, waiting)
+
+    assert response.status_code == 409
+    assert executor.submitted == []
+
+
+def test_cancelling_a_queued_run_ends_it_immediately(client, db, owner, executor):
+    run = make_run(db, owner, status=run_status.QUEUED)
+    run_id = run.id
+    db.commit()
+
+    client.delete(f"/api/v1/runs/{run_id}")
+
+    assert client.get(f"/api/v1/runs/{run_id}").json()["status"] == run_status.CANCELLED
+
+
+def test_a_cancelled_paused_run_says_so_on_its_stream(client, db, owner, waiting, executor):
+    """A watcher would otherwise hold a connection open on something that has ended."""
+    client.delete(f"/api/v1/runs/{waiting}")
+
+    events = RunRepository(db).events(owner, waiting)
+    assert [event.kind for event in events] == [steps.CANCELLED]
 
 
 @pytest.mark.parametrize(

@@ -33,6 +33,12 @@ ROUTES = [
     ("plants.delete", "DELETE", "/api/v1/plants/{plant_id}", None),
     ("chat.list", "GET", "/api/v1/plants/{plant_id}/messages", None),
     ("chat.send", "POST", "/api/v1/plants/{plant_id}/messages", {"content": "hello"}),
+    (
+        "chat.stream",
+        "POST",
+        "/api/v1/plants/{plant_id}/messages/stream",
+        {"content": "hello"},
+    ),
     ("care.mark_step", "PATCH", "/api/v1/roadmap-steps/{step_id}", {"status": "done"}),
     ("care.feedback", "POST", "/api/v1/diagnoses/{diagnosis_id}/feedback", {"rating": 5}),
     ("photos.get", "GET", "/api/v1/photos/{key}", None),

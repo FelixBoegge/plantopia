@@ -52,17 +52,17 @@
 
 ## 7. Chat over the same shape
 
-- [ ] 7.1 Add the streaming chat endpoint delivering the reply progressively; verify tests that the reply arrives in more than one piece and that the transcript afterwards is indistinguishable from the single-request form's.
-- [ ] 7.2 Surface the agent's lookups as events before the reply continues; verify a test that consulting a source produces an event naming it in the product's language.
-- [ ] 7.3 Record the message and the completed reply even when the connection drops mid-reply; verify a test that disconnects part-way and then reads the transcript.
-- [ ] 7.4 Refuse a streaming request naming another owner's plant with 404, recording nothing; verify a test asserting both.
-- [ ] 7.5 Leave the single-request endpoint working unchanged; verify that its existing tests pass untouched and that the evaluation harness still calls it.
+- [x] 7.1 Add the streaming chat endpoint delivering the reply progressively; verify tests that the reply arrives in more than one piece and that the transcript afterwards is indistinguishable from the single-request form's.
+- [x] 7.2 Surface the agent's lookups as events before the reply continues; verify a test that consulting a source produces an event naming it in the product's language.
+- [x] 7.3 Record the message and the completed reply even when the connection drops mid-reply; verify a test that disconnects part-way and then reads the transcript.
+- [x] 7.4 Refuse a streaming request naming another owner's plant with 404, recording nothing; verify a test asserting both.
+- [x] 7.5 Leave the single-request endpoint working unchanged; verify that its existing tests pass untouched and that the evaluation harness still calls it.
 
 ## 8. Spend, and closing the gaps
 
 - [x] 8.1 Record tokens and cost when a run reaches any terminal status, including cancelled and swept; verify tests for completed, failed, cancelled and swept, and that a provider reporting no cost leaves unknown rather than zero.
 - [x] 8.2 Delete `tests/unit/services/test_limits_are_not_wired_yet.py` and the note in `services/limits.py`; verify the suite is green with both gone and that the guard is genuinely called by a run.
-- [ ] 8.3 Confirm the evaluation harness still calls the graph directly rather than going through runs; verify a test asserting it, so the accuracy baseline cannot drift through this change.
-- [ ] 8.4 Strike `M29` as resolved with today's date, and record the in-process bus alongside `M28` as one constraint on the deployment rather than two; verify identifiers and dates against the file's conventions.
-- [ ] 8.5 Update the README: starting a diagnosis, watching it, answering it, and the one-process constraint; verify every command runs as written against a live server, including the interrupt and the resume.
-- [ ] 8.6 Run `openspec validate add-background-runs-streaming --strict`, the full suite, and ruff; verify all three are clean.
+- [x] 8.3 Confirm the evaluation harness still calls the graph directly rather than going through runs; verify a test asserting it, so the accuracy baseline cannot drift through this change.
+- [x] 8.4 Strike `M29` as resolved with today's date, and record the in-process bus alongside `M28` as one constraint on the deployment rather than two; verify identifiers and dates against the file's conventions.
+- [x] 8.5 Update the README: starting a diagnosis, watching it, answering it, and the one-process constraint; verify every command runs as written against a live server, including the interrupt and the resume.
+- [x] 8.6 Run `openspec validate add-background-runs-streaming --strict`, the full suite, and ruff; verify all three are clean.

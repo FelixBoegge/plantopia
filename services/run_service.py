@@ -27,7 +27,8 @@ from data.repositories.errors import RecordNotFoundError
 from data.repositories.plants import PlantRepository
 from data.repositories.runs import EventRecord, RunRecord, RunRepository
 from data.repositories.usage import UsageRepository
-from runs.bus import EventBus
+from runs import steps
+from runs.bus import Event, EventBus
 from runs.executor import RunExecutor
 from runs.worker import execute
 from services import limits
@@ -71,6 +72,7 @@ class RunService:
         settings: Settings,
         now,
         build_graph=None,
+        session_factory=None,
     ) -> None:
         self._user_id = user_id
         self._tier = tier
@@ -81,9 +83,12 @@ class RunService:
         self._bus = bus
         self._settings = settings
         self._now = now
-        # Passed through to the worker, which defaults it. Here so a test can drive a real
-        # run against scripted models without patching a module.
+        # Passed through to the worker, which defaults both. Here so that a test can drive
+        # a real run end to end — service, worker and back — without patching a module. The
+        # seam earns its keep: the two halves once disagreed about what status a resumed run
+        # is in, and only a test crossing this boundary could see it.
         self._build_graph = build_graph
+        self._session_factory = session_factory
 
     @property
     def user_id(self) -> UUID:
@@ -156,6 +161,10 @@ class RunService:
         one thread — which would run the expensive half twice against one checkpoint.
         """
         run = self.get(run_id)
+        if self._runs.cancel_requested(run_id):
+            # Asked to stop, and then answered. Honouring the answer would restart work
+            # somebody has already said they do not want.
+            raise RunConflictError("this run has been cancelled")
         thread_id = self._runs.thread_of(self._user_id, run_id)
 
         with transaction(self._runs.session):
@@ -174,16 +183,58 @@ class RunService:
         return self.get(run_id)
 
     def cancel(self, run_id: UUID) -> None:
-        """Ask a run to stop.
+        """Stop a run.
 
-        Two steps rather than one, because a single boolean cannot say which of the two
-        refusals happened: the run belonging to somebody else is 404, and the run having
-        already finished is 409.
+        What that means depends on whether anything is executing.
+
+        A ``running`` run has a worker inside the graph, so it gets the cooperative flag and
+        stops between nodes — the step in flight finishes, because killing a thread mid-call
+        leaks its connection and can leave a half-written checkpoint.
+
+        A ``queued`` or ``awaiting_answers`` run has no worker at all. Setting a flag
+        nothing reads would leave it exactly where it was: a paused run would sit there
+        until the sweeper gave up on it an hour later, having been told to stop. So it ends
+        here and now, and the conditional transition is what stops a worker that was about
+        to pick it up from resurrecting it.
+
+        Two steps rather than one, because a single boolean cannot say which refusal
+        happened: somebody else's run is 404, an already-finished one is 409.
         """
         run = self.get(run_id)
-        if not self._runs.request_cancel(self._user_id, run_id):
+
+        if run.status == run_status.RUNNING:
+            if not self._runs.request_cancel(self._user_id, run_id):
+                raise RunConflictError(f"this run is already {run.status}")
+            self._runs.session.commit()
+            return
+
+        with transaction(self._runs.session):
+            stopped = self._runs.advance(
+                run_id,
+                expected=frozenset({run_status.QUEUED, run_status.AWAITING_ANSWERS}),
+                to=run_status.CANCELLED,
+                now=self._now(),
+            )
+        if not stopped:
             raise RunConflictError(f"this run is already {run.status}")
-        self._runs.session.commit()
+        self._announce_cancelled(run_id)
+
+    def _announce_cancelled(self, run_id: UUID) -> None:
+        """Tell whoever is watching that a run they were following has stopped.
+
+        The worker does this for a run it was executing. A run cancelled while queued or
+        paused has no worker to do it, and a watcher would otherwise hold a connection open
+        on something that has already ended.
+        """
+        payload: dict = {}
+        with transaction(self._runs.session):
+            sequence = self._runs.append_event(
+                run_id, kind=steps.CANCELLED, payload=payload, now=self._now()
+            )
+        self._bus.publish(
+            Event(run_id=run_id, sequence=sequence, kind=steps.CANCELLED, payload=payload)
+        )
+        self._bus.close_run(run_id)
 
     def _submit(self, *, run_id: UUID, thread_id: str, initial_state, resume) -> None:
         """Hand a pass to the executor.
@@ -193,7 +244,7 @@ class RunService:
         queued, and then there was no room.
         """
         user_id, settings, bus = self._user_id, self._settings, self._bus
-        build_graph = self._build_graph
+        build_graph, session_factory = self._build_graph, self._session_factory
 
         def _work() -> None:
             execute(
@@ -205,6 +256,7 @@ class RunService:
                 bus=bus,
                 resume=resume,
                 build_graph=build_graph,
+                session_factory=session_factory,
             )
 
         self._executor.submit(_work)

@@ -83,6 +83,16 @@ def _run_and_state(db, owner, sample_images, *, status=None):
 
 
 def _execute(run, state, *, settings, bus, graph, db, resume=None):
+    if resume is not None:
+        # What ``RunService.answer`` does before submitting. Driving ``execute`` without it
+        # would test a state the application never produces.
+        RunRepository(db).advance(
+            run.id,
+            expected=run_status.AWAITING_ANSWERS,
+            to=run_status.QUEUED,
+            now=datetime.now(UTC),
+        )
+        db.commit()
     worker.execute(
         run_id=run.id,
         user_id=run.user_id,
@@ -441,3 +451,44 @@ def test_a_cancelled_run_records_what_it_spent(
     recorded = db.scalars(select(UsageEvent).where(UsageEvent.user_id == owner)).all()
     assert len(recorded) == 1
     assert recorded[0].succeeded is False
+
+
+def test_a_rejected_photograph_says_why(db, owner, sample_images, settings, bus, make_deps):
+    """A run can finish without a diagnosis: the intake guard refuses a photograph that is
+    not a plant. Nothing broke, so it is not a failure — but `completed` with a null
+    diagnosis and no reason tells somebody nothing, and it is the likeliest first thing
+    anybody sees. Found by running the README's own commands against a live server.
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.schemas import PlantCheck
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    gate = ScriptedStructuredModel([PlantCheck(is_plant=False, what_it_is="a doorknob")])
+    graph = build_diagnosis_graph(make_deps(gate_model=gate), MemorySaver())
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=lambda **_: graph, db=db)
+
+    finished = RunRepository(db).get(owner, run.id)
+    assert finished.status == run_status.COMPLETED
+    assert finished.diagnosis_id is None
+    assert finished.error, "a rejected run finished with no explanation"
+
+    terminal = RunRepository(db).events(owner, run.id)[-1]
+    assert terminal.kind == steps.COMPLETED
+    assert terminal.payload["rejected"] is True
+    assert terminal.payload["reason"]
+
+
+def test_an_ordinary_completion_is_not_marked_rejected(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """The other side. A flag that were always true would pass the test above."""
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    terminal = RunRepository(db).events(owner, run.id)[-1]
+    assert terminal.payload["rejected"] is False
+    assert RunRepository(db).get(owner, run.id).error is None

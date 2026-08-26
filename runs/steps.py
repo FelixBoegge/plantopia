@@ -15,11 +15,20 @@ from dataclasses import dataclass
 
 # Event kinds a client may branch on. Distinct from the step identifiers below: these say
 # what *sort* of thing happened, where a step says which one.
+#
+# One vocabulary for runs and for chat, so a frontend learns it once. A diagnosis and a
+# chat reply are different work, but "something is happening", "a source was consulted" and
+# "this is how it ended" are the same three things to whatever is drawing a screen.
 STEP = "step"
 QUESTIONS = "questions"
 COMPLETED = "completed"
 FAILED = "failed"
 CANCELLED = "cancelled"
+
+# Chat also uses these two. A run has no use for them: its steps are named stages, and it
+# produces a diagnosis rather than prose.
+TOOL = "tool"
+DELTA = "delta"
 
 
 @dataclass(frozen=True, slots=True)

@@ -76,12 +76,14 @@ def execute(
 
     try:
         now = datetime.now(UTC)
-        started = runs.advance(
-            run_id,
-            expected=run_status.QUEUED if resume is None else run_status.AWAITING_ANSWERS,
-            to=run_status.RUNNING,
-            now=now,
-        )
+        # ``queued`` for both a first pass and a resume: the service moves a run there
+        # before submitting either, so that a client polling between the request and the
+        # worker picking it up sees a real state rather than a stale one. Expecting
+        # ``awaiting_answers`` on the resume path looked right and meant no resumed run ever
+        # started — it sat queued until the sweeper failed it. Found by walking the README
+        # against a running server; neither side's unit tests could see it, because each
+        # was correct about its own half.
+        started = runs.advance(run_id, expected=run_status.QUEUED, to=run_status.RUNNING, now=now)
         session.commit()
         if not started:
             # Cancelled between being queued and being picked up, or answered twice. The
@@ -209,10 +211,24 @@ def _pause(runs, session, bus, run_id, interrupts) -> None:
 
 
 def _complete(runs, session, bus, run_id, *, graph, config) -> None:
-    """The graph finished. Record what it produced and close the stream."""
+    """The graph finished. Record what it produced, or why it produced nothing.
+
+    A run can finish without a diagnosis: the intake guard refuses a photograph that is not
+    a plant, or one nothing can be read from. That is not a failure — nothing broke — but a
+    client told only ``completed`` with a null diagnosis has been told nothing at all, and
+    it is the most likely first thing anybody sees. So the reason travels with the terminal
+    event and is recorded on the run.
+    """
     state = graph.get_state(config).values
     diagnosis_id = state.get("diagnosis_id")
-    payload = {"diagnosis_id": str(diagnosis_id) if diagnosis_id else None}
+    rejected = bool(state.get("rejected"))
+    reason = state.get("rejection_reason") if rejected else None
+
+    payload = {
+        "diagnosis_id": str(diagnosis_id) if diagnosis_id else None,
+        "rejected": rejected,
+        "reason": reason,
+    }
 
     with transaction(session):
         runs.advance(
@@ -221,6 +237,7 @@ def _complete(runs, session, bus, run_id, *, graph, config) -> None:
             to=run_status.COMPLETED,
             now=_now(),
             diagnosis_id=diagnosis_id,
+            error=reason,
         )
         sequence = runs.append_event(run_id, kind=steps.COMPLETED, payload=payload, now=_now())
     bus.publish(Event(run_id=run_id, sequence=sequence, kind=steps.COMPLETED, payload=payload))

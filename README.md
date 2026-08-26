@@ -108,8 +108,49 @@ and the account signs in again. A client whose refresh fails sends the person to
 rather than trying again.
 
 **There is no browser client at present.** Streamlit was retired when the seeded owner it
-resolved through was replaced by real accounts; the React frontend is the next change but
-one. Until then the OpenAPI page above is the interface.
+resolved through was replaced by real accounts; the React frontend is the next change.
+Until then the OpenAPI page above is the interface.
+
+### Diagnosing a plant
+
+A diagnosis takes about ninety seconds and stops part-way to ask you something, so it is
+not a request — it is a run you start and then watch.
+
+```bash
+TOKEN=<the access token from signing in>
+
+curl -X POST localhost:8000/api/v1/runs   -H "Authorization: Bearer $TOKEN"   -F plant_name='Kitchen basil' -F location_kind=indoor   -F photographs=@leaf.jpg
+```
+
+That answers immediately with a run and its status. Follow it:
+
+```bash
+curl -N localhost:8000/api/v1/runs/<run-id>/events -H "Authorization: Bearer $TOKEN"
+```
+
+Events name what is happening — "Identifying the species", "Consulting the disorder
+reference" — and part-way through, one carries the questions the agent needs answered.
+Answer them and the same stream continues:
+
+```bash
+curl -X POST localhost:8000/api/v1/runs/<run-id>/answers   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json'   -d '{"answers":{"watering":"every other day","drainage":"No drainage holes"}}'
+```
+
+`GET /api/v1/runs/{id}` reports the status at any time, and `DELETE` abandons a run — the
+step already running finishes, so cancelling during a model call still pays for that call.
+
+**Reconnecting costs nothing.** Send the last event's id back as `Last-Event-ID` and the
+stream resumes from there. A closed laptop or a flaky tunnel loses the view of a run, not
+the run.
+
+Chat works the same way if you want to watch it: `POST /plants/{id}/messages` returns the
+whole reply, and `POST /plants/{id}/messages/stream` delivers it as it is produced, saying
+which source the agent is consulting. Both leave the same transcript — the streaming one is
+the same call with somebody watching.
+
+**One process.** The run pool, the event bus and the rate limiter all live in the API
+process, so this does not scale horizontally as it stands. `M28` in
+`docs/known-limitations.md` says what has to be substituted first.
 
 **Port 5433, not 5432.** A machine with PostgreSQL already installed has a service on
 5432, and on Windows both it and Docker's proxy will bind the port — so connections reach
@@ -300,7 +341,7 @@ uv run pytest                    # unit, graph and API tests, ~2 minutes
 uv run ruff check . && uv run ruff format .
 ```
 
-1,310 tests at 96% coverage, gated at 85%.
+1,542 tests at 95% coverage, gated at 85%.
 
 **Tests make no LLM calls.** That constraint is absolute: models arrive through
 `core/llm.py`, which tests replace with a scripted fake, and HTTP is mocked at the

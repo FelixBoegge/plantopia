@@ -122,13 +122,18 @@ class ChatService:
     def history(self, plant_id: UUID) -> list[MessageRecord]:
         return self._messages.list_for_plant(self._deps.user_id, plant_id)
 
-    def send(self, plant_id: UUID, content: str) -> ChatTurn:
+    def send(self, plant_id: UUID, content: str, *, callbacks=None) -> ChatTurn:
         """Record the user's message, run the agent, record and return its reply.
 
         The user's message and the assistant's reply are committed in separate
         transactions rather than one spanning the agent invocation: the user's
         message should stay durable even if the agent call itself fails partway
         through.
+
+        ``callbacks`` are handed to the agent so somebody can watch it work. Watching only:
+        this method behaves identically with or without them, which is what lets a streamed
+        message and a single-request one leave the same transcript by construction rather
+        than by two implementations being kept in step.
         """
         with transaction(self._messages.session):
             self._messages.create(
@@ -142,6 +147,8 @@ class ChatService:
 
         agent, escalation = make_chat_agent(self._deps, plant_id, self._checkpointer)
         config = {"configurable": {"thread_id": self._thread_id(plant_id)}}
+        if callbacks:
+            config["callbacks"] = list(callbacks)
         result = agent.invoke({"messages": [{"role": "user", "content": content}]}, config)
         # Coerced to str: some providers return content as a list of blocks, which
         # the database rejects outright, and messages.content is NOT NULL —
