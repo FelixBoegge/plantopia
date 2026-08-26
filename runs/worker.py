@@ -221,11 +221,17 @@ def _complete(runs, session, bus, run_id, *, graph, config) -> None:
     """
     state = graph.get_state(config).values
     diagnosis_id = state.get("diagnosis_id")
+    # The plant the run worked on, which for a run started without one is the plant its
+    # ``persist`` node created. Recorded because a client is otherwise handed a diagnosis
+    # and no way to reach the thing it just paid for — it would have to find the plant by
+    # guessing from a timestamp.
+    plant_id = state.get("plant_id")
     rejected = bool(state.get("rejected"))
     reason = state.get("rejection_reason") if rejected else None
 
     payload = {
         "diagnosis_id": str(diagnosis_id) if diagnosis_id else None,
+        "plant_id": str(plant_id) if plant_id else None,
         "rejected": rejected,
         "reason": reason,
     }
@@ -237,6 +243,7 @@ def _complete(runs, session, bus, run_id, *, graph, config) -> None:
             to=run_status.COMPLETED,
             now=_now(),
             diagnosis_id=diagnosis_id,
+            plant_id=plant_id,
             error=reason,
         )
         sequence = runs.append_event(run_id, kind=steps.COMPLETED, payload=payload, now=_now())

@@ -88,6 +88,24 @@ class PlantService:
             )
         return summaries
 
+    def get_diagnosis(self, diagnosis_id: UUID) -> tuple | None:
+        """One diagnosis and the plan it produced, or ``None`` if it is not this owner's.
+
+        A run reports the identifier of the diagnosis it produced, and a client given an
+        identifier it cannot resolve has been handed a receipt rather than a result. The
+        roadmap comes with it because the two are read together on every screen that shows
+        either.
+        """
+        record = self._diagnoses.get(self._user_id, diagnosis_id)
+        if record is None:
+            return None
+        steps = [
+            step
+            for step in self._roadmap.list_for_plant(self._user_id, record.plant_id)
+            if step.diagnosis_id == diagnosis_id
+        ]
+        return record, steps
+
     def get_plant_detail(self, plant_id: UUID) -> PlantDetail | None:
         """Everything the Plant detail page needs, or ``None`` for an unknown plant."""
         plant = self._plants.get(self._user_id, plant_id)

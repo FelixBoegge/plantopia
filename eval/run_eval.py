@@ -38,7 +38,9 @@ from eval.report import render_report
 logger = logging.getLogger(__name__)
 
 GOLDEN_SET = Path("eval/golden_set")
-RESULTS_DIR = Path("eval/results")
+# Read from settings so the API and the harness cannot end up reading and writing
+# different directories.
+RESULTS_DIR = get_settings().eval_results_path
 REPORT_PATH = Path("eval/REPORT.md")
 PROFILES_DIR = Path("eval/profiles")
 

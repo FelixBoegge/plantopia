@@ -77,6 +77,7 @@ class User(Base):
     """
 
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('member', 'admin')", name="ck_users_role"),)
 
     id: Mapped[UUID] = _pk()
     email: Mapped[str] = mapped_column(String(320), unique=True)
@@ -96,6 +97,12 @@ class User(Base):
     # One value today. Quotas read it, so a second tier is a row change rather than a
     # code change.
     tier: Mapped[str] = mapped_column(String(32), default="free")
+
+    # What this account may reach, as opposed to what it may spend. Tenancy decides
+    # everything a person owns; a role decides access to the one thing nobody owns — the
+    # evaluation results. Two values and a default, so every account that already exists is
+    # unchanged and nothing needs a permission system to describe it.
+    role: Mapped[str] = mapped_column(String(32), default="member", server_default="member")
 
 
 class RefreshToken(Base):

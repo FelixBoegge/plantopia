@@ -492,3 +492,34 @@ def test_an_ordinary_completion_is_not_marked_rejected(
     terminal = RunRepository(db).events(owner, run.id)[-1]
     assert terminal.payload["rejected"] is False
     assert RunRepository(db).get(owner, run.id).error is None
+
+
+def test_a_completed_run_names_the_plant_it_created(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """A run started without a plant makes one. Without this the client has a diagnosis and
+    no way to reach the plant it belongs to — it would have to find it by guessing from a
+    timestamp.
+    """
+    from data.models import Plant
+
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    finished = RunRepository(db).get(owner, run.id)
+    assert finished.plant_id is not None
+    assert db.get(Plant, finished.plant_id).id == finished.plant_id
+
+
+def test_the_terminal_event_names_the_plant_too(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """A watcher that saw the run finish should not have to fetch it again to know where to
+    go next."""
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    terminal = RunRepository(db).events(owner, run.id)[-1]
+    assert terminal.payload["plant_id"]

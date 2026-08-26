@@ -220,3 +220,50 @@ class AnswersIn(BaseModel):
     """The answers a paused run asked for, keyed by the question keys it sent."""
 
     answers: dict[str, str]
+
+
+class AccountOut(BaseModel):
+    """A person's own account.
+
+    Carries the allowance alongside the identity because a screen needs both to draw once,
+    and because being told "you have used your twenty runs" by a failed diagnosis is being
+    told too late.
+    """
+
+    id: UUID
+    # ``str``, not ``EmailStr``. Validation belongs at the door: this address was checked
+    # when the account was registered, and re-checking it on the way out means a stored
+    # value the validator dislikes — a legacy row, a stricter version of the library —
+    # makes somebody's own account page permanently unloadable to them.
+    email: str
+    created_at: datetime
+    tier: str
+    role: str
+    consent_version: str
+    consent_at: datetime
+    runs_used: int
+    runs_allowed: int
+    allowance_resets_at: datetime
+
+
+class EvaluationOut(BaseModel):
+    """The newest harness result, or the plain statement that there is none.
+
+    ``results`` is passed through unshaped. It is a report somebody reads, not an interface
+    anything branches on, and typing it here would be a second copy of the harness's own
+    format to keep in step.
+    """
+
+    generated_at: str | None
+    results: dict | None
+
+
+class DiagnosisDetailOut(BaseModel):
+    """One diagnosis with the plan it produced.
+
+    The two are read together on every screen that shows either, so they travel together
+    rather than as two requests a client has to sequence.
+    """
+
+    diagnosis: DiagnosisOut
+    roadmap_steps: list[RoadmapStepOut]

@@ -201,3 +201,25 @@ def test_a_run_records_when_its_status_last_changed_separately_from_when_it_star
 
     assert "created_at" in columns
     assert "status_changed_at" in columns
+
+
+def test_an_account_carries_a_role():
+    """Distinct from a tier. One decides what may be reached, the other what may be spent,
+    and conflating them would make an allowance an access rule."""
+    columns = Base.metadata.tables["users"].columns
+
+    assert "role" in columns
+    assert "tier" in columns
+
+
+def test_a_role_the_application_does_not_recognise_is_refused_by_the_schema():
+    """A column with two legal values and a constraint that says so. Application code is
+    not the only thing that writes to this table."""
+    constraint = next(
+        c
+        for c in Base.metadata.tables["users"].constraints
+        if getattr(c, "name", None) == "ck_users_role"
+    )
+
+    assert "member" in str(constraint.sqltext)
+    assert "admin" in str(constraint.sqltext)

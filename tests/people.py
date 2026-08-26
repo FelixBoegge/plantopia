@@ -26,6 +26,7 @@ def make_user(
     password: str | None = None,
     verified: bool = True,
     tier: str = "free",
+    role: str = "member",
 ) -> User:
     """Add a person to the database and return the row."""
     now = datetime.now(UTC)
@@ -37,6 +38,7 @@ def make_user(
         consent_version="test",
         consent_at=now,
         tier=tier,
+        role=role,
     )
     session.add(user)
     session.flush()

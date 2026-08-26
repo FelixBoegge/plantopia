@@ -27,6 +27,7 @@ from core.blobs import BlobStore, PostgresBlobStore
 from core.config import Settings, get_settings
 from core.mail import Mailer, build_mailer
 from data.repositories.diagnoses import DiagnosisRepository
+from data.repositories.errors import RecordNotFoundError
 from data.repositories.feedback import FeedbackRepository
 from data.repositories.messages import MessageRepository
 from data.repositories.observations import ObservationRepository
@@ -35,6 +36,7 @@ from data.repositories.profile import ProfileRepository
 from data.repositories.roadmap import RoadmapRepository
 from data.repositories.runs import RunRepository
 from data.repositories.usage import UsageRepository
+from identity.roles import MEMBER, may_read_evaluations
 from identity.tokens import TokenExpiredError, TokenInvalidError, read_access_token
 from runs.bus import bus
 from runs.executor import RunExecutor, ThreadPoolRunExecutor
@@ -200,6 +202,34 @@ def run_service(session: SessionDep, owner: OwnerDep, settings: SettingsDep) -> 
 
 
 RunServiceDep = Annotated[RunService, Depends(run_service)]
+
+
+def require_evaluation_access(session: SessionDep, owner: OwnerDep) -> UUID:
+    """The owner, if their account may read the evaluation results.
+
+    Raises ``RecordNotFoundError`` otherwise, which the error layer turns into a 404. Not a
+    403: a response that distinguishes "you may not" from "there is nothing here" tells a
+    stranger the route exists, and the whole interface answers that question the same way
+    everywhere else.
+
+    Read per request rather than carried in the token, for the same reason the tier is: a
+    role revoked should take effect on the next request, not whenever a token happens to
+    expire.
+    """
+    if not may_read_evaluations(_role_of(session, owner)):
+        raise RecordNotFoundError("no such resource")
+    return owner
+
+
+EvaluationAccessDep = Annotated[UUID, Depends(require_evaluation_access)]
+
+
+def _role_of(session: Session, owner: UUID) -> str:
+    """What this account may reach. Unknown accounts get the ordinary role, which permits
+    nothing beyond what ownership already permits."""
+    from data.models import User
+
+    return session.scalar(select(User.role).where(User.id == owner)) or MEMBER
 
 
 def _tier_of(session: Session, owner: UUID) -> str:

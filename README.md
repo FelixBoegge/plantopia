@@ -152,6 +152,24 @@ the same call with somebody watching.
 process, so this does not scale horizontally as it stands. `M28` in
 `docs/known-limitations.md` says what has to be substituted first.
 
+### Accounts and roles
+
+`GET /api/v1/me` answers who you are: your address, tier, the privacy notice you agreed to,
+and how many runs you have left this month. The last is there so an interface can warn you
+before a diagnosis is refused rather than after.
+
+Every account is a `member`. One thing is not available to members — the evaluation
+harness's results at `GET /api/v1/evaluation/latest` — because it is the only thing in the
+system nobody owns, so tenancy has nothing to say about who may see it. Promote an account
+by hand:
+
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+```
+
+A member asking for it gets 404, not 403: a refusal that distinguishes "you may not" from
+"there is nothing here" tells a stranger the route exists.
+
 **Port 5433, not 5432.** A machine with PostgreSQL already installed has a service on
 5432, and on Windows both it and Docker's proxy will bind the port — so connections reach
 whichever won, and the symptom is `password authentication failed for user "plantopia"`

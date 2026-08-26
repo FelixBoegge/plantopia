@@ -1,13 +1,13 @@
 ## 1. The four API gaps
 
-- [ ] 1.1 Add `users.role` with a default and a migration; verify the schema test names it, `alembic upgrade head` runs on an empty database, and the migration test reports no drift.
-- [ ] 1.2 Add the authorisation dependency refusing a route to accounts without the administrative role; verify tests that it refuses with 404 rather than 403, that an ordinary account cannot tell the route exists, and that changing a tier does not change a role.
-- [ ] 1.3 `GET /me` carrying address, tier, role, consent record and allowance usage; verify tests for each field, for a request without a session being refused, and that no password hash or token appears in the response.
-- [ ] 1.4 Include remaining allowance and reset date in `GET /me`; verify a test that the numbers match what the quota guard would apply, so a warning and a refusal cannot disagree.
-- [ ] 1.5 `GET /diagnoses/{id}` returning one diagnosis with its differential, evidence, severity and plan; verify tests for the shape and for another owner's diagnosis answering 404, added to the endpoint tenancy table.
-- [ ] 1.6 Record the plant a run created on the run row; verify a test that a run started without a plant names one when it completes, and that the plant is reachable by its owner.
-- [ ] 1.7 `GET /evaluation/latest` reading the newest harness result; verify tests for a permitted account reading it, an ordinary account getting 404, and no harness having run answering plainly rather than failing.
-- [ ] 1.8 Update the README's settings and endpoint list, and `.env.example` if roles need one; verify every documented command still runs as written.
+- [x] 1.1 Add `users.role` with a default and a migration; verify the schema test names it, `alembic upgrade head` runs on an empty database, and the migration test reports no drift.
+- [x] 1.2 Add the authorisation dependency refusing a route to accounts without the administrative role; verify tests that it refuses with 404 rather than 403, that an ordinary account cannot tell the route exists, and that changing a tier does not change a role.
+- [x] 1.3 `GET /me` carrying address, tier, role, consent record and allowance usage; verify tests for each field, for a request without a session being refused, and that no password hash or token appears in the response.
+- [x] 1.4 Include remaining allowance and reset date in `GET /me`; verify a test that the numbers match what the quota guard would apply, so a warning and a refusal cannot disagree.
+- [x] 1.5 `GET /diagnoses/{id}` returning one diagnosis with its differential, evidence, severity and plan; verify tests for the shape and for another owner's diagnosis answering 404, added to the endpoint tenancy table.
+- [x] 1.6 Record the plant a run created on the run row; verify a test that a run started without a plant names one when it completes, and that the plant is reachable by its owner.
+- [x] 1.7 `GET /evaluation/latest` reading the newest harness result; verify tests for a permitted account reading it, an ordinary account getting 404, and no harness having run answering plainly rather than failing.
+- [x] 1.8 Update the README's settings and endpoint list, and `.env.example` if roles need one; verify every documented command still runs as written.
 
 ## 2. The application shell
 

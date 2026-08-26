@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     chroma_path: Path = Path("data/chroma")
     corpus_path: Path = Path("knowledge/corpus")
 
+    # Where the evaluation harness writes its results, and where the API reads the newest
+    # one from. One setting rather than a constant in each, so the two cannot drift into
+    # reading and writing different directories.
+    eval_results_path: Path = Path("eval/results")
+
     # The HTTP interface. Every route is served beneath the prefix, so a later
     # incompatible version can exist alongside this one rather than replacing it under a
     # running client.
