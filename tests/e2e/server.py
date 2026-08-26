@@ -13,7 +13,13 @@ production imports can import it.
 
 The database is its own — created, migrated and dropped by this module — so a browser run
 can never touch development data, and so 'against a clean database' means it.
+
+Imports below are deliberately out of order and interleaved with assignments: each patch has
+to be in place before the module that reads the patched name is imported. That is the whole
+mechanism, so E402 is disabled for the file rather than silenced line by line.
 """
+
+# ruff: noqa: E402
 
 import os
 import sys
@@ -26,15 +32,15 @@ from sqlalchemy.engine import make_url
 # Patched before anything imports the wiring that calls them. `agent.wiring` binds these
 # names at import time, so patching only the defining module would arrive after the binding
 # and do nothing — which is why each one is replaced in both places.
-import core.llm  # noqa: E402
-from tests.e2e.models import ScriptedGraphModel  # noqa: E402
-from tests.fakes.embeddings import HashingEmbeddings  # noqa: E402
+import core.llm
+from tests.e2e.models import ScriptedGraphModel
+from tests.fakes.embeddings import HashingEmbeddings
 
 core.llm.build_reasoning_model = lambda **_: ScriptedGraphModel()
 core.llm.build_vision_model = lambda **_: ScriptedGraphModel()
 core.llm.build_gate_model = lambda **_: ScriptedGraphModel()
 
-import agent.wiring  # noqa: E402
+import agent.wiring
 
 agent.wiring.build_reasoning_model = core.llm.build_reasoning_model
 agent.wiring.build_vision_model = core.llm.build_vision_model
@@ -49,18 +55,18 @@ agent.wiring.build_embeddings = lambda: HashingEmbeddings()
 
 # Mail goes to a file the browser tests read, so a test can click the link a person would
 # have been sent rather than reaching past it into the database.
-import core.mail  # noqa: E402
-
-from tests.e2e.mail import FileMailer, forget as forget_mail  # noqa: E402
+import core.mail
+from tests.e2e.mail import FileMailer
+from tests.e2e.mail import forget as forget_mail
 
 core.mail.build_mailer = lambda _settings: FileMailer()
 
-import api.dependencies  # noqa: E402
+import api.dependencies
 
 api.dependencies.build_mailer = core.mail.build_mailer
 
-from core.config import Settings  # noqa: E402
-from data.engine import build_engine  # noqa: E402
+from core.config import Settings
+from data.engine import build_engine
 
 DATABASE = "plantopia_e2e"
 PORT = 8100
@@ -90,6 +96,12 @@ def settings() -> Settings:
         # corpus with hashing embeddings, and those vectors must never end up in a
         # collection a real run then searches.
         chroma_path=Path(__file__).resolve().parent / ".chroma",
+        # Every browser test registers, verifies and signs in, and all of them arrive from
+        # one address — so the default of ten attempts per five minutes is spent about three
+        # tests in, and everything after it fails for a reason that has nothing to do with
+        # what it was testing. The limit itself is exercised in
+        # `tests/api/test_rate_limits.py`, against the real default.
+        auth_rate_limit=10_000,
     )
 
 
@@ -111,6 +123,7 @@ def exports() -> Settings:
     # 256-dimension hashing vectors into a 1536-dimension space — which fails, loudly, and
     # only after a run has already been started.
     os.environ["PLANTOPIA_CHROMA_PATH"] = str(configured.chroma_path)
+    os.environ["PLANTOPIA_AUTH_RATE_LIMIT"] = str(configured.auth_rate_limit)
     return configured
 
 

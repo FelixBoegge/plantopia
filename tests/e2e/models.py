@@ -31,6 +31,7 @@ from agent.schemas import (
     ImageQuality,
     IPMTier,
     PlantCheck,
+    ProgressVerdict,
     Question,
     QuestionSet,
     Roadmap,
@@ -40,7 +41,6 @@ from agent.schemas import (
     Symptom,
     SymptomPosition,
     SymptomSet,
-    ProgressVerdict,
 )
 
 # The two questions the wizard pauses on. `drainage` is the mandatory one the graph adds

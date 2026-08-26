@@ -66,6 +66,8 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | M30 | **A dropped refresh response signs the person out.** Refresh tokens rotate on use, so a client that retries a refresh whose response was lost presents a token that has already been spent — indistinguishable from a stolen one, and treated as one: the whole family is invalidated and the account signs in again. | Accepted, and the reason reuse detection is worth having. There is no way to tell the honest retry from the theft, and the alternative — tolerating one reuse — is the alternative of not detecting reuse. | **A frontend contract, not a fix: refresh is never retried.** A failed refresh sends the person to sign in. Recorded here because it is a rule the client has to follow and nothing in the API can enforce. |
 | M31 | **Keep-alive emission on an event stream is not covered by a test.** The interval configured on the response is asserted (`tests/api/test_run_stream.py`), and so is the framing that keeps a ping from being read as an event — but that a ping is actually sent on an idle stream is not. `TestClient` does not surface `sse_starlette`'s comment lines through this handler however it is arranged; the attempts hung rather than failed, which is worse than no test. | The emission is the library's behaviour rather than this project's, and the half this code owns — passing the configured interval — is checked. The failure mode if it broke is a proxy closing an idle stream, which a client already recovers from by reconnecting with `Last-Event-ID`. | Exercise it against a real server rather than `TestClient` — the deployment change is where there is one to point at. A single curl against a running instance with a low `PLANTOPIA_RUN_KEEPALIVE_SECONDS` settles it. |
 | M32 | **The automated accessibility pass cannot see colour contrast.** `web/src/accessibility.test.tsx` runs axe over every route, but it runs it in jsdom, which computes no styles — so `color-contrast` is skipped rather than failed, and the one criterion most likely to break from a palette change is the one the suite cannot check. Contrast was verified once, on 2026-08-26, by loading axe into a real browser against the dev server: no violations on any route with contrast actually running. That check is a thing somebody did, not a thing that runs. | Everything axe *can* check in jsdom is checked on every route on every run, and the rules it skips are skipped loudly enough to find (`incomplete`/absent, not passing). Wiring a real browser into the suite is the Playwright harness's job, and that harness arrives in this same change — but pointing it at axe as well would have been scope on top of the flows it exists for. | Add an axe pass to the Playwright suite once it is running: it already opens each route in Chromium, so it is an injected script and one assertion per page. That would move contrast, focus-visibility and anything else style-dependent from a dated note into a gate. |
+| M33 | **The frontend's tests are a second command, and a contributor can forget it.** `uv run pytest` is green whatever the state of `web/`: nothing in the Python gate compiles TypeScript, runs vitest, or opens a browser. The React work landed with three defects that the Python suite could not have seen and the component suite did not — a startup that fired two token renewals and revoked its own session, every clarifying question rendered as an unlabelled text box, and a plant created by a run that never appeared on the grid. | Recorded rather than fixed because the fix is CI, and there is no CI here yet. What is in place instead is the README saying plainly that there are two suites and that passing one says nothing about the other, plus three cross-language agreement tests that run inside the Python gate and read TypeScript source: `test_client_types.py`, `test_source_names_agree.py` and `test_question_shape_agrees.py`. Those cover the shapes; they cannot cover behaviour. | The deployment change adds CI, and both suites plus Playwright belong in it. Until then: if you change a screen, run `npm test` and `npx playwright test` as well. |
+| M34 | **The browser tests cover four flows, not the application.** Registering and signing in, a diagnosis through the interrupt, a dropped stream, and a chat reply with a lookup. Not covered in a browser: password reset, cancelling a run, a rejected photograph, the account screen's forget-a-fact, the evaluation screen, and every failure path. | Those four were chosen as the ones a mock makes look easy and a browser does not, and the choice paid for itself — three of the defects above were found by exactly these flows. The rest have component tests, which is weaker evidence but not none. | Add a flow when a component test turns out to have been describing something that did not work, which is how each of these was earned. The harness is the expensive part and it now exists: a new flow is one file. |
 
 ---
 
@@ -323,6 +325,76 @@ and three specific holes turned up while implementing it rather than while desig
 retrieval move is deferred, and it also means an evaluation run is not perfectly
 reproducible even at temperature 0 — a second source of variation alongside the model,
 worth remembering before reading a small change in `eval/REPORT.md` as a real one.
+
+
+### The React frontend, and what a green suite was not saying (2026-08-26)
+
+Streamlit was retired with the auth change; this is what replaced it. The interesting part
+of the record is not the screens — it is that **the component suite passed, three times, while
+describing screens that did not work.** Each was found within seconds of opening a browser,
+and each is now covered by something that runs.
+
+1. **The SSE parser yielded nothing.** The server sends CRLF and the parser split on two line
+   feeds, so no frame boundary was ever found — for every event, silently. Eight unit tests
+   passed because the fixtures had been written with bare line feeds. Found by watching the
+   browser reconnect thirty-five times.
+2. **Registration flushed and never committed.** Twenty-three tests passed because a flush and
+   a commit are indistinguishable inside a transaction that is rolled back. Found by walking
+   the README against a live server; now covered by `tests/unit/identity/test_write_boundaries.py`,
+   which counts commits.
+3. **Every clarifying question was an unlabelled text box.** The client's `Question` said
+   `prompt` where the graph says `text` and omitted `kind` entirely, so the drainage question —
+   four fixed options the graph reasons over — arrived as free text. The component fixtures had
+   been written from the client's interface rather than from the graph's, so they agreed with the
+   bug. These travel in a stream event, the one shape on the wire with no OpenAPI schema behind
+   it, which is why `test_client_types.py` could not see it; `test_question_shape_agrees.py` now
+   compares the two directly.
+
+**The response was a class of test rather than three fixes.** Four files now check that two
+sides which cannot import each other still agree: `test_client_types.py` (every interface
+against the OpenAPI document), `test_source_names_agree.py` (the same word for a lookup on both
+sides), `test_message_links.py` (an emailed link resolving to a route that exists), and
+`test_question_shape_agrees.py`. All four run inside the Python gate and read TypeScript source.
+
+**Two defects were only ever visible in a browser**, and are the reason the Playwright harness
+exists rather than being a nicety on top of it. Startup requested `/auth/refresh` directly
+instead of through the serialised `renew`, so StrictMode's double effect sent two; the second
+replayed a rotated token, the server correctly revoked the family, and the *next* reload signed
+the person out. A mocked refresh endpoint has no rotation to replay, so nothing in jsdom could
+reproduce it — a unit test was written for it, found to pass against the bug, and deleted rather
+than kept as a test that cannot fail. The other: a run creates a plant, and the grid had been
+fetched before it existed, so finishing a first diagnosis and clicking home said "Nothing here
+yet" about a plant that was really there.
+
+The component suite now mounts in `StrictMode`, as `main.tsx` does. Mounting a tree the
+application never mounts is how the renewal bug survived.
+
+**The Python suite could hang rather than fail, and coverage made it certain.** Three stream
+tests published their events from a thread that slept a fixed fifty milliseconds first — a bet
+that the client had connected by then. Under `--cov`, which instruments every line and slows
+everything, the bet loses: the events go to nobody, and the reader waits for events that have
+already happened. The reader's own deadline could not save it, because the deadline was
+checked between lines of a loop blocked *on* a line that never came — an eight-second bound
+that bounded nothing, in the exact case it was written for.
+
+The tests now wait for the subscription rather than sleeping towards it, and the reader closes
+its response from a timer, so a lost event fails in eight seconds and says which event. The
+gated suite went from hanging indefinitely to 1,606 tests in 2½ minutes. Worth recording
+because the failure looked like slowness and was diagnosed as slowness twice before it was
+looked at properly: a suite that hangs has told you *less* than one that fails, and the
+temptation is to wait a bit longer rather than ask why.
+
+**Accessibility was checked, and the check has a hole in it** — see `M32`. axe runs over every
+route as a failure rather than a warning, and it found nothing, which is the expected result of
+a checker and not evidence of a usable screen; the judgements a checker cannot make are tested
+one at a time beside it. But it runs in jsdom, which computes no styles, so colour contrast is
+skipped rather than checked. It was verified once in a real browser, on this date, and that is a
+thing somebody did rather than a thing that runs.
+
+It found two real defects: the evaluation screen kept its heading inside the branch that
+succeeds, so the state a member always sees had no `h1` at all — the heading check had only ever
+looked at one screen — and the differential took no focus when it replaced the reasoning panel,
+after a wait long enough that somebody will have gone elsewhere.
 
 
 ## Two plan defects caught during implementation

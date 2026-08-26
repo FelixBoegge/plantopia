@@ -363,11 +363,24 @@ paused diagnosis that has already been paid for, so it is checked before use.
 
 ```bash
 docker compose up -d db          # a prerequisite: the suite uses a real database
-uv run pytest                    # unit, graph and API tests, ~2 minutes
+uv run pytest                    # unit, graph and API tests, ~2½ minutes
 uv run ruff check . && uv run ruff format .
 ```
 
-1,542 tests at 95% coverage, gated at 85%.
+**There are two suites, and passing one says nothing about the other.**
+
+```bash
+cd web
+npm test                         # components and hooks against a mocked API, ~20 seconds
+npx playwright test              # the browser tests, against the real stack, ~40 seconds
+```
+
+`npx playwright install chromium` once, first. The browser tests start their own API and
+their own Vite server on ports of their own, so they cannot collide with anything you have
+open, and they recreate and migrate their own database on every run — `docker compose up
+-d db` is the only prerequisite.
+
+1,606 tests at 95% coverage, gated at 85%.
 
 **Tests make no LLM calls.** That constraint is absolute: models arrive through
 `core/llm.py`, which tests replace with a scripted fake, and HTTP is mocked at the
@@ -387,6 +400,18 @@ and `api/` and `identity/` are measured in the default run, so the gate sees eve
 except the evaluation CLI and two one-shot migration tools — each omitted for being
 real-infrastructure wiring with nothing in it a test could assert that would not be a mock
 asserting on itself.
+
+**The browser tests script the models too.** Everything below the browser is real — a real
+API, a real database, the real graph with its real interrupt — and only the models are
+replaced, from `tests/e2e/models.py`. The patch lives in test code rather than behind a
+setting on purpose: a `PLANTOPIA_SCRIPTED_MODELS` flag would be a switch that silently
+disables the model, shipped in the same package as the thing it disables.
+
+They exist because a green component suite has repeatedly described screens that did not
+work. An SSE parser that yielded nothing because the server sends CRLF; a registration that
+flushed and never committed; every clarifying question rendering as an unlabelled text box
+because the client type said `prompt` where the graph says `text`. Each was invisible in
+jsdom and obvious in a browser within seconds. If you change a screen, run both.
 
 ### Opening the graphs in LangGraph Studio
 

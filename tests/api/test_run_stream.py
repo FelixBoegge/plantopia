@@ -114,6 +114,15 @@ def _read(client, run_id, *, headers=None, limit=None, deadline=8.0):
         "GET", f"/api/v1/runs/{run_id}/events", headers=headers or {}, timeout=deadline
     ) as response:
         assert response.status_code == 200, response.status_code
+
+        # The deadline below is checked between lines, and `iter_lines` blocks *on* a line
+        # that may never come — so on its own it does not bound anything. It looked like it
+        # did: the check inside the loop is the obvious reading, and the case it was written
+        # for (a lost event) is exactly the case where the loop never gets another
+        # iteration. Closing the response from a timer is what actually ends the read.
+        watchdog = threading.Timer(deadline, response.close)
+        watchdog.daemon = True
+        watchdog.start()
         event, data = None, None
         for line in response.iter_lines():
             if time.monotonic() > expires:
@@ -127,7 +136,20 @@ def _read(client, run_id, *, headers=None, limit=None, deadline=8.0):
                 event, data = None, None
                 if limit and len(received) >= limit:
                     break
+        watchdog.cancel()
     return received
+
+
+def _wait_for_a_watcher(timeout=10.0):
+    """Block until the stream handler has subscribed, or give up.
+
+    Giving up rather than waiting for ever: if the subscription never appears the test
+    should fail on its assertion about what arrived, which says what went wrong, rather
+    than stopping here, which says only that something did.
+    """
+    expires = time.monotonic() + timeout
+    while bus.watched_runs == 0 and time.monotonic() < expires:
+        time.sleep(0.01)
 
 
 def test_a_finished_run_replays_from_the_beginning_and_closes(client, db, run):
@@ -173,7 +195,12 @@ def test_a_run_still_working_streams_events_as_they_are_published(client, db, ow
     """The live half: the client is connected before anything happens."""
 
     def _work():
-        time.sleep(0.05)
+        # Waits for the subscription rather than sleeping a guessed interval. A fixed sleep
+        # is a bet that the connection is established by then, and under coverage — which
+        # slows every instrumented line — it is a bet that loses: the events are published
+        # to nobody, the client waits for events that already happened, and the whole suite
+        # hangs rather than failing.
+        _wait_for_a_watcher()
         _publish(run, steps.STEP, {"step": "identifying", "description": "Looking"}, 1)
         _publish(run, steps.COMPLETED, {"diagnosis_id": None}, 2)
 
@@ -228,7 +255,7 @@ def test_an_event_covered_by_the_replay_is_not_sent_twice(client, db, run):
     sequence = _record(db, run, steps.STEP, step, publish=False)
 
     def _work():
-        time.sleep(0.05)
+        _wait_for_a_watcher()
         _publish(run, steps.STEP, step, sequence)  # the duplicate
         _publish(run, steps.COMPLETED, {"diagnosis_id": None}, sequence + 1)
 
@@ -243,14 +270,14 @@ def test_the_stream_survives_the_pause_for_questions(client, db, run):
     """One connection spans both halves of a run. The pause is a gap between publishes."""
 
     def _work():
-        # Short gaps. They only need to be non-zero to be a pause — and every second spent
-        # here is a second of margin against the read deadline, which a loaded machine will
-        # eat. This test failed exactly once, during a full run with two servers left
-        # running beside it.
-        time.sleep(0.05)
+        # Waits for the watcher rather than sleeping towards it. The gap in the middle is
+        # the pause itself and only needs to be non-zero; the one at the start was a guess
+        # about when the connection would be up, and a guess that is wrong publishes to
+        # nobody and hangs the read.
+        _wait_for_a_watcher()
         _publish(run, steps.STEP, {"step": "checking", "description": "Checking"}, 1)
         _publish(run, steps.QUESTIONS, {"questions": [{"key": "watering"}]}, 2)
-        time.sleep(0.1)  # the person reading their screen
+        time.sleep(0.05)  # the person reading their screen
         _publish(run, steps.STEP, {"step": "diagnosing", "description": "Weighing"}, 3)
         _publish(run, steps.COMPLETED, {"diagnosis_id": None}, 4)
 

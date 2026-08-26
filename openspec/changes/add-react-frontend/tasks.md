@@ -74,9 +74,9 @@
 - [x] 8.1 Add Playwright against the real stack with scripted models; verify the harness starts the API and the frontend and that one trivial flow passes.
 - [x] 8.2 A Playwright flow for registering, verifying and signing in; verify it passes against a clean database.
 - [x] 8.3 A Playwright flow for a diagnosis through the interrupt to a differential; verify it passes and that the reasoning panel showed more than one step.
-- [ ] 8.4 A Playwright flow that drops the stream mid-run and reconnects; verify the run completes and no step is shown twice.
-- [ ] 8.5 A Playwright flow for a chat reply with a lookup; verify the lookup is announced before the reply arrives.
-- [ ] 8.6 Confirm the evaluation harness is untouched and its numbers are not expected to move; verify the harness-independence test still passes and that nothing in this change added a prompt, a model call or a retrieval.
-- [ ] 8.7 Update the README: running the frontend, running both test suites, and what the admin role is for; verify every command runs as written on a clean clone.
-- [ ] 8.8 Record what this change leaves undone — anything the accessibility pass accepted, and the fact that the frontend's tests are a second command a contributor can forget; verify identifiers and dates against the file's conventions.
-- [ ] 8.9 Run `openspec validate add-react-frontend --strict`, the Python suite, the frontend suite, Playwright and ruff; verify all five are clean.
+- [x] 8.4 A Playwright flow that drops the stream mid-run and reconnects; verify the run completes and no step is shown twice.
+- [x] 8.5 A Playwright flow for a chat reply with a lookup; verify the lookup is announced before the reply arrives.
+- [x] 8.6 Confirm the evaluation harness is untouched and its numbers are not expected to move; verify the harness-independence test still passes and that nothing in this change added a prompt, a model call or a retrieval.
+- [x] 8.7 Update the README: running the frontend, running both test suites, and what the admin role is for; verify every command runs as written on a clean clone.
+- [x] 8.8 Record what this change leaves undone — anything the accessibility pass accepted, and the fact that the frontend's tests are a second command a contributor can forget; verify identifiers and dates against the file's conventions.
+- [x] 8.9 Run `openspec validate add-react-frontend --strict`, the Python suite, the frontend suite, Playwright and ruff; verify all five are clean.
