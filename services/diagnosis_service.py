@@ -291,10 +291,13 @@ class DiagnosisService:
             raise ValueError("Please upload at least one photo.")
         if len(uploads) > settings.max_images_per_observation:
             raise ValueError(f"Please upload at most {settings.max_images_per_observation} photos.")
+        # Only the references here. This path is the re-check entry point, which has no
+        # upload form to show a detected date or place on — what a photograph declared is
+        # read by `store_upload` either way, and simply not used.
         return [
             store_upload(
                 data, blobs=self._deps.blobs, user_id=self._deps.user_id, settings=settings
-            )
+            ).ref
             for data in uploads
         ]
 

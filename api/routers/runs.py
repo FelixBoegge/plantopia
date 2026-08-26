@@ -14,6 +14,7 @@ from api import converters, streaming
 from api.dependencies import BlobStoreDep, RunServiceDep, SessionDep, SettingsDep
 from api.schemas import AnswersIn, RunOut
 from core.images import store_upload
+from core.metadata import earliest
 from runs.bus import bus
 from services.run_service import StartRequest
 
@@ -43,12 +44,14 @@ def start_run(
     earlier images stored; that is unchanged here and still storage litter rather than
     anything a client can see.
     """
-    images = [
+    stored = [
         store_upload(
             photograph.file.read(), blobs=blobs, user_id=service.user_id, settings=settings
         )
         for photograph in photographs
     ]
+    images = [photograph.ref for photograph in stored]
+    declared = earliest([photograph.metadata for photograph in stored])
 
     run = service.start(
         StartRequest(

@@ -14,10 +14,10 @@ change established as the way to avoid `U2`.
 
 ## 2. Reading before normalising
 
-- [ ] 2.1 Read metadata in `store_upload` before `upright_bytes`, returning it with the `ImageRef`; verify the type checker and every existing caller are updated.
-- [ ] 2.2 Add the ordering test: a photograph with known metadata through the real `store_upload`, asserting what was read survived; verify it fails when the two calls are swapped.
-- [ ] 2.3 Read nothing from an upload that validation refused; verify a test asserts a refused upload reads no metadata.
-- [ ] 2.4 Confirm the stored bytes are unchanged by any of this; verify the existing photo-storage tests pass untouched.
+- [x] 2.1 Read metadata in `store_upload` before `upright_bytes`, returning it with the `ImageRef`; verify the type checker and every existing caller are updated.
+- [x] 2.2 Add the ordering test: a photograph with known metadata through the real `store_upload`, asserting what was read survived; verify it fails when the two calls are swapped.
+- [x] 2.3 Read nothing from an upload that validation refused; verify a test asserts a refused upload reads no metadata.
+- [x] 2.4 Confirm the stored bytes are unchanged by any of this; verify the existing photo-storage tests pass untouched.
 
 ## 3. The place name, verified against the real service
 

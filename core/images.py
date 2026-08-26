@@ -1,5 +1,18 @@
-"""Upload handling: validate, store outside the served path, return a reference."""
+"""Upload handling: validate, read what the file declares, normalise, store.
 
+**That order is a correctness constraint, not a preference.** ``upright_bytes`` re-saves the
+file to apply its declared orientation, which clears the orientation tag deliberately — so
+nothing turns the image twice — and takes an unpredictable amount of the rest of the metadata
+block with it. Anything to be learned from a photograph has to be learned from the bytes as
+they arrived.
+
+The two operations look independent, both are one line, and swapping them produces uploads
+that work perfectly and simply never carry a date or a place. So they live in one function
+rather than in a rule two callers have to remember, and
+``tests/unit/core/test_images.py`` fails if the order is ever reversed.
+"""
+
+from dataclasses import dataclass
 from io import BytesIO
 from uuid import UUID
 
@@ -9,6 +22,8 @@ from agent.state import ImageRef
 from core.blobs import BlobStore
 from core.config import Settings
 from core.guards import validate_upload
+from core.metadata import PhotographMetadata
+from core.metadata import read as read_metadata
 
 _MEDIA_TYPES: dict[str, str] = {
     "png": "image/png",
@@ -55,8 +70,22 @@ def upright_bytes(data: bytes) -> bytes:
     return buffer.getvalue()
 
 
-def store_upload(data: bytes, *, blobs: BlobStore, user_id: UUID, settings: Settings) -> ImageRef:
-    """Validate an upload, store it under an opaque key, and return a reference.
+@dataclass(frozen=True, slots=True)
+class StoredPhotograph:
+    """A stored photograph and whatever it declared before it was normalised.
+
+    The two travel together because they are produced together and for the same reason: by
+    the time a caller has the reference, the bytes that carried the metadata are gone.
+    """
+
+    ref: ImageRef
+    metadata: PhotographMetadata
+
+
+def store_upload(
+    data: bytes, *, blobs: BlobStore, user_id: UUID, settings: Settings
+) -> StoredPhotograph:
+    """Validate an upload, read what it declares, store it, and return both.
 
     The stored bytes and the bytes the model sees are the same upright bytes, so the
     grid and the diagnosis can never disagree about which way up a plant is.
@@ -71,9 +100,18 @@ def store_upload(data: bytes, *, blobs: BlobStore, user_id: UUID, settings: Sett
         UploadRejected: if validation fails.
     """
     image_format = validate_upload(data, settings)
+
+    # **Before `upright_bytes`, which destroys what this reads.** Also after validation,
+    # so a refused upload is never examined: the gate on what counts as an image is the
+    # gate on what gets looked at.
+    declared = read_metadata(data)
+
     # After validation, not before: the size limit governs what the owner submits,
     # and normalisation is our own transformation of an upload already accepted.
     data = upright_bytes(data)
 
     media_type = _MEDIA_TYPES[image_format]
-    return ImageRef(ref=blobs.put(user_id, data, media_type), media_type=media_type)
+    return StoredPhotograph(
+        ref=ImageRef(ref=blobs.put(user_id, data, media_type), media_type=media_type),
+        metadata=declared,
+    )

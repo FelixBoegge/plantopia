@@ -79,11 +79,11 @@ class TestStoreUpload:
     def test_the_stored_bytes_are_upright(self, pg_session, blob_owner):
         store = PostgresBlobStore(pg_session)
 
-        ref = store_upload(
+        stored = store_upload(
             _jpeg(orientation=6), blobs=store, user_id=blob_owner, settings=_settings()
         )
 
-        assert _size(store.get(blob_owner, ref.ref)) == (20, 40)
+        assert _size(store.get(blob_owner, stored.ref.ref)) == (20, 40)
 
     def test_the_model_sees_exactly_what_was_stored(self, pg_session, blob_owner):
         """One image, not two. The bytes the vision model is shown and the bytes the My
@@ -91,11 +91,11 @@ class TestStoreUpload:
         a plant is."""
         store = PostgresBlobStore(pg_session)
 
-        ref = store_upload(
+        stored = store_upload(
             _jpeg(orientation=6), blobs=store, user_id=blob_owner, settings=_settings()
         )
 
-        stored = store.get(blob_owner, ref.ref)
+        stored = store.get(blob_owner, stored.ref.ref)
         assert stored == upright_bytes(_jpeg(orientation=6))
 
     def test_nothing_is_downscaled(self, pg_session, blob_owner):
@@ -105,9 +105,9 @@ class TestStoreUpload:
         store = PostgresBlobStore(pg_session)
         original = _jpeg(orientation=1)
 
-        ref = store_upload(original, blobs=store, user_id=blob_owner, settings=_settings())
+        stored = store_upload(original, blobs=store, user_id=blob_owner, settings=_settings())
 
-        assert _size(store.get(blob_owner, ref.ref)) == _size(original)
+        assert _size(store.get(blob_owner, stored.ref.ref)) == _size(original)
 
     def test_an_undecodable_upload_is_still_stored(self, pg_session, blob_owner):
         """Unchanged behaviour, asserted so the pass-through above cannot regress into a
@@ -115,19 +115,114 @@ class TestStoreUpload:
         store = PostgresBlobStore(pg_session)
         data = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + bytes(32)
 
-        ref = store_upload(data, blobs=store, user_id=blob_owner, settings=_settings())
+        stored = store_upload(data, blobs=store, user_id=blob_owner, settings=_settings())
 
-        assert store.get(blob_owner, ref.ref) == data
+        assert store.get(blob_owner, stored.ref.ref) == data
 
     def test_the_media_type_matches_the_format_detected(self, pg_session, blob_owner):
         store = PostgresBlobStore(pg_session)
 
-        ref = store_upload(_jpeg(), blobs=store, user_id=blob_owner, settings=_settings())
+        stored = store_upload(_jpeg(), blobs=store, user_id=blob_owner, settings=_settings())
 
-        assert ref.media_type == "image/jpeg"
+        assert stored.ref.media_type == "image/jpeg"
 
 
 @pytest.fixture
 def blob_owner(pg_session):
 
     return make_user(pg_session).id
+
+
+class TestWhatAnUploadDeclared:
+    """The ordering constraint, and the reason this class exists at all.
+
+    `upright_bytes` re-saves the file to apply its declared orientation, which clears the
+    orientation tag on purpose and takes an unpredictable amount of the rest of the metadata
+    block with it. Reading afterwards reads a file that no longer says anything.
+
+    The two calls look independent, both are one line, and swapping them produces uploads
+    that work perfectly and simply never carry a date or a place — a failure with no symptom
+    except an absence nobody notices. This is the test that has to notice.
+    """
+
+    def test_what_the_photograph_declared_comes_back_with_it(self, pg_session, blob_owner):
+        from datetime import UTC, datetime
+
+        from tests.fakes.photographs import NOWHERE_LATITUDE, NOWHERE_LONGITUDE, photograph
+
+        taken = datetime(2026, 8, 10, 10, 50, 49, tzinfo=UTC)
+        store = PostgresBlobStore(pg_session)
+
+        stored = store_upload(
+            photograph(captured_at=taken, latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE),
+            blobs=store,
+            user_id=blob_owner,
+            settings=_settings(),
+        )
+
+        assert stored.metadata.captured_at == taken
+        assert stored.metadata.position is not None
+
+    def test_it_survives_a_photograph_that_needed_turning(self, pg_session, blob_owner):
+        """The case the ordering is about. An upright photograph is never re-saved, so
+        reading afterwards would appear to work — and every photograph out of a phone
+        carries an orientation, which is what makes this the ordinary case rather than the
+        edge one."""
+        from datetime import UTC, datetime
+
+        from tests.fakes.photographs import photograph
+
+        taken = datetime(2026, 8, 10, 10, 50, 49, tzinfo=UTC)
+        store = PostgresBlobStore(pg_session)
+
+        stored = store_upload(
+            photograph(captured_at=taken, orientation=6),
+            blobs=store,
+            user_id=blob_owner,
+            settings=_settings(),
+        )
+
+        assert stored.metadata.captured_at == taken
+
+    def test_the_stored_bytes_no_longer_declare_it(self, pg_session, blob_owner):
+        """Not an assertion about what *should* happen — an assertion about what does, and
+        therefore about why the read cannot be moved. If this ever stops being true, the
+        ordering constraint has quietly stopped applying and this class can go."""
+        from datetime import UTC, datetime
+
+        from core.metadata import read
+        from tests.fakes.photographs import photograph
+
+        store = PostgresBlobStore(pg_session)
+        original = photograph(
+            captured_at=datetime(2026, 8, 10, 10, 50, 49, tzinfo=UTC), orientation=6
+        )
+
+        stored = store_upload(original, blobs=store, user_id=blob_owner, settings=_settings())
+
+        assert read(store.get(blob_owner, stored.ref.ref)).captured_at is None
+
+    def test_a_photograph_that_declares_nothing(self, pg_session, blob_owner):
+        from core.metadata import NOTHING
+        from tests.fakes.photographs import photograph
+
+        store = PostgresBlobStore(pg_session)
+
+        stored = store_upload(photograph(), blobs=store, user_id=blob_owner, settings=_settings())
+
+        assert stored.metadata == NOTHING
+
+    def test_a_refused_upload_is_never_read(self, pg_session, blob_owner):
+        """The gate on what counts as an image is the gate on what gets examined. Reading
+        metadata out of something the size limit rejected would mean parsing a file the
+        system has already decided not to accept."""
+        import pytest
+
+        from core.guards import UploadRejected
+
+        store = PostgresBlobStore(pg_session)
+        settings = _settings()
+        too_big = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + bytes(settings.max_upload_bytes + 1)
+
+        with pytest.raises(UploadRejected):
+            store_upload(too_big, blobs=store, user_id=blob_owner, settings=settings)
