@@ -46,6 +46,10 @@ A client SHALL never have to conclude anything from the absence of activity. Sil
 indistinguishable from a crashed worker, a slow model, and a finished run whose last event
 was lost.
 
+A completed run SHALL also name the plant its diagnosis belongs to, including when the run
+created that plant itself. A run started without naming a plant makes one; a client handed
+only a diagnosis identifier has no way to reach the thing it just produced.
+
 #### Scenario: Reading a run
 
 - **WHEN** an owner requests a run they started
@@ -56,6 +60,18 @@ was lost.
 - **WHEN** a run completes
 - **THEN** its status is `completed`
 - **AND** it carries the identifier of the diagnosis it produced
+
+#### Scenario: A completed run names its plant
+
+- **WHEN** a run completes, having created a plant rather than being given one
+- **THEN** it carries the identifier of the plant it created
+- **AND** that plant is reachable by its owner
+
+#### Scenario: A run that produced nothing
+
+- **WHEN** a run completes without producing a diagnosis
+- **THEN** it says why
+- **AND** it is not reported as a failure
 
 #### Scenario: A failed run says so rather than staying silent
 
