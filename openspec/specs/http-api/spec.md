@@ -162,8 +162,14 @@ with no way back to correct it.
 The system SHALL expose the chat transcript for one plant, oldest first, and accept a new
 message which is answered by the agent.
 
-Sending a message is a single request that returns the reply. Streaming the reply as it is
-produced is deliberately not part of this requirement.
+Sending a message SHALL be possible in two forms, and both SHALL leave the same transcript
+behind: a single request that returns the completed reply, and a streamed form that
+delivers the reply as it is produced. Which form a client uses SHALL NOT change what is
+recorded.
+
+The single-request form remains, and remains the simpler thing to call. It is what the
+evaluation harness and every non-interactive caller use, and a streaming-only interface
+would make them assemble a reply from fragments in order to ignore the fragments.
 
 #### Scenario: Reading a transcript
 
@@ -176,6 +182,13 @@ produced is deliberately not part of this requirement.
 - **WHEN** an owner sends a message about their plant
 - **THEN** the response carries the agent's reply
 - **AND** both the message and the reply are afterwards present in the transcript
+
+#### Scenario: Sending a message and watching the reply arrive
+
+- **WHEN** an owner sends a message on the streamed form
+- **THEN** the reply is delivered progressively rather than at the end
+- **AND** the message and the completed reply are afterwards present in the transcript
+- **AND** the transcript is indistinguishable from one left by the single-request form
 
 #### Scenario: Sending a message about another owner's plant
 
@@ -288,3 +301,23 @@ fixed in code, and SHALL NOT default to permitting every origin.
 - **WHEN** a configured origin makes a cross-origin request
 - **THEN** the response permits it
 - **AND** an origin that is not configured is not permitted
+
+### Requirement: Long-running work is addressed as a resource, not as a slow request
+
+The system SHALL NOT expose any endpoint that performs a model-driven diagnosis within the
+lifetime of a single request. Work of that duration SHALL be started, addressed and watched
+as a resource.
+
+Ninety seconds inside one request is a connection that proxies close, that a reload
+abandons, and that has no way to report what it is doing. It also cannot express a pause
+for clarifying answers as anything other than a failure.
+
+#### Scenario: Asking for a diagnosis
+
+- **WHEN** a client asks for a diagnosis
+- **THEN** it is given a run to watch rather than a reply to wait for
+
+#### Scenario: No synchronous equivalent exists
+
+- **WHEN** the interface is enumerated
+- **THEN** no endpoint performs a diagnosis and returns its result in the same response
