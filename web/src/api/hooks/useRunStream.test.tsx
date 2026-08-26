@@ -1,0 +1,336 @@
+/**
+ * Watching a run, including the parts that only happen when something goes wrong.
+ *
+ * The stream is fabricated rather than served, because what is worth proving is a dropped
+ * connection and a duplicated event across a reconnect — neither of which a working server
+ * produces on request.
+ */
+
+import { renderHook, waitFor } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { useRunStream } from "@/api/hooks/useRunStream";
+import { forget, setToken } from "@/api/session";
+import { server } from "@/test/server";
+
+const RUN = "01a0-run";
+
+function frames(...text: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const frame of text) controller.enqueue(encoder.encode(frame));
+      controller.close();
+    },
+  });
+}
+
+function step(sequence: number, id: string, description: string): string {
+  return `id: ${sequence}\nevent: step\ndata: {"step":"${id}","description":"${description}"}\n\n`;
+}
+
+function completed(sequence: number, extra = ""): string {
+  return `id: ${sequence}\nevent: completed\ndata: {"diagnosis_id":"01a0-diagnosis","plant_id":"01a0-plant","rejected":false,"reason":null${extra}}\n\n`;
+}
+
+function serve(
+  body: () => ReadableStream<Uint8Array>,
+  onRequest?: (r: Request) => void,
+) {
+  server.use(
+    http.get(`/api/v1/runs/${RUN}/events`, ({ request }) => {
+      onRequest?.(request);
+      return new HttpResponse(body(), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }),
+  );
+}
+
+afterEach(forget);
+
+describe("watching a run", () => {
+  it("shows each step as it arrives", async () => {
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        step(2, "identifying", "Identifying the species"),
+        completed(3),
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    expect(result.current.steps.map((s) => s.description)).toEqual([
+      "Checking the photographs",
+      "Identifying the species",
+    ]);
+  });
+
+  it("sends the token as a header", async () => {
+    setToken("fresh");
+    let authorised: string | null = null;
+    serve(
+      () => frames(completed(1)),
+      (request) => {
+        authorised = request.headers.get("Authorization");
+      },
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    expect(authorised).toBe("Bearer fresh");
+  });
+
+  it("puts nothing in the URL", async () => {
+    setToken("fresh");
+    let url = "";
+    serve(
+      () => frames(completed(1)),
+      (request) => {
+        url = request.url;
+      },
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    expect(url).not.toContain("fresh");
+  });
+
+  it("reports the questions when the run pauses", async () => {
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","prompt":"How often do you water it?"}]}\n\n',
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.questions).not.toBeNull());
+    expect(result.current.questions?.[0]?.key).toBe("watering");
+  });
+
+  it("keeps the steps already shown when the questions arrive", async () => {
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","prompt":"How often?"}]}\n\n',
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.questions).not.toBeNull());
+    expect(result.current.steps).toHaveLength(1);
+  });
+
+  it("reports what a completed run produced", async () => {
+    setToken("fresh");
+    serve(() => frames(completed(1)));
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending?.kind).toBe("completed"));
+    expect(result.current.ending?.diagnosisId).toBe("01a0-diagnosis");
+    expect(result.current.ending?.plantId).toBe("01a0-plant");
+  });
+
+  it("reports a failure as an ending rather than a silence", async () => {
+    setToken("fresh");
+    serve(() =>
+      frames(
+        'id: 1\nevent: failed\ndata: {"detail":"The run could not be completed."}\n\n',
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending?.kind).toBe("failed"));
+    expect(result.current.ending?.detail).toBe(
+      "The run could not be completed.",
+    );
+  });
+
+  it("reports a cancellation", async () => {
+    setToken("fresh");
+    serve(() => frames("id: 1\nevent: cancelled\ndata: {}\n\n"));
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending?.kind).toBe("cancelled"));
+  });
+
+  it("reports a run that produced nothing, and why", async () => {
+    setToken("fresh");
+    serve(() =>
+      frames(
+        'id: 1\nevent: completed\ndata: {"diagnosis_id":null,"plant_id":null,"rejected":true,"reason":"This looks like a doorknob, not a plant."}\n\n',
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    expect(result.current.ending?.rejected).toBe(true);
+    expect(result.current.ending?.reason).toContain("doorknob");
+  });
+
+  it("ignores keep-alive traffic", async () => {
+    setToken("fresh");
+    serve(() => frames(": ping - 2026-01-01\n\n", completed(1)));
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    expect(result.current.steps).toHaveLength(0);
+  });
+});
+
+describe("when the connection drops", () => {
+  it("reconnects and continues from the last event seen", async () => {
+    setToken("fresh");
+    let attempt = 0;
+    const asked: (string | null)[] = [];
+    server.use(
+      http.get(`/api/v1/runs/${RUN}/events`, ({ request }) => {
+        asked.push(request.headers.get("Last-Event-ID"));
+        attempt += 1;
+        const body =
+          attempt === 1
+            ? frames(step(1, "checking", "Checking the photographs")) // then ends, mid-run
+            : frames(
+                step(2, "identifying", "Identifying the species"),
+                completed(3),
+              );
+        return new HttpResponse(body, {
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull(), {
+      timeout: 5000,
+    });
+    expect(asked).toEqual([null, "1"]);
+    expect(result.current.steps.map((s) => s.description)).toEqual([
+      "Checking the photographs",
+      "Identifying the species",
+    ]);
+  });
+
+  it("renders an event repeated across the reconnect exactly once", async () => {
+    // The server subscribes before it replays, so the tail of a replay can arrive twice.
+    // Rendering the duplicate would show a step twice on precisely the reconnect that is
+    // meant to be invisible.
+    setToken("fresh");
+    let attempt = 0;
+    server.use(
+      http.get(`/api/v1/runs/${RUN}/events`, () => {
+        attempt += 1;
+        const body =
+          attempt === 1
+            ? frames(step(1, "checking", "Checking the photographs"))
+            : frames(
+                step(1, "checking", "Checking the photographs"),
+                completed(2),
+              );
+        return new HttpResponse(body, {
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull(), {
+      timeout: 5000,
+    });
+    expect(result.current.steps).toHaveLength(1);
+  });
+
+  it("does not reconnect to a run that has already ended", async () => {
+    // There is nothing to come back for, and a stream reopened every second on a finished
+    // run is a request per second for ever.
+    setToken("fresh");
+    let attempts = 0;
+    server.use(
+      http.get(`/api/v1/runs/${RUN}/events`, () => {
+        attempts += 1;
+        return new HttpResponse(frames(completed(1)), {
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, RECONNECT_WAIT));
+
+    expect(attempts).toBe(1);
+  });
+
+  it("retries a stream that could not be opened", async () => {
+    setToken("fresh");
+    let attempt = 0;
+    server.use(
+      http.get(`/api/v1/runs/${RUN}/events`, () => {
+        attempt += 1;
+        return attempt === 1
+          ? new HttpResponse(null, { status: 502 })
+          : new HttpResponse(frames(completed(1)), {
+              headers: { "Content-Type": "text/event-stream" },
+            });
+      }),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull(), {
+      timeout: 5000,
+    });
+    expect(attempt).toBe(2);
+  });
+
+  it("stops when the component goes away", async () => {
+    setToken("fresh");
+    let attempts = 0;
+    server.use(
+      http.get(`/api/v1/runs/${RUN}/events`, () => {
+        attempts += 1;
+        return new HttpResponse(frames(step(1, "checking", "Checking")), {
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      }),
+    );
+
+    const { unmount, result } = renderHook(() => useRunStream(RUN));
+    await waitFor(() => expect(result.current.steps).toHaveLength(1));
+    unmount();
+    const seen = attempts;
+    await new Promise((resolve) => setTimeout(resolve, RECONNECT_WAIT));
+
+    expect(attempts).toBe(seen);
+  });
+});
+
+// Long enough for a reconnect to have happened if one were going to.
+const RECONNECT_WAIT = 1500;
+
+describe("watching nothing", () => {
+  it("does not open a stream without a run", () => {
+    const { result } = renderHook(() => useRunStream(null));
+
+    expect(result.current.steps).toEqual([]);
+    expect(result.current.connected).toBe(false);
+  });
+});

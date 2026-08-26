@@ -42,17 +42,17 @@
 
 ## 5. The wizard
 
-- [ ] 5.1 `useRunStream` reading the event stream with `fetch` and a `ReadableStream`; verify tests that it parses events from a fabricated stream, sends the token as a header, and puts nothing in the URL.
-- [ ] 5.2 Reconnect on a dropped stream using `Last-Event-ID`; verify tests that it resumes from the last event seen and that a duplicate arriving across the reconnect is rendered once.
-- [ ] 5.3 The upload step, with what was selected shown back; verify tests that nothing starts until the person confirms, and that a refused upload explains itself and leaves no run behind.
-- [ ] 5.4 The reasoning panel rendering steps as they arrive; verify tests that steps accumulate rather than replace, that a long gap still reads as working, and that no internal name appears.
-- [ ] 5.5 The clarifying questions, rendered in place mid-stream; verify tests that they appear without losing the progress shown, and that submitting continues the same run.
-- [ ] 5.6 Handle a second submission being refused; verify a test that the person sees the run's current state rather than an error.
-- [ ] 5.7 The differential as ranked cards with confidence, evidence for and against, and the confirming test; verify tests for ordering, for a candidate with no confirming test, and that the leading candidate is not presented as the only answer.
-- [ ] 5.8 Handle a run that produced no diagnosis; verify a test that the reason is shown and that it is not presented as a failure of the system.
-- [ ] 5.9 Offer the plant a completed run produced; verify a test that the result screen links to it.
-- [ ] 5.10 Abandoning a run from the wizard; verify tests that it reports as cancelled and that the interface does not imply work already done is unbilled.
-- [ ] 5.11 Resume the wizard on a reload and on a run opened fresh; verify tests for a run still working, one already completed, and one that failed while the person was away.
+- [x] 5.1 `useRunStream` reading the event stream with `fetch` and a `ReadableStream`; verify tests that it parses events from a fabricated stream, sends the token as a header, and puts nothing in the URL.
+- [x] 5.2 Reconnect on a dropped stream using `Last-Event-ID`; verify tests that it resumes from the last event seen and that a duplicate arriving across the reconnect is rendered once.
+- [x] 5.3 The upload step, with what was selected shown back; verify tests that nothing starts until the person confirms, and that a refused upload explains itself and leaves no run behind.
+- [x] 5.4 The reasoning panel rendering steps as they arrive; verify tests that steps accumulate rather than replace, that a long gap still reads as working, and that no internal name appears.
+- [x] 5.5 The clarifying questions, rendered in place mid-stream; verify tests that they appear without losing the progress shown, and that submitting continues the same run.
+- [x] 5.6 Handle a second submission being refused; verify a test that the person sees the run's current state rather than an error.
+- [x] 5.7 The differential as ranked cards with confidence, evidence for and against, and the confirming test; verify tests for ordering, for a candidate with no confirming test, and that the leading candidate is not presented as the only answer.
+- [x] 5.8 Handle a run that produced no diagnosis; verify a test that the reason is shown and that it is not presented as a failure of the system.
+- [x] 5.9 Offer the plant a completed run produced; verify a test that the result screen links to it.
+- [x] 5.10 Abandoning a run from the wizard; verify tests that it reports as cancelled and that the interface does not imply work already done is unbilled.
+- [x] 5.11 Resume the wizard on a reload and on a run opened fresh; verify tests for a run still working, one already completed, and one that failed while the person was away.
 
 ## 6. Account and evaluation
 

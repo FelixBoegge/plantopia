@@ -12,11 +12,18 @@ export function usePlants() {
   });
 }
 
-/** One plant, with its observations, diagnoses and current plan. */
-export function usePlant(plantId: string) {
+/**
+ * One plant, with its observations, diagnoses and current plan.
+ *
+ * Disabled without an identifier rather than asked for with an empty one. The wizard is
+ * reachable both with a plant and without, and a missing id would otherwise fetch
+ * `/plants/` — a wasted request that 404s, on every visit to the general form.
+ */
+export function usePlant(plantId: string | null | undefined) {
   return useQuery({
-    queryKey: keys.plant(plantId),
+    queryKey: keys.plant(plantId ?? "none"),
     queryFn: () => request<PlantDetail>(`/plants/${plantId}`),
+    enabled: Boolean(plantId),
   });
 }
 

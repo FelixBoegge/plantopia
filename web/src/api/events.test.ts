@@ -9,6 +9,9 @@ import { describe, expect, it } from "vitest";
 
 import { readEvents } from "@/api/events";
 
+/** What the server sends between lines. Built rather than typed, so it survives a formatter. */
+const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
+
 function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream({
@@ -94,5 +97,50 @@ describe("reading a stream", () => {
     );
 
     expect(events).toHaveLength(1);
+  });
+});
+
+describe("line endings", () => {
+  it("reads the framing this server actually sends", async () => {
+    // Captured from the running API, not written by hand. Every other fixture in this
+    // file uses bare line feeds because that is what I assumed — and the parser agreed
+    // with the assumption rather than with the server, so it yielded nothing at all,
+    // for every event, and every test here passed. Found in a browser.
+    const crlf =
+      "id: 1" +
+      CRLF +
+      "event: step" +
+      CRLF +
+      'data: {"step": "checking"}' +
+      CRLF +
+      CRLF;
+
+    const events = await collect(streamOf(crlf));
+
+    expect(events).toEqual([
+      { id: "1", event: "step", data: { step: "checking" } },
+    ]);
+  });
+
+  it("reads a bare carriage return too", async () => {
+    // Permitted by the specification, and the cheapest of the three to get wrong.
+    const cr = String.fromCharCode(13);
+    const events = await collect(
+      streamOf("event: note" + cr + "data: hello" + cr + cr),
+    );
+
+    expect(events[0]?.data).toBe("hello");
+  });
+
+  it("reassembles a CRLF frame split mid-ending", async () => {
+    // The nastiest version: the boundary itself straddles two reads.
+    const events = await collect(
+      streamOf(
+        "event: note" + CRLF + "data: hi" + CRLF.slice(0, 1),
+        CRLF.slice(1) + CRLF,
+      ),
+    );
+
+    expect(events[0]?.data).toBe("hi");
   });
 });

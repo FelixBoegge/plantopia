@@ -20,6 +20,9 @@ export interface StreamEvent {
  * Frames are separated by a blank line and may straddle a chunk boundary, so a buffer is
  * carried between reads. Splitting on the boundary alone would drop half of any event
  * unlucky enough to arrive in two pieces — rare, and impossible to reproduce afterwards.
+ *
+ * **Line endings are normalised first**, by `normalise` below. Skipping that is not a
+ * cosmetic matter: it yields nothing at all, for every event, silently. See its comment.
  */
 export async function* readEvents(
   body: ReadableStream<Uint8Array>,
@@ -33,7 +36,9 @@ export async function* readEvents(
       const { done, value } = await reader.read();
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+      // Normalised on arrival rather than at each split, so every comparison downstream
+      // sees one form.
+      buffer += normalise(decoder.decode(value, { stream: true }));
 
       let boundary = buffer.indexOf("\n\n");
       while (boundary !== -1) {
@@ -76,4 +81,15 @@ function parseFrame(frame: string): StreamEvent | null {
   } catch {
     return { id, event, data: joined };
   }
+}
+
+/**
+ * One form of line ending.
+ *
+ * The specification permits CRLF, LF or a bare CR, and this project's server sends CRLF.
+ * A parser that split on two line feeds finds no boundary at all in CRLF CRLF and yields
+ * nothing — silently, and for every event.
+ */
+function normalise(chunk: string): string {
+  return chunk.replace(/\r\n?/g, "\n");
 }

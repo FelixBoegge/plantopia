@@ -8,6 +8,7 @@ import { VerifyEmail } from "@/screens/auth/VerifyEmail";
 import { SignedIn } from "@/screens/SignedIn";
 import { PlantDetail } from "@/screens/plants/PlantDetail";
 import { Plants } from "@/screens/plants/Plants";
+import { Wizard } from "@/screens/wizard/Wizard";
 
 /**
  * Every screen, and which of them need a session.
@@ -32,11 +33,8 @@ export function AppRoutes() {
         <Route element={<SignedIn />}>
           <Route path="/" element={<Plants />} />
           <Route path="/plants/:plantId" element={<PlantDetail />} />
-          <Route
-            path="/plants/:plantId/diagnose"
-            element={<Placeholder name="Diagnose" />}
-          />
-          <Route path="/diagnose" element={<Placeholder name="Diagnose" />} />
+          <Route path="/plants/:plantId/diagnose" element={<Wizard />} />
+          <Route path="/diagnose" element={<Wizard />} />
           <Route
             path="/account"
             element={<Placeholder name="Your account" />}
