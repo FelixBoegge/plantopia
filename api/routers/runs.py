@@ -14,7 +14,6 @@ from api import converters, streaming
 from api.dependencies import BlobStoreDep, RunServiceDep, SessionDep, SettingsDep
 from api.schemas import AnswersIn, RunOut
 from core.images import store_upload
-from core.metadata import earliest
 from runs.bus import bus
 from services.run_service import StartRequest
 
@@ -51,7 +50,6 @@ def start_run(
         for photograph in photographs
     ]
     images = [photograph.ref for photograph in stored]
-    declared = earliest([photograph.metadata for photograph in stored])
 
     run = service.start(
         StartRequest(
