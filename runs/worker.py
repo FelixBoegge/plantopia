@@ -200,8 +200,12 @@ def _publish_step(runs, session, bus, run_id, node: str) -> None:
 
 def _pause(runs, session, bus, run_id, interrupts) -> None:
     """The graph stopped to ask. That is a status, not a failure."""
-    questions = _questions_from(interrupts)
-    payload = {"questions": questions}
+    asked = _asked(interrupts)
+    payload = {"questions": asked.get("questions", [])}
+    # Absent rather than empty when there is nothing to choose between, so a client can
+    # test for the block rather than for the length of it.
+    if asked.get("identification"):
+        payload["identification"] = asked["identification"]
     with transaction(session):
         runs.advance(
             run_id, expected=run_status.RUNNING, to=run_status.AWAITING_ANSWERS, now=_now()
@@ -314,12 +318,15 @@ def _profile_facts(session, user_id: UUID):
     return service.facts_for_prompt
 
 
-def _questions_from(interrupts) -> list[dict]:
-    """The questions an interrupt carries, as plain data."""
+def _asked(interrupts) -> dict:
+    """What an interrupt is asking for, as plain data.
+
+    The questions, and the identification candidates when there is a decision to make.
+    """
     if not interrupts:
-        return []
+        return {}
     value = interrupts[0].value if hasattr(interrupts[0], "value") else interrupts[0]
-    return list(value.get("questions", []))
+    return value if isinstance(value, dict) else {}
 
 
 def _now() -> datetime:

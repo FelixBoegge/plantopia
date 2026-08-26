@@ -235,3 +235,159 @@ class TestStudioEntryPoint:
         # Every node bar START must be someone's target, or it can never run.
         targets = {edge.target for edge in drawn.edges}
         assert set(drawn.nodes) - {"__start__"} <= targets
+
+
+class TestTheIdentificationAtThePause:
+    """Whether the owner is asked which plant it is, driven through the real graph.
+
+    The rule is only ever "how many candidates survived": one means every method, and the
+    owner if they said anything, named the same plant, and asking somebody to confirm what
+    nobody disputed is an interruption rather than a choice.
+    """
+
+    def _graph(self, make_deps, pipeline_models, **overrides):
+        gate, vision, chat = pipeline_models
+        deps = make_deps(gate_model=gate, vision_model=vision, chat_model=chat, **overrides)
+        return build_diagnosis_graph(deps, MemorySaver())
+
+    def test_a_disagreement_is_put_to_the_owner(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        from agent.schemas import SpeciesCandidate, SpeciesMethod
+
+        graph = self._graph(
+            make_deps,
+            pipeline_models,
+            identify_species=lambda _: [
+                SpeciesCandidate(
+                    common_name="Mint",
+                    scientific_name="Mentha spicata",
+                    confidence=0.7,
+                    method=SpeciesMethod.PLANTNET,
+                )
+            ],
+        )
+
+        result = graph.invoke(_initial(sample_images), config)
+
+        payload = result["__interrupt__"][0].value
+        assert [c["common_name"] for c in payload["identification"]] == ["Basil", "Mint"]
+        # And the questions are still there: one pause, both things.
+        assert payload["questions"]
+
+    def test_agreement_asks_nothing_about_the_species(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        from agent.schemas import SpeciesCandidate, SpeciesMethod
+
+        graph = self._graph(
+            make_deps,
+            pipeline_models,
+            identify_species=lambda _: [
+                SpeciesCandidate(
+                    common_name="Sweet basil",
+                    scientific_name="Ocimum basilicum",
+                    confidence=0.9,
+                    method=SpeciesMethod.PLANTNET,
+                )
+            ],
+        )
+
+        result = graph.invoke(_initial(sample_images), config)
+
+        payload = result["__interrupt__"][0].value
+        assert "identification" not in payload
+        assert payload["questions"]
+
+    def test_one_method_alone_asks_nothing_about_the_species(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        """The shape of every run on a deployment with no key for the second service."""
+        graph = self._graph(make_deps, pipeline_models, identify_species=lambda _: [])
+
+        result = graph.invoke(_initial(sample_images), config)
+
+        assert "identification" not in result["__interrupt__"][0].value
+
+    def test_the_question_shape_is_untouched_by_any_of_this(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        """The candidates are their own block precisely so this stays true — a chooser
+        squeezed into `Question` would have meant a question carrying data no question has,
+        and `tests/api/test_question_shape_agrees.py` would have stopped meaning anything.
+        """
+        from agent.schemas import Question
+
+        graph = self._graph(make_deps, pipeline_models, identify_species=lambda _: [])
+
+        result = graph.invoke(_initial(sample_images), config)
+
+        for asked in result["__interrupt__"][0].value["questions"]:
+            assert set(asked) == set(Question.model_fields)
+
+    def test_resuming_with_a_choice_proceeds_on_it(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        from langgraph.types import Command
+
+        from agent.schemas import SpeciesCandidate, SpeciesMethod
+
+        graph = self._graph(
+            make_deps,
+            pipeline_models,
+            identify_species=lambda _: [
+                SpeciesCandidate(
+                    common_name="Mint",
+                    scientific_name="Mentha spicata",
+                    confidence=0.7,
+                    method=SpeciesMethod.PLANTNET,
+                )
+            ],
+        )
+        graph.invoke(_initial(sample_images), config)
+
+        result = graph.invoke(
+            Command(
+                resume={
+                    "answers": {"watering": "twice a week"},
+                    "species": {
+                        "common_name": "Mint",
+                        "scientific_name": "Mentha spicata",
+                        "confidence": 0.7,
+                    },
+                }
+            ),
+            config,
+        )
+
+        assert result["species"].common_name == "Mint"
+        assert result["species_confirmed"] is True
+
+    def test_resuming_without_a_choice_keeps_the_leader(
+        self, make_deps, sample_images, pipeline_models, config
+    ):
+        from langgraph.types import Command
+
+        from agent.schemas import SpeciesCandidate, SpeciesMethod
+
+        graph = self._graph(
+            make_deps,
+            pipeline_models,
+            identify_species=lambda _: [
+                SpeciesCandidate(
+                    common_name="Mint",
+                    scientific_name="Mentha spicata",
+                    confidence=0.99,
+                    method=SpeciesMethod.PLANTNET,
+                )
+            ],
+        )
+        graph.invoke(_initial(sample_images), config)
+
+        result = graph.invoke(
+            Command(resume={"answers": {"watering": "twice a week"}, "species": None}),
+            config,
+        )
+
+        assert result["species"].common_name == "Basil"
+        assert result["species_confirmed"] is False

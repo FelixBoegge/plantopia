@@ -216,10 +216,30 @@ class RunOut(BaseModel):
     error: str | None
 
 
+class ChosenSpecies(BaseModel):
+    """The identification a person picked from the ones they were offered.
+
+    Sent back rather than referred to by index, because an index means the client and the
+    run have to agree on an ordering that only one of them controls — and a run resumed
+    against a reordered list would silently proceed on the wrong plant.
+    """
+
+    common_name: str = Field(min_length=1)
+    scientific_name: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+
+
 class AnswersIn(BaseModel):
-    """The answers a paused run asked for, keyed by the question keys it sent."""
+    """What a paused run is resumed with.
+
+    The answers it asked for, and the species the person chose if it offered a choice.
+    `species` is optional in both directions: a run that offered no choice has none to
+    send, and a person who answered the questions without picking one has made no choice
+    to record.
+    """
 
     answers: dict[str, str]
+    species: ChosenSpecies | None = None
 
 
 class AccountOut(BaseModel):

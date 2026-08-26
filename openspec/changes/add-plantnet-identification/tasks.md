@@ -37,11 +37,11 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 5. The choice, through the interrupt and back
 
-- [ ] 5.1 Add the identification block to the interrupt payload alongside the questions; verify a test asserts the payload carries both and that `Question` is unchanged.
-- [ ] 5.2 Omit the block when there is nothing to choose between; verify a test asserts a single candidate produces no block.
-- [ ] 5.3 Accept a chosen species in the resume payload and apply it in `gather_context`; verify a test asserts the resumed run proceeds on the chosen species.
-- [ ] 5.4 Proceed on the leading candidate when no choice is made — typed, then agreed, then vision; verify a test covers each precedence and asserts the choice is recorded as unconfirmed.
-- [ ] 5.5 Add a cross-language agreement test for the identification payload, on the model of `test_question_shape_agrees.py`; verify it fails when a field is renamed on either side.
+- [x] 5.1 Add the identification block to the interrupt payload alongside the questions; verify a test asserts the payload carries both and that `Question` is unchanged.
+- [x] 5.2 Omit the block when there is nothing to choose between; verify a test asserts a single candidate produces no block.
+- [x] 5.3 Accept a chosen species in the resume payload and apply it in `gather_context`; verify a test asserts the resumed run proceeds on the chosen species.
+- [x] 5.4 Proceed on the leading candidate when no choice is made — typed, then agreed, then vision; verify a test covers each precedence and asserts the choice is recorded as unconfirmed.
+- [x] 5.5 Add a cross-language agreement test for the identification payload, on the model of `test_question_shape_agrees.py`; verify it fails when a field is renamed on either side.
 
 ## 6. What the diagnosis records
 

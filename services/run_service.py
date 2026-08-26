@@ -155,8 +155,14 @@ class RunService:
         self.get(run_id)  # 404 for a stranger before any event is read
         return self._runs.events(self._user_id, run_id, after=after)
 
-    def answer(self, run_id: UUID, answers: dict[str, str]) -> RunRecord:
-        """Resume a paused run with the answers it asked for.
+    def answer(
+        self,
+        run_id: UUID,
+        answers: dict[str, str],
+        *,
+        species: dict | None = None,
+    ) -> RunRecord:
+        """Resume a paused run with the answers it asked for, and any species chosen.
 
         The status check and the transition are one conditional update, so two submissions
         arriving together produce one resume and one conflict rather than two resumes of
@@ -181,7 +187,15 @@ class RunService:
                 f"this run is {run.status}, so there is nothing waiting to be answered"
             )
 
-        self._submit(run_id=run_id, thread_id=thread_id, initial_state=None, resume=answers)
+        # Always the mapping shape, even with no species: one shape reaching the graph
+        # means `gather_context` has one path to be right about, and the shape that reads a
+        # bare answers dict exists only for a run paused before this deployment.
+        self._submit(
+            run_id=run_id,
+            thread_id=thread_id,
+            initial_state=None,
+            resume={"answers": answers, "species": species},
+        )
         return self.get(run_id)
 
     def cancel(self, run_id: UUID) -> None:

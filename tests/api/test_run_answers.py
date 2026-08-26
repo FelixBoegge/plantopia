@@ -99,7 +99,49 @@ def test_answering_carries_the_answers_to_the_worker(client, waiting, executor):
     _answer(client, waiting)
     closure = inspect.getclosurevars(executor.submitted[0]).nonlocals
 
-    assert closure["resume"] == ANSWERS["answers"]
+    assert closure["resume"]["answers"] == ANSWERS["answers"]
+
+
+def test_answering_without_choosing_a_species_carries_none(client, waiting, executor):
+    """The ordinary case: a run that offered no choice, or a person who did not make one.
+    The key is present and empty rather than absent, so `gather_context` has one shape to
+    read rather than two."""
+    import inspect
+
+    _answer(client, waiting)
+    closure = inspect.getclosurevars(executor.submitted[0]).nonlocals
+
+    assert closure["resume"]["species"] is None
+
+
+def test_a_chosen_species_reaches_the_worker(client, waiting, executor):
+    import inspect
+
+    client.post(
+        f"/api/v1/runs/{waiting}/answers",
+        json={
+            **ANSWERS,
+            "species": {
+                "common_name": "Thai basil",
+                "scientific_name": "Ocimum africanum",
+                "confidence": 0.71,
+            },
+        },
+    )
+    closure = inspect.getclosurevars(executor.submitted[0]).nonlocals
+
+    assert closure["resume"]["species"]["common_name"] == "Thai basil"
+    assert closure["resume"]["species"]["scientific_name"] == "Ocimum africanum"
+
+
+def test_a_species_with_no_name_is_refused(client, waiting, executor):
+    """An empty name would resume the run on a plant called nothing."""
+    response = client.post(
+        f"/api/v1/runs/{waiting}/answers",
+        json={**ANSWERS, "species": {"common_name": ""}},
+    )
+
+    assert response.status_code == 422
 
 
 def test_answering_twice_is_a_conflict(client, db, waiting, executor):

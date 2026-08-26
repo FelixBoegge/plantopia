@@ -165,6 +165,26 @@ export interface Evaluation {
  * `tests/api/test_question_shape_agrees.py` now compares this against `agent/schemas.py`
  * directly.
  */
+/**
+ * One answer to "what is this plant?", offered at the pause when the methods disagree.
+ *
+ * Like `Question`, this arrives in a stream event rather than a response body, so the
+ * OpenAPI document does not describe it and `tests/api/test_client_types.py` cannot check
+ * it. `tests/api/test_identification_shape_agrees.py` compares it against
+ * `agent/schemas.py` directly, for the reason recorded there: the last shape in this
+ * position said `prompt` where the graph said `text`, and every component test agreed with
+ * the bug because the fixtures had been written from this file.
+ *
+ * `method` is which of them produced it. It is the whole reason the choice is worth
+ * showing — a list of names with no provenance asks somebody to pick on nothing.
+ */
+export interface SpeciesCandidate {
+  common_name: string;
+  scientific_name: string | null;
+  confidence: number;
+  method: "typed" | "vision" | "plantnet" | "agreed";
+}
+
 export interface Question {
   key: string;
   text: string;

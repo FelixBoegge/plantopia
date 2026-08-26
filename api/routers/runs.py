@@ -87,7 +87,13 @@ def get_run(run_id: UUID, service: RunServiceDep) -> RunOut:
 @router.post("/{run_id}/answers", response_model=RunOut)
 def answer_run(run_id: UUID, body: AnswersIn, service: RunServiceDep) -> RunOut:
     """Answer the questions a paused run asked, and let it continue."""
-    return converters.run(service.answer(run_id, body.answers))
+    return converters.run(
+        service.answer(
+            run_id,
+            body.answers,
+            species=body.species.model_dump() if body.species else None,
+        )
+    )
 
 
 @router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)

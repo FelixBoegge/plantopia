@@ -13,7 +13,7 @@ from langgraph.types import interrupt
 from agent.deps import Deps
 from agent.nodes.intake import NodeFn
 from agent.prompts.context import SELECT_QUESTIONS
-from agent.schemas import Question, QuestionSet
+from agent.schemas import Question, QuestionSet, SpeciesGuess
 from agent.state import DiagnosisState
 from agent.structured import StructuredOutputFailed, invoke_structured
 
@@ -139,7 +139,59 @@ def make_gather_context(deps: Deps) -> NodeFn:
         if state.answers:
             return {}
 
-        answers = interrupt({"questions": [q.model_dump() for q in state.questions]})
-        return {"answers": dict(answers or {})}
+        given = interrupt(
+            {
+                "questions": [q.model_dump() for q in state.questions],
+                # Only when there is a decision to make. One candidate means every method,
+                # and the owner if they said anything, named the same plant — asking
+                # somebody to confirm what nobody disputed is an interruption, not a
+                # choice. The client renders this block only when it is present.
+                **(
+                    {"identification": [c.model_dump() for c in state.candidates]}
+                    if len(state.candidates) > 1
+                    else {}
+                ),
+            }
+        )
+
+        # A resume payload is either the answers on their own — which is what it was before
+        # a species could be chosen, and what an older client still sends — or a mapping
+        # carrying both. Reading both shapes rather than requiring the new one keeps a run
+        # that was paused before a deployment resumable after it.
+        return _resumed(given)
 
     return gather_context
+
+
+def _resumed(given) -> dict:
+    """What a resume payload means for state.
+
+    The chosen species is written here rather than in ``select_questions`` for the reason
+    that whole node exists: this one does nothing but read already-checkpointed state and
+    call ``interrupt``, so replaying it on resume has no side effect. ``select_questions``
+    runs *before* the interrupt and would have to guess.
+    """
+    if not isinstance(given, dict):
+        return {"answers": {}}
+
+    answers = given.get("answers")
+    if answers is None:
+        # The old shape: the mapping *is* the answers.
+        return {"answers": dict(given)}
+
+    chosen = given.get("species")
+    if not chosen:
+        return {"answers": dict(answers)}
+
+    return {
+        "answers": dict(answers),
+        "species": SpeciesGuess(
+            common_name=chosen.get("common_name") or "Unknown",
+            scientific_name=chosen.get("scientific_name"),
+            confidence=float(chosen.get("confidence") or 0.0),
+        ),
+        # Somebody looked at the candidates and picked one. That is a different fact from
+        # the leading candidate happening to be right, and the difference is what makes a
+        # wrong diagnosis attributable later.
+        "species_confirmed": True,
+    }
