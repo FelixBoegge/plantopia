@@ -61,9 +61,9 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 8. Proving it works, and closing
 
-- [ ] 8.1 Run a diagnosis end to end with a real key and photographs of a real plant; verify the chooser offers both identifications and the chosen one reaches the differential.
-- [ ] 8.2 Run the same diagnosis with the key removed; verify it completes, offers no chooser, and shows no attribution.
-- [ ] 8.3 Confirm the evaluation harness is unmoved: run it and compare against the last recorded result; verify the harness-independence test passes and no number changed.
-- [ ] 8.4 Update the README: the new setting, what happens without it, and the attribution obligation; verify every command runs as written on a clean clone.
-- [ ] 8.5 Record what this change leaves undone — identification accuracy is now measurable and still unmeasured, and what an image-based golden set would need; verify identifiers and dates against the file's conventions.
-- [ ] 8.6 Run `openspec validate add-plantnet-identification --strict`, the Python suite, the frontend suite, Playwright and ruff; verify all five are clean.
+- [x] 8.1 Run a diagnosis end to end with a real key and photographs of a real plant; verify the chooser offers both identifications and the chosen one reaches the differential.
+- [x] 8.2 Run the same diagnosis with the key removed; verify it completes, offers no chooser, and shows no attribution.
+- [x] 8.3 Confirm the evaluation harness is unmoved: run it and compare against the last recorded result; verify the harness-independence test passes and no number changed.
+- [x] 8.4 Update the README: the new setting, what happens without it, and the attribution obligation; verify every command runs as written on a clean clone.
+- [x] 8.5 Record what this change leaves undone — identification accuracy is now measurable and still unmeasured, and what an image-based golden set would need; verify identifiers and dates against the file's conventions.
+- [x] 8.6 Run `openspec validate add-plantnet-identification --strict`, the Python suite, the frontend suite, Playwright and ruff; verify all five are clean.

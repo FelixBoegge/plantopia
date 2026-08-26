@@ -144,6 +144,9 @@ Answer them and the same stream continues:
 curl -X POST localhost:8000/api/v1/runs/<run-id>/answers   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json'   -d '{"answers":{"watering":"every other day","drainage":"No drainage holes"}}'
 ```
 
+That same event can carry an `identification` block, and the answer can carry a `species`
+— see [Two opinions on what the plant is](#two-opinions-on-what-the-plant-is).
+
 `GET /api/v1/runs/{id}` reports the status at any time, and `DELETE` abandons a run — the
 step already running finishes, so cancelling during a model call still pays for that call.
 
@@ -159,6 +162,51 @@ the same call with somebody watching.
 **One process.** The run pool, the event bus and the rate limiter all live in the API
 process, so this does not scale horizontally as it stands. `M28` in
 `docs/known-limitations.md` says what has to be substituted first.
+
+### Two opinions on what the plant is
+
+Everything downstream rests on the species: the same drooping leaves mean different things
+on a peace lily and on a cactus. So two methods identify it, and **neither is told what you
+think it is** — not the species you typed, not the name you gave the plant. A model told the
+answer tends to return the answer, and then agreement is one claim counted twice rather than
+two methods corroborating each other.
+
+- A general-purpose vision model reads the photographs, and reports which part of the plant
+  each one shows.
+- [Pl@ntNet](https://my.plantnet.org)'s classifier reads the same photographs, with those
+  organs as a hint — it is markedly more accurate given them.
+
+You may also type a species when starting a run. It is optional and stays optional: most
+people asking what is wrong with a plant do not know what it is, which is frequently why
+they are asking.
+
+**If everything agrees, nothing is asked.** Where the two methods and anything you typed
+name the same plant, the run proceeds — being asked to confirm what nobody disputed is an
+interruption, not a choice. Where they disagree, the pause that already exists for the
+clarifying questions also asks which one is right. Each answer says how it was reached
+("read from your photo", "matched against a plant database") and how sure it is, in words.
+Choosing is optional; leaving it alone proceeds on the leading candidate.
+
+What leads: **what you typed, then what both methods agree on, then the vision model's.**
+Never the highest confidence across methods — the two report on scales that were never
+calibrated against each other, so comparing one's 0.71 with the other's 0.62 would be
+arithmetic on incomparable quantities.
+
+`GET /api/v1/diagnoses/{id}` reports `species_method` and `species_confirmed`, so a wrong
+diagnosis can be attributed afterwards: bad reasoning about the right plant, or good
+reasoning about the wrong one. `null` means unknown, which is what every diagnosis made
+before this existed honestly says about itself.
+
+**Set `PLANTOPIA_PLANTNET_API_KEY` to turn the second opinion on.** Free tier: 500
+identifications a day, commercial use permitted, European hosting; register at
+[my.plantnet.org](https://my.plantnet.org). Without it, a diagnosis runs on the vision
+model's identification alone, exactly as it did before the service existed — no choice is
+offered and nothing in the interface mentions it.
+
+**Showing a Pl@ntNet result obliges you to credit Pl@ntNet on the same surface.** That is a
+term of the free tier rather than a courtesy, and the interface does it for you: the credit
+is rendered by the component that renders the candidate, so a screen that shows one cannot
+omit it.
 
 ### Accounts and roles
 

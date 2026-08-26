@@ -26,6 +26,7 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | U7 | **~~Rejected and retake paths do not rotate `thread_id`.~~** *Resolved 2026-08-12 — added `_rotate_thread()` helper called on both rejected and retake branches in ui/pages/diagnose.py.* State from the abandoned attempt stayed in the checkpoint and merged into the retry. **Amended 2026-08-12 (whole-branch review):** the first fix covered only the wizard. The re-check entry point derived its thread id as `recheck-{plant_id}-{latest_diagnosis_id}`, and neither a rejection nor a retake writes a diagnosis — so that id never changed and a second attempt resumed the abandoned run's checkpoint, the same bug class in the other entry point. `ui/pages/plant_detail.py` now appends a `recheck_attempt` counter that `_rotate_recheck_thread()` increments on both branches. | Fixed by rotating thread_id on both paths, in both entry points. | ✓ Complete |
 | U8 | **The upload-rejection message interpolates the model's description raw**, producing "This looks like A screenshot of a web form…., not a plant." — capitalised mid-sentence, with the description's own full stop left in. Seen on the first live run. | Cosmetic; the message is still comprehensible and the rejection itself is correct. | Lowercase the first character and strip trailing punctuation before interpolating, in the rejection copy. |
 | U9 | **A diagnosis can come back with no candidates at all.** `natural-senescence-old-leaf-yellowing` produced an empty differential on the 2026-08-19 run, having been top-1 on the run before — the second time that same case has returned nothing across the runs recorded here. This is the model declining to answer rather than answering wrongly, which is the better failure of the two, but the owner still gets a run they paid and waited for and no differential at the end of it. | Recorded rather than fixed, because it was found by the evaluation rather than reported by a user, and nothing in the retrieval rework addresses it. It is visible in the score as a top-1 *and* top-3 miss, so it is not hiding. | Find out which it is first: a refusal the confidence floor is producing, a structured-output failure being swallowed, or the model genuinely finding no candidate it can argue for. The `other` category holds only two cases, so one of them is fifty points of that category — its 50.0% top-1 in `eval/REPORT.md` is this case and nothing else. |
+| U10 | **Identification accuracy is now measurable and still unmeasured.** Two methods identify the plant and each diagnosis records which one produced the species it was reasoned from — but no number anywhere says how often either is right. Golden cases supply their symptoms as text and are injected past `identify_plant` entirely, so `eval/REPORT.md` is silent about identification by construction, and this change does not alter that. What a person sees today is two answers and a choice, with nothing to tell them how much to trust either. | Measuring it needs an image-based golden set: photographs with a known species, which is a different dataset from the one that exists and a change of its own. What this adds instead is the two things that make the measurement possible later — a second, independent opinion to disagree with the first, and `species_method` on every diagnosis. | Build a small image set — fifty photographs with confirmed species across the corpus's categories — and score both methods on it separately. `species_method` also makes a cheaper proxy available first: on real runs, how often the two agree, and how often somebody overrides the leader. Neither is accuracy, but a rising override rate is evidence something is wrong. |
 
 ---
 
@@ -69,6 +70,8 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | M33 | **The frontend's tests are a second command, and a contributor can forget it.** `uv run pytest` is green whatever the state of `web/`: nothing in the Python gate compiles TypeScript, runs vitest, or opens a browser. The React work landed with three defects that the Python suite could not have seen and the component suite did not — a startup that fired two token renewals and revoked its own session, every clarifying question rendered as an unlabelled text box, and a plant created by a run that never appeared on the grid. | Recorded rather than fixed because the fix is CI, and there is no CI here yet. What is in place instead is the README saying plainly that there are two suites and that passing one says nothing about the other, plus three cross-language agreement tests that run inside the Python gate and read TypeScript source: `test_client_types.py`, `test_source_names_agree.py` and `test_question_shape_agrees.py`. Those cover the shapes; they cannot cover behaviour. | The deployment change adds CI, and both suites plus Playwright belong in it. Until then: if you change a screen, run `npm test` and `npx playwright test` as well. |
 | M34 | **The browser tests cover four flows, not the application.** Registering and signing in, a diagnosis through the interrupt, a dropped stream, and a chat reply with a lookup. Not covered in a browser: password reset, cancelling a run, a rejected photograph, the account screen's forget-a-fact, the evaluation screen, and every failure path. | Those four were chosen as the ones a mock makes look easy and a browser does not, and the choice paid for itself — three of the defects above were found by exactly these flows. The rest have component tests, which is weaker evidence but not none. | Add a flow when a component test turns out to have been describing something that did not work, which is how each of these was earned. The harness is the expensive part and it now exists: a new flow is one file. |
 | M35 | **One recorded Pl@ntNet response is the whole basis of the parsing tests.** The request shape, the organ vocabulary and the response fields were verified against the live service on 2026-08-26 — `habit` is accepted, an unknown organ fails the whole request with a 400, and omitting `organs` is accepted — and `tests/fixtures/plantnet_identify.json` is that response. What it does not cover: a species with no common name, a result the service ranks below its own confidence floor, a `noReject` refusal, and whatever their response gains in a future version. Those edge cases are tested by *mutating* the recording, which is one step better than inventing a body and one step worse than having seen one. | One recording is a large improvement on none, which is what `U2` was: a request shape read out of documentation, never exercised, and wrong. The adapter also treats an unrecognised response as a failure like any other, so a shape that changes underneath this degrades to the vision model's identification rather than breaking a diagnosis. | Record a second fixture the first time the service returns something the parser drops — the adapter logs it. A response version other than the recorded one is the signal to re-record; the service reports its version in every response, and nothing currently reads it. |
+| M36 | **The identification prompt lost its hint, and nothing measures what that cost.** The vision model used to be given the owner's name for the plant. It is not any more — a model told the answer tends to return it, which would make agreement between the methods meaningless — and the identification is very likely slightly worse as a result. How much worse is unknown, for the same reason `U10` is unknown. | Deliberate, and the right way round: a confidently wrong species that nothing can contradict is worse than an honestly uncertain one, and independence is what makes contradiction possible. The cost is also bounded in practice, because the second method and the owner both get a say. | The image-based golden set in `U10` measures this too: run it with and without the hint. Until then the hint stays out. |
+| M37 | **The two methods' confidences are not comparable, and the interface shows both.** Each candidate carries the number its own method produced, rendered in words. Nothing calibrates them against each other, so "very confident" from the vision model and "very confident" from the classifier are not the same claim — and a person choosing between them is being invited, gently, to compare two things that do not compare. | Every alternative is worse. Hiding confidence removes the only signal a person has; normalising them would invent a calibration nobody measured; picking a winner by number is the arithmetic this change explicitly refuses. Words rather than numbers at least blunt the false precision. | Calibration needs the same image set as `U10`. With it, both methods' scores could be mapped onto one scale of observed accuracy, and the words would then mean the same thing whichever produced them. |
 
 ---
 
@@ -326,6 +329,54 @@ and three specific holes turned up while implementing it rather than while desig
 retrieval move is deferred, and it also means an evaluation run is not perfectly
 reproducible even at temperature 0 — a second source of variation alongside the model,
 worth remembering before reading a small change in `eval/REPORT.md` as a real one.
+
+
+### A second opinion on the species (2026-08-26)
+
+Every diagnosis rests on the species, and until this change it came from one general-purpose
+vision model asked "what is this?" — a guess nothing in the system could check. Pl@ntNet's
+classifier is now a second, independent answer, and where the two disagree the owner settles
+it at the pause that already existed.
+
+**The two decisions worth carrying forward are both about independence.**
+
+Neither method is told what the owner thinks. That reversed an existing behaviour — the
+vision call used to be handed the owner's name for the plant as a hint — and the test
+asserting the hint *was* sent now asserts it is not. The subtler half was the nickname:
+`plant_name` is not a species field and "Kitchen basil" contains the species anyway. Without
+this, agreement between the owner, the vision model and the classifier would be one claim
+counted three times.
+
+And what leads is never the higher confidence. The two methods report on scales that were
+never calibrated against each other (`M37`), so the order is what the owner typed, then what
+both agree on, then the vision model's — a rule about provenance rather than about numbers.
+
+**Verified live on 2026-08-26**, against the real service with a real key, twice. With the
+key: the vision model and Pl@ntNet independently agreed on *Monstera deliciosa*, and the two
+candidates below it were both called "Mini monstera" and were different plants —
+*Rhaphidophora tetrasperma* and *Monstera minima*. That collision is precisely why agreement
+between methods is decided on the scientific name, and it turned up in the first real run
+rather than in a test somebody imagined. Overriding the leader with the classifier's answer
+carried through to the differential and was stored as `species_method=plantnet`,
+`species_confirmed=true`, for $0.026. With the key removed: no choice offered, no attribution
+shown, the run completed on the vision model's identification alone and recorded
+`species_method=vision`, for $0.022.
+
+**One real break, found by the task that exists to find it.** `eval/run_eval.py` builds
+`Deps` by hand rather than through `agent.wiring.build_deps`, so a new required dependency
+reached the application and not the harness: `uv run python -m eval.run_eval` would have
+raised on its next run. Nothing caught it — the harness is excluded from coverage (`M1`) and
+its own tests drive `run_case` with fixtures rather than `run_eval`'s wiring, so the only
+detector was running a command that costs money and minutes.
+`tests/unit/eval/test_harness_wiring.py` now compares the two by name, in both directions.
+
+Also of note: the request shape was verified against the live service before any test was
+written from it, which is `U2`'s lesson applied rather than repeated. Two readings of
+Pl@ntNet's own documentation disagreed about whether `habit` is an accepted organ; the
+service settled it. The same call established that an organ outside the vocabulary fails the
+*whole request* with a 400 rather than being ignored — so one wrong value in `WIRE_ORGANS`
+would have disabled identification silently and for ever, which is now handled by retrying
+once without organs.
 
 
 ### The React frontend, and what a green suite was not saying (2026-08-26)

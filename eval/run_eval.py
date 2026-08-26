@@ -111,6 +111,12 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
         roadmap=RoadmapRepository(session),
         weather=get_local_weather,
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
+        # No second identification, deliberately. A golden case supplies its symptoms as
+        # text and is injected past identification entirely, so asking a specialist
+        # classifier what the photograph shows would spend a daily allowance on a question
+        # nothing here scores — and would put a network call, and its failures, inside a
+        # measurement that is supposed to vary only with the model.
+        identify_species=lambda _photographs: [],
         care_profile=lookup_plant_care_profile,
         profile_facts=lambda: profile_block,
         now=lambda: datetime.now(tz=UTC),
