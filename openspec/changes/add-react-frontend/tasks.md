@@ -32,13 +32,13 @@
 
 ## 4. Plants
 
-- [ ] 4.1 The plant grid; verify tests for rendering a person's plants, for the empty state inviting a first diagnosis, and for a failure to load saying so rather than showing nothing.
-- [ ] 4.2 The plant detail screen with its history; verify tests for observations and diagnoses in order, and for a plant with no diagnosis yet.
-- [ ] 4.3 The roadmap as a dated checklist; verify tests that marking a step updates it, that reopening clears its completion, and that the change is visible without a manual reload.
-- [ ] 4.4 Renaming and removing a plant, with confirmation before removal; verify tests for both and that removal is not reachable in a single click.
-- [ ] 4.5 The chat screen with per-reply source chips; verify tests that a reply's sources are shown on the reply, and that an answer given without a lookup is distinguishable from one with.
-- [ ] 4.6 Use the streaming chat endpoint, showing lookups as they happen; verify tests that a lookup appears before the reply and that the transcript afterwards matches what the API returns.
-- [ ] 4.7 Serve photographs through the authenticated endpoint; verify a test that an image request carries the session and that no photograph URL contains a credential.
+- [x] 4.1 The plant grid; verify tests for rendering a person's plants, for the empty state inviting a first diagnosis, and for a failure to load saying so rather than showing nothing.
+- [x] 4.2 The plant detail screen with its history; verify tests for observations and diagnoses in order, and for a plant with no diagnosis yet.
+- [x] 4.3 The roadmap as a dated checklist; verify tests that marking a step updates it, that reopening clears its completion, and that the change is visible without a manual reload.
+- [x] 4.4 Renaming and removing a plant, with confirmation before removal; verify tests for both and that removal is not reachable in a single click.
+- [x] 4.5 The chat screen with per-reply source chips; verify tests that a reply's sources are shown on the reply, and that an answer given without a lookup is distinguishable from one with.
+- [x] 4.6 Use the streaming chat endpoint, showing lookups as they happen; verify tests that a lookup appears before the reply and that the transcript afterwards matches what the API returns.
+- [x] 4.7 Serve photographs through the authenticated endpoint; verify a test that an image request carries the session and that no photograph URL contains a credential.
 
 ## 5. The wizard
 

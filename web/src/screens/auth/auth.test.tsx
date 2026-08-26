@@ -348,7 +348,8 @@ describe("a verification link is spent exactly once", () => {
                 type: PROBLEM.invalidLink,
                 title: "This link cannot be used",
                 status: 400,
-                detail: "The link is invalid, has expired, or has already been used.",
+                detail:
+                  "The link is invalid, has expired, or has already been used.",
               },
               { status: 400 },
             );

@@ -1,0 +1,45 @@
+/**
+ * Severity, and the reason it never travels as a colour alone.
+ *
+ * About one man in twelve cannot reliably separate the red and green these badges use. A
+ * diagnosis whose seriousness is carried by hue is one they cannot read.
+ */
+
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { Severity, severityText } from "@/components/Severity";
+
+describe("a severity", () => {
+  it.each([
+    ["monitor", "Keep an eye on it"],
+    ["act_this_week", "Act this week"],
+    ["act_today", "Act today"],
+  ])("renders %s as words", (value, words) => {
+    render(<Severity severity={value} />);
+
+    expect(screen.getByText(words)).toBeInTheDocument();
+  });
+
+  it("never puts a database value on the screen", () => {
+    // `act_this_week` is a stored value. A fallback that rendered it raw would be a
+    // fallback that leaks one on exactly the day somebody adds a fourth severity.
+    render(<Severity severity="something_new_and_unmapped" />);
+
+    expect(
+      screen.queryByText(/something_new_and_unmapped/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Unrated")).toBeInTheDocument();
+  });
+
+  it("shows nothing at all when there is no severity", () => {
+    const { container } = render(<Severity severity={null} />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("offers the same words for a sentence", () => {
+    expect(severityText("act_today")).toBe("Act today");
+    expect(severityText(null)).toBeNull();
+  });
+});

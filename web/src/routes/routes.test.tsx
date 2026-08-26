@@ -125,11 +125,14 @@ describe("without a session", () => {
         return HttpResponse.json({ access_token: "fresh" });
       }),
       http.get("/api/v1/me", () => HttpResponse.json(ACCOUNT)),
+      http.get("/api/v1/plants", () => HttpResponse.json([])),
     );
 
     render(<AppRoutes />, { route: "/" });
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Loading");
+    expect((await screen.findAllByRole("status"))[0]).toHaveTextContent(
+      "Loading",
+    );
     expect(
       screen.queryByRole("heading", { name: "Sign in" }),
     ).not.toBeInTheDocument();
@@ -143,6 +146,7 @@ describe("without a session", () => {
 describe("with a session", () => {
   it("shows the plants", async () => {
     signedIn();
+    server.use(http.get("/api/v1/plants", () => HttpResponse.json([])));
 
     render(<AppRoutes />, { route: "/" });
 
@@ -153,11 +157,31 @@ describe("with a session", () => {
 
   it("shows one plant", async () => {
     signedIn();
+    server.use(
+      http.get("/api/v1/plants/01a0-plant", () =>
+        HttpResponse.json({
+          plant: {
+            id: "01a0-plant",
+            name: "Kitchen basil",
+            species: null,
+            species_confidence: null,
+            location_kind: "indoor",
+            location_text: null,
+            photo_ref: null,
+            created_at: "2026-03-01T12:00:00Z",
+          },
+          observations: [],
+          diagnoses: [],
+          roadmap_steps: [],
+          feedback_due: false,
+        }),
+      ),
+    );
 
     render(<AppRoutes />, { route: "/plants/01a0-plant" });
 
     expect(
-      await screen.findByRole("heading", { name: "Plant" }),
+      await screen.findByRole("heading", { name: "Kitchen basil" }),
     ).toBeInTheDocument();
   });
 
@@ -187,6 +211,8 @@ describe("with a session", () => {
 describe("a route that does not exist", () => {
   it("goes somewhere rather than showing nothing", async () => {
     signedIn();
+
+    server.use(http.get("/api/v1/plants", () => HttpResponse.json([])));
 
     render(<AppRoutes />, { route: "/nothing-here" });
 

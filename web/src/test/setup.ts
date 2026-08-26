@@ -9,3 +9,16 @@ import { server } from "./server";
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
+
+// jsdom implements neither of these. Photographs are fetched with the session and handed to
+// `<img>` as a blob URL — there is no other way to send an Authorization header for an
+// image — so without them every test touching a photograph fails for a reason that has
+// nothing to do with the code.
+//
+// Counted rather than stubbed blind: a test can assert that what it created was also
+// released, which is how a leak of every photograph somebody scrolls past would be caught.
+let objectUrls = 0;
+if (!URL.createObjectURL) {
+  URL.createObjectURL = () => `blob:test/${(objectUrls += 1)}`;
+  URL.revokeObjectURL = () => {};
+}

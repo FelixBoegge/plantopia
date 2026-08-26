@@ -48,23 +48,50 @@ export interface Account {
   allowance_resets_at: string;
 }
 
-export interface PlantSummary {
+export interface Plant {
   id: string;
   name: string;
   species: string | null;
+  species_confidence: number | null;
+  location_kind: "indoor" | "outdoor";
+  location_text: string | null;
   photo_ref: string | null;
   created_at: string;
-  latest_severity: string | null;
-  outstanding_steps: number;
+}
+
+export interface PlantSummary {
+  plant: Plant;
+  latest_diagnosis: Diagnosis | null;
+  pending_step_count: number;
+}
+
+export interface Observation {
+  id: string;
+  plant_id: string;
+  kind: "initial" | "recheck";
+  photo_refs: string[];
+  user_notes: string | null;
+  created_at: string;
+}
+
+export interface PlantDetail {
+  plant: Plant;
+  observations: Observation[];
+  diagnoses: Diagnosis[];
+  roadmap_steps: RoadmapStep[];
+  feedback_due: boolean;
 }
 
 export interface Candidate {
   disorder_id: string;
   name: string;
-  confidence: number;
-  evidence_for: string[];
-  evidence_against: string[];
-  confirming_test: string | null;
+  /** How likely this candidate is, 0 to 1. Rendered as a proportion, never as a verdict. */
+  probability: number;
+  severity: string;
+  supporting_evidence: string[];
+  contradicting_evidence: string[];
+  /** The quick check that would separate this from the others. */
+  distinguishing_test: string;
 }
 
 export interface Diagnosis {
@@ -83,10 +110,13 @@ export type StepStatus = "pending" | "done" | "skipped";
 export interface RoadmapStep {
   id: string;
   diagnosis_id: string;
-  title: string;
-  detail: string | null;
-  tier: string;
-  due_date: string | null;
+  ordinal: number;
+  action: string;
+  rationale: string;
+  success_signal: string;
+  /** Integer management tier: 1 is the gentlest thing that might work. */
+  tier: number;
+  due_date: string;
   status: StepStatus;
   completed_at: string | null;
 }
@@ -98,18 +128,22 @@ export interface DiagnosisDetail {
 
 export interface Message {
   id: string;
+  plant_id: string;
   role: "user" | "assistant" | "tool";
   content: string;
-  tool_calls: string[] | null;
+  /** What the agent consulted to produce this reply, if anything, and what came back. */
+  tool_calls:
+    { name: string; args: Record<string, unknown>; result: string }[] | null;
   created_at: string;
 }
 
 export interface ProfileFact {
-  id: string;
+  /** The fact itself is the identity — there is no separate id, and forgetting takes text. */
   fact: string;
-  source: string;
+  source: "inferred" | "stated";
   confidence: number;
-  created_at: string;
+  first_seen: string;
+  last_confirmed: string;
 }
 
 export interface Evaluation {

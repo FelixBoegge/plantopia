@@ -6,6 +6,8 @@ import { ResetPassword } from "@/screens/auth/ResetPassword";
 import { SignIn } from "@/screens/auth/SignIn";
 import { VerifyEmail } from "@/screens/auth/VerifyEmail";
 import { SignedIn } from "@/screens/SignedIn";
+import { PlantDetail } from "@/screens/plants/PlantDetail";
+import { Plants } from "@/screens/plants/Plants";
 
 /**
  * Every screen, and which of them need a session.
@@ -28,11 +30,8 @@ export function AppRoutes() {
 
       <Route element={<RequireSession />}>
         <Route element={<SignedIn />}>
-          <Route path="/" element={<Placeholder name="Your plants" />} />
-          <Route
-            path="/plants/:plantId"
-            element={<Placeholder name="Plant" />}
-          />
+          <Route path="/" element={<Plants />} />
+          <Route path="/plants/:plantId" element={<PlantDetail />} />
           <Route
             path="/plants/:plantId/diagnose"
             element={<Placeholder name="Diagnose" />}
