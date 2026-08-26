@@ -25,7 +25,10 @@ export interface RequestOptions extends Omit<RequestInit, "body"> {
  * one means the session is over. A client that treated them alike would either sign people
  * out every fifteen minutes or retry a sign-in that cannot succeed.
  */
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   const response = await send(path, options);
 
   if (response.ok) return parse<T>(response);
@@ -55,17 +58,23 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       // FormData sets its own content type, including the multipart boundary. Setting one
       // here would produce a boundary the body does not use.
-      ...(body !== undefined && !isFormData ? { "Content-Type": "application/json" } : {}),
+      ...(body !== undefined && !isFormData
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...headers,
     },
-    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
+    body:
+      body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   });
 }
 
 async function parse<T>(response: Response): Promise<T> {
   // 204, and any other empty body. `json()` on nothing throws, and several endpoints here
   // deliberately answer with nothing.
-  if (response.status === 204 || response.headers.get("content-length") === "0") {
+  if (
+    response.status === 204 ||
+    response.headers.get("content-length") === "0"
+  ) {
     return undefined as T;
   }
   return (await response.json()) as T;

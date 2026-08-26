@@ -30,7 +30,9 @@ const ACCOUNT = {
 
 function signedIn() {
   server.use(
-    http.post("/api/v1/auth/refresh", () => HttpResponse.json({ access_token: "fresh" })),
+    http.post("/api/v1/auth/refresh", () =>
+      HttpResponse.json({ access_token: "fresh" }),
+    ),
     http.get("/api/v1/me", () => HttpResponse.json(ACCOUNT)),
   );
 }
@@ -54,7 +56,9 @@ describe("without a session", () => {
 
     render(<AppRoutes />, { route: "/" });
 
-    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
   });
 
   it("sends somebody asking for one plant to sign in too", async () => {
@@ -62,7 +66,9 @@ describe("without a session", () => {
 
     render(<AppRoutes />, { route: "/plants/01a0-plant" });
 
-    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
   });
 
   it("leaves the sign-in screen reachable", async () => {
@@ -70,7 +76,9 @@ describe("without a session", () => {
 
     render(<AppRoutes />, { route: "/login" });
 
-    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
   });
 
   it("leaves registering reachable", async () => {
@@ -78,7 +86,9 @@ describe("without a session", () => {
 
     render(<AppRoutes />, { route: "/register" });
 
-    expect(await screen.findByRole("heading", { name: "Register" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Register" }),
+    ).toBeInTheDocument();
   });
 
   it("leaves verifying an address reachable", async () => {
@@ -120,9 +130,13 @@ describe("without a session", () => {
     render(<AppRoutes />, { route: "/" });
 
     expect(await screen.findByRole("status")).toHaveTextContent("Loading");
-    expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Sign in" }),
+    ).not.toBeInTheDocument();
     answer(null);
-    expect(await screen.findByRole("heading", { name: "Your plants" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Your plants" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -132,7 +146,9 @@ describe("with a session", () => {
 
     render(<AppRoutes />, { route: "/" });
 
-    expect(await screen.findByRole("heading", { name: "Your plants" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Your plants" }),
+    ).toBeInTheDocument();
   });
 
   it("shows one plant", async () => {
@@ -140,7 +156,9 @@ describe("with a session", () => {
 
     render(<AppRoutes />, { route: "/plants/01a0-plant" });
 
-    expect(await screen.findByRole("heading", { name: "Plant" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Plant" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the account", async () => {
@@ -148,7 +166,9 @@ describe("with a session", () => {
 
     render(<AppRoutes />, { route: "/account" });
 
-    expect(await screen.findByRole("heading", { name: "Your account" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Your account" }),
+    ).toBeInTheDocument();
   });
 
   it("re-establishes the session without anything having been stored", async () => {
@@ -171,7 +191,9 @@ describe("a route that does not exist", () => {
     render(<AppRoutes />, { route: "/nothing-here" });
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Your plants" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("heading", { name: "Your plants" }),
+      ).toBeInTheDocument(),
     );
   });
 });

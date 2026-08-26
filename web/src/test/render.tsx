@@ -14,7 +14,10 @@ import { AuthProvider } from "@/auth/AuthProvider";
  *
  * A fresh query client per render, so one test cannot see what another fetched.
  */
-export function render(ui: ReactElement, { route = "/" }: { route?: string } = {}) {
+export function render(
+  ui: ReactElement,
+  { route = "/" }: { route?: string } = {},
+) {
   const client = makeQueryClient();
 
   function Wrapper({ children }: { children: ReactNode }) {

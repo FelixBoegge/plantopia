@@ -64,7 +64,8 @@ export class ApiError extends Error {
  */
 export function readable(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.is(PROBLEM.internal)) return "Something went wrong at our end. Please try again.";
+    if (error.is(PROBLEM.internal))
+      return "Something went wrong at our end. Please try again.";
     return error.problem.detail ?? error.problem.title;
   }
   return "Something went wrong. Please try again.";

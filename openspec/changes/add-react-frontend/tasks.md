@@ -23,12 +23,12 @@
 
 ## 3. Getting in
 
-- [ ] 3.1 The registration screen, including consent, with the notice's plain-language text; verify tests that consent cannot be skipped, that the response is the same whether or not the address is taken, and that the person is told to check their email rather than being signed in.
-- [ ] 3.2 The verification screen consuming a link's token; verify tests for verifying, for a link already used, and for a link that means nothing — all three saying something a person can act on.
-- [ ] 3.3 The sign-in screen; verify tests for signing in, for a refusal that does not say which half was wrong, and for arriving at the plants afterwards.
-- [ ] 3.4 The password reset request and confirm screens; verify tests for both, and that the request screen answers identically for an address with no account.
-- [ ] 3.5 Sign-out, clearing the token and the cached server state; verify a test that no cached data survives into the next session on the same browser.
-- [ ] 3.6 Establish a session from the refresh cookie on load; verify a test that a reload keeps somebody signed in without a token having been stored.
+- [x] 3.1 The registration screen, including consent, with the notice's plain-language text; verify tests that consent cannot be skipped, that the response is the same whether or not the address is taken, and that the person is told to check their email rather than being signed in.
+- [x] 3.2 The verification screen consuming a link's token; verify tests for verifying, for a link already used, and for a link that means nothing — all three saying something a person can act on.
+- [x] 3.3 The sign-in screen; verify tests for signing in, for a refusal that does not say which half was wrong, and for arriving at the plants afterwards.
+- [x] 3.4 The password reset request and confirm screens; verify tests for both, and that the request screen answers identically for an address with no account.
+- [x] 3.5 Sign-out, clearing the token and the cached server state; verify a test that no cached data survives into the next session on the same browser.
+- [x] 3.6 Establish a session from the refresh cookie on load; verify a test that a reload keeps somebody signed in without a token having been stored.
 
 ## 4. Plants
 

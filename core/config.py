@@ -20,7 +20,10 @@ class Settings(BaseSettings):
     # OpenRouter. Every model call in the application goes through it.
     openrouter_api_key: str
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    app_url: str = "http://localhost:8501"
+    # Where the web client is served. Every link in an email is built from this, so a
+    # wrong value is a link nobody can follow and nobody can be told about. The default is
+    # Vite's development port; a deployment sets it to the real address.
+    app_url: str = "http://localhost:5173"
     app_title: str = "Plantopia"
 
     # Three model tiers. OpenRouter makes swapping trivial, so the pipeline uses the

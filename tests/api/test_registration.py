@@ -73,7 +73,7 @@ def test_registering_sends_a_verification_message_to_that_address(client, mailer
 
     assert len(mailer.sent) == 1
     assert mailer.sent[0].to == ADDRESS
-    assert "/verify?token=" in mailer.sent[0].body
+    assert "/verify-email?token=" in mailer.sent[0].body
 
 
 def test_the_response_carries_neither_the_password_nor_its_hash(client, db, mailer):
@@ -174,7 +174,7 @@ def test_the_owner_of_a_taken_address_is_told_instead(client, db, mailer):
 
     assert len(mailer.sent) == 1
     assert mailer.sent[0].to == ADDRESS
-    assert "/verify?token=" not in mailer.sent[0].body
+    assert "/verify-email?token=" not in mailer.sent[0].body
 
 
 def test_an_address_differing_only_in_case_is_the_same_account(client, db, mailer):

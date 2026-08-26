@@ -26,7 +26,9 @@ export function storeTheme(theme: Theme): void {
 /** Whether dark should be applied, resolving "system" against the browser. */
 export function resolve(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 export function apply(theme: Theme): void {

@@ -1,0 +1,128 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
+
+import { request } from "@/api/client";
+import { readable } from "@/api/problems";
+import { Field } from "@/components/Field";
+import { Notice } from "@/components/Notice";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { AuthShell } from "@/screens/auth/AuthShell";
+
+/**
+ * Creating an account.
+ *
+ * **The answer is the same whether or not the address is taken.** That is the server's
+ * behaviour and this screen must not undo it — a message that said "already registered"
+ * would turn the form into a way to ask who has an account here.
+ *
+ * Nobody is signed in by registering. The address has to be proven first, and saying so
+ * plainly is better than a redirect to a screen that refuses them.
+ */
+export function Register() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [consented, setConsented] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setFailure(null);
+    setBusy(true);
+    try {
+      await request("/auth/register", {
+        method: "POST",
+        body: { email, password, accepted_privacy_notice: consented },
+      });
+      setSent(true);
+    } catch (error) {
+      setFailure(readable(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <AuthShell title="Check your email">
+        <Notice title="Almost there">
+          If that address can be registered, a confirmation message is on its
+          way. Follow the link in it to finish setting up your account.
+        </Notice>
+        <p className="text-muted-foreground text-sm">
+          The link works for the next 24 hours.
+        </p>
+      </AuthShell>
+    );
+  }
+
+  return (
+    <AuthShell
+      title="Register"
+      description="Diagnose a plant, keep its history, and ask about it afterwards."
+      footer={
+        <>
+          Already have an account? <Link to="/login">Sign in</Link>
+        </>
+      }
+    >
+      <form onSubmit={submit} className="grid gap-6" noValidate>
+        {failure ? <Notice tone="failure">{failure}</Notice> : null}
+
+        <Field
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+        <Field
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          hint="At least 12 characters. Length matters more than punctuation."
+        />
+
+        <div className="grid gap-3">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="consent"
+              checked={consented}
+              onCheckedChange={(value) => setConsented(value === true)}
+            />
+            <Label
+              htmlFor="consent"
+              className="text-sm leading-relaxed font-normal"
+            >
+              I agree to the privacy notice below.
+            </Label>
+          </div>
+          <div className="text-muted-foreground grid gap-2 text-sm">
+            <p>
+              Plantopia stores the photographs you upload, what you write, and
+              the diagnoses it produces. Photographs and text are sent to
+              language models routed through OpenRouter in order to answer.
+            </p>
+            <p>
+              It also infers and keeps durable facts about how you care for your
+              plants — how often you water, where things live — and uses them in
+              later answers. You can see and remove any of them from your
+              account at any time.
+            </p>
+          </div>
+        </div>
+
+        <Button type="submit" disabled={busy}>
+          {busy ? "Creating your account…" : "Create account"}
+        </Button>
+      </form>
+    </AuthShell>
+  );
+}

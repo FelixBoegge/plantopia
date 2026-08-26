@@ -82,15 +82,25 @@ describe("sending a request", () => {
       }),
     );
 
-    await request("/auth/login", { method: "POST", body: { email: "a@b.com" } });
+    await request("/auth/login", {
+      method: "POST",
+      body: { email: "a@b.com" },
+    });
 
     expect(credentials).toBe("include");
   });
 
   it("returns nothing for an empty response rather than failing to parse it", async () => {
-    server.use(http.delete("/api/v1/plants/1", () => new HttpResponse(null, { status: 204 })));
+    server.use(
+      http.delete(
+        "/api/v1/plants/1",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
 
-    await expect(request("/plants/1", { method: "DELETE" })).resolves.toBeUndefined();
+    await expect(
+      request("/plants/1", { method: "DELETE" }),
+    ).resolves.toBeUndefined();
   });
 
   it("lets FormData set its own content type", async () => {
@@ -132,7 +142,10 @@ describe("when a refusal arrives", () => {
   it("turns a response that is not a problem into one", async () => {
     // A proxy answering a 502 with HTML. It must not surface as a JSON parse error.
     server.use(
-      http.get("/api/v1/plants", () => new HttpResponse("<html>502</html>", { status: 502 })),
+      http.get(
+        "/api/v1/plants",
+        () => new HttpResponse("<html>502</html>", { status: 502 }),
+      ),
     );
 
     await expect(request("/plants")).rejects.toSatisfy(
@@ -159,7 +172,9 @@ describe("when a refusal arrives", () => {
       detail: "This account has used its runs for the current period.",
     });
 
-    expect(readable(quota)).toBe("This account has used its runs for the current period.");
+    expect(readable(quota)).toBe(
+      "This account has used its runs for the current period.",
+    );
   });
 });
 
@@ -168,7 +183,9 @@ describe("when the token has expired", () => {
     setToken("stale");
     let attempts = 0;
     server.use(
-      http.post("/api/v1/auth/refresh", () => HttpResponse.json({ access_token: "fresh" })),
+      http.post("/api/v1/auth/refresh", () =>
+        HttpResponse.json({ access_token: "fresh" }),
+      ),
       http.get("/api/v1/plants", ({ request: incoming }) => {
         attempts += 1;
         if (incoming.headers.get("Authorization") === "Bearer fresh") {
@@ -192,7 +209,9 @@ describe("when the token has expired", () => {
         refreshes += 1;
         return HttpResponse.json({ access_token: "also-stale" });
       }),
-      http.get("/api/v1/plants", () => HttpResponse.json(EXPIRED, { status: 401 })),
+      http.get("/api/v1/plants", () =>
+        HttpResponse.json(EXPIRED, { status: 401 }),
+      ),
     );
 
     await expect(request("/plants")).rejects.toBeInstanceOf(ApiError);
@@ -264,7 +283,9 @@ describe("when the session has ended", () => {
         refreshes += 1;
         return HttpResponse.json({ access_token: "fresh" });
       }),
-      http.get("/api/v1/plants", () => HttpResponse.json(UNAUTHENTICATED, { status: 401 })),
+      http.get("/api/v1/plants", () =>
+        HttpResponse.json(UNAUTHENTICATED, { status: 401 }),
+      ),
     );
 
     await expect(request("/plants")).rejects.toBeInstanceOf(ApiError);
@@ -276,8 +297,12 @@ describe("when the session has ended", () => {
     const lost = vi.fn();
     onSessionLost(lost);
     server.use(
-      http.post("/api/v1/auth/refresh", () => HttpResponse.json(UNAUTHENTICATED, { status: 401 })),
-      http.get("/api/v1/plants", () => HttpResponse.json(EXPIRED, { status: 401 })),
+      http.post("/api/v1/auth/refresh", () =>
+        HttpResponse.json(UNAUTHENTICATED, { status: 401 }),
+      ),
+      http.get("/api/v1/plants", () =>
+        HttpResponse.json(EXPIRED, { status: 401 }),
+      ),
     );
 
     await expect(request("/plants")).rejects.toBeInstanceOf(ApiError);
@@ -288,8 +313,12 @@ describe("when the session has ended", () => {
   it("forgets the token when a renewal fails", async () => {
     setToken("stale");
     server.use(
-      http.post("/api/v1/auth/refresh", () => HttpResponse.json(UNAUTHENTICATED, { status: 401 })),
-      http.get("/api/v1/plants", () => HttpResponse.json(EXPIRED, { status: 401 })),
+      http.post("/api/v1/auth/refresh", () =>
+        HttpResponse.json(UNAUTHENTICATED, { status: 401 }),
+      ),
+      http.get("/api/v1/plants", () =>
+        HttpResponse.json(EXPIRED, { status: 401 }),
+      ),
     );
 
     await expect(request("/plants")).rejects.toBeInstanceOf(ApiError);

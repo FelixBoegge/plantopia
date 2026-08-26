@@ -7,7 +7,12 @@
  * the symptom is stale data nobody attributes to this.
  */
 
-import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { render as rtlRender, screen, waitFor } from "@testing-library/react";
@@ -21,7 +26,9 @@ import { server } from "@/test/server";
 
 function withClient(ui: React.ReactElement) {
   const client = makeQueryClient();
-  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return rtlRender(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
 }
 
 function Plants() {
@@ -31,13 +38,18 @@ function Plants() {
     queryFn: () => request<{ name: string }[]>("/plants"),
   });
   const rename = useMutation({
-    mutationFn: () => request("/plants/1", { method: "PATCH", body: { name: "Renamed" } }),
+    mutationFn: () =>
+      request("/plants/1", { method: "PATCH", body: { name: "Renamed" } }),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.plants }),
   });
 
   return (
     <div>
-      <ul>{data?.map((plant) => <li key={plant.name}>{plant.name}</li>)}</ul>
+      <ul>
+        {data?.map((plant) => (
+          <li key={plant.name}>{plant.name}</li>
+        ))}
+      </ul>
       <button onClick={() => rename.mutate()}>Rename</button>
     </div>
   );
@@ -72,7 +84,11 @@ describe("a query that is refused", () => {
       http.get("/api/v1/plants", () => {
         attempts += 1;
         return HttpResponse.json(
-          { type: PROBLEM.quotaExceeded, title: "Allowance reached", status: 429 },
+          {
+            type: PROBLEM.quotaExceeded,
+            title: "Allowance reached",
+            status: 429,
+          },
           { status: 429 },
         );
       }),
@@ -88,7 +104,9 @@ describe("a query that is refused", () => {
 
     withClient(<Screen />);
 
-    await waitFor(() => expect(screen.getByText("refused")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("refused")).toBeInTheDocument(),
+    );
     expect(attempts).toBe(1);
   });
 
@@ -115,7 +133,9 @@ describe("a query that is refused", () => {
 
     // The retry backs off about a second before it happens, which is the right delay for a
     // real network and longer than the default wait here.
-    expect(await screen.findByText("Basil", {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(
+      await screen.findByText("Basil", {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(attempts).toBe(2);
   });
 });

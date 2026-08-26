@@ -72,6 +72,18 @@ cp .env.example .env
 uv run uvicorn api.main:create_app --factory --reload --port 8000
 ```
 
+And the web client, in a second terminal:
+
+```bash
+cd web
+npm install
+npm run dev          # http://localhost:5173
+```
+
+Vite proxies `/api` to port 8000, so the browser sees one origin — which is what lets the
+refresh cookie's `SameSite=Strict` be honoured. A frontend on a different origin would not
+receive it at all.
+
 The interactive API documentation is at `http://localhost:8000/api/v1/docs`.
 
 **There is no key with a default.** `PLANTOPIA_JWT_SECRET` has none, and the application
@@ -106,10 +118,6 @@ from the cookie.
 indistinguishable from a stolen one being used, and is treated as one: the session ends
 and the account signs in again. A client whose refresh fails sends the person to sign in
 rather than trying again.
-
-**There is no browser client at present.** Streamlit was retired when the seeded owner it
-resolved through was replaced by real accounts; the React frontend is the next change.
-Until then the OpenAPI page above is the interface.
 
 ### Diagnosing a plant
 

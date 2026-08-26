@@ -52,7 +52,7 @@ def test_requesting_sends_a_link(client, account, mailer):
 
     assert response.status_code == 202
     assert mailer.sent[0].to == ADDRESS
-    assert "/reset?token=" in mailer.sent[0].body
+    assert "/reset-password?token=" in mailer.sent[0].body
 
 
 def test_an_unregistered_address_answers_identically(client, account, mailer):

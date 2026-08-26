@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 import { request } from "@/api/client";
@@ -26,6 +34,7 @@ interface Auth {
 const AuthContext = createContext<Auth | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queries = useQueryClient();
   const [state, setState] = useState<State>("starting");
   const [account, setAccount] = useState<Account | null>(null);
 
@@ -39,7 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     forget();
     setAccount(null);
     setState("signed-out");
-  }, []);
+    // Everything cached belongs to whoever was signed in. Leaving it would show one
+    // person's plants to the next on a shared browser, for as long as it took a query to
+    // refetch — and the first frame is the one somebody sees.
+    queries.clear();
+  }, [queries]);
 
   useEffect(() => {
     // Re-establish from the refresh cookie. Nothing was stored to make this work: the
@@ -47,7 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSessionLost(clear);
     (async () => {
       try {
-        const session = await request<Session>("/auth/refresh", { method: "POST" });
+        const session = await request<Session>("/auth/refresh", {
+          method: "POST",
+        });
         setToken(session.access_token);
         await load();
       } catch {
@@ -87,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): Auth {
   const auth = useContext(AuthContext);
-  if (auth === null) throw new Error("useAuth was called outside an AuthProvider");
+  if (auth === null)
+    throw new Error("useAuth was called outside an AuthProvider");
   return auth;
 }

@@ -11,8 +11,11 @@ from urllib.parse import quote
 
 from core.mail import Message
 
-VERIFY_PATH = "/verify"
-RESET_PATH = "/reset"
+# The routes the web client serves. They are here rather than guessed at because a link in
+# an email is unfixable once it has been sent — nobody can be told the address was wrong.
+# `tests/unit/identity/test_message_links.py` checks them against the client's own routing.
+VERIFY_PATH = "/verify-email"
+RESET_PATH = "/reset-password"
 
 
 def _link(base_url: str, path: str, token: str) -> str:
