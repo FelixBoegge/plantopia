@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { readEvents } from "@/api/events";
 import { currentToken } from "@/api/session";
-import type { Question, RunStatus } from "@/api/types";
+import type { Question, RunStatus, SpeciesCandidate } from "@/api/types";
 
 /**
  * Watching one run.
@@ -31,6 +31,14 @@ export interface Step {
 export interface Watched {
   steps: Step[];
   questions: Question[] | null;
+  /**
+   * The identifications to choose between, when there is a choice.
+   *
+   * `null` covers two different situations that want the same treatment: the run has not
+   * paused yet, and the run paused with every method naming the same plant. Neither is a
+   * question to put to anybody.
+   */
+  identification: SpeciesCandidate[] | null;
   /** Set when the run ends, whatever the ending. */
   ending: {
     kind: "completed" | "failed" | "cancelled";
@@ -46,6 +54,7 @@ export interface Watched {
 const NOTHING: Watched = {
   steps: [],
   questions: null,
+  identification: null,
   ending: null,
   connected: false,
 };
@@ -150,6 +159,11 @@ export function useRunStream(runId: string | null): Watched {
         setWatched((seen) => ({
           ...seen,
           questions: (payload.questions as Question[]) ?? [],
+          // Absent when the methods agreed, which is why this reads the key rather than
+          // the length: an empty array and no array mean the same thing here, and only one
+          // of them is ever sent.
+          identification:
+            (payload.identification as SpeciesCandidate[] | undefined) ?? null,
         }));
         return;
       }

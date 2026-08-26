@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { request } from "@/api/client";
 import { keys } from "@/app/queries";
-import type { DiagnosisDetail, Run } from "@/api/types";
+import type { DiagnosisDetail, Run, SpeciesCandidate } from "@/api/types";
 
 /** One run, for what it finally produced and for resuming after a reload. */
 export function useRun(runId: string | null) {
@@ -25,6 +25,8 @@ export interface StartRun {
   photographs: File[];
   plantName: string;
   locationKind: "indoor" | "outdoor";
+  /** What the owner says the plant is, if they know. Never required. */
+  statedSpecies?: string;
   locationText?: string;
   notes?: string;
   plantId?: string;
@@ -37,6 +39,7 @@ export function useStartRun() {
       const form = new FormData();
       form.append("plant_name", start.plantName);
       form.append("location_kind", start.locationKind);
+      if (start.statedSpecies) form.append("stated_species", start.statedSpecies);
       if (start.locationText) form.append("location_text", start.locationText);
       if (start.notes) form.append("user_notes", start.notes);
       if (start.plantId) form.append("plant_id", start.plantId);
@@ -52,13 +55,22 @@ export function useStartRun() {
   });
 }
 
+/** What a paused run is resumed with: its answers, and the species chosen if it asked. */
+export interface Resume {
+  answers: Record<string, string>;
+  species?: SpeciesCandidate | null;
+}
+
 export function useAnswerRun(runId: string) {
   const queries = useQueryClient();
   return useMutation({
-    mutationFn: (answers: Record<string, string>) =>
+    mutationFn: ({ answers, species }: Resume) =>
       request<Run>(`/runs/${runId}/answers`, {
         method: "POST",
-        body: { answers },
+        // The candidate is sent back whole rather than as an index into the list it came
+        // from. An index would mean the client and the run must agree on an ordering only
+        // one of them controls.
+        body: { answers, species: species ?? null },
       }),
     onSuccess: () => queries.invalidateQueries({ queryKey: keys.run(runId) }),
   });

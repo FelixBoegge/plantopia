@@ -52,12 +52,12 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 7. The wizard
 
-- [ ] 7.1 Add the optional species field to the upload step; verify a component test asserts a run starts with the field empty.
-- [ ] 7.2 Render the candidates at the pause with their method and confidence, confidence in words, the leading one preselected and a disagreement with a typed species made visible; verify a component test asserts no bare probability is rendered and that the disagreement is stated.
-- [ ] 7.3 Make choosing optional and submitting without a choice possible; verify a component test asserts the submit control is enabled with nothing chosen.
-- [ ] 7.4 Make the chooser keyboard-operable, with the selection conveyed by more than colour; verify the accessibility suite covers it and the axe pass is clean.
-- [ ] 7.5 Put the attribution inside the component that renders a service-derived candidate; verify a test asserts it appears whenever such a candidate is rendered and not when none is.
-- [ ] 7.6 Add a browser flow for a diagnosis where the identifications disagree and the owner chooses; verify it passes against the real stack with scripted models.
+- [x] 7.1 Add the optional species field to the upload step; verify a component test asserts a run starts with the field empty.
+- [x] 7.2 Render the candidates at the pause with their method and confidence, confidence in words, the leading one preselected and a disagreement with a typed species made visible; verify a component test asserts no bare probability is rendered and that the disagreement is stated.
+- [x] 7.3 Make choosing optional and submitting without a choice possible; verify a component test asserts the submit control is enabled with nothing chosen.
+- [x] 7.4 Make the chooser keyboard-operable, with the selection conveyed by more than colour; verify the accessibility suite covers it and the axe pass is clean.
+- [x] 7.5 Put the attribution inside the component that renders a service-derived candidate; verify a test asserts it appears whenever such a candidate is rendered and not when none is.
+- [x] 7.6 Add a browser flow for a diagnosis where the identifications disagree and the owner chooses; verify it passes against the real stack with scripted models.
 
 ## 8. Proving it works, and closing
 

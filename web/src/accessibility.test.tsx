@@ -289,6 +289,40 @@ describe("what a checker cannot see", () => {
   });
 });
 
+describe("choosing between two machines", () => {
+  it("finds nothing to fix in the identification chooser", async () => {
+    // The one control in the application that asks somebody to arbitrate between two
+    // machine judgements, which makes it the one most worth checking mechanically.
+    everything();
+    server.use(
+      http.get(`/api/v1/runs/${RUN}`, () =>
+        HttpResponse.json({
+          id: RUN,
+          plant_id: null,
+          kind: "diagnosis",
+          status: "awaiting_answers",
+          created_at: "2026-03-01T12:00:00Z",
+          finished_at: null,
+          diagnosis_id: null,
+          error: null,
+        }),
+      ),
+      http.get(
+        `/api/v1/runs/${RUN}/events`,
+        () =>
+          new HttpResponse(new TextEncoder().encode('id: 1\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often do you water it?","kind":"text","options":[]}],"identification":[{"common_name":"Basil","scientific_name":"Ocimum basilicum","confidence":0.85,"method":"vision"},{"common_name":"Thai basil","scientific_name":"Ocimum africanum","confidence":0.71,"method":"plantnet"}]}\n\n'), {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+      ),
+    );
+
+    const { container } = render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    await screen.findByRole("heading", { name: "Which plant is this?" });
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
 describe("using it without a pointer", () => {
   it("reaches every control on the sign-in screen by tabbing", async () => {
     signedOut();

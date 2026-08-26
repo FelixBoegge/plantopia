@@ -32,6 +32,7 @@ export function Upload({
   const [locationKind, setLocationKind] = useState<"indoor" | "outdoor">(
     "indoor",
   );
+  const [statedSpecies, setStatedSpecies] = useState("");
   const [locationText, setLocationText] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -44,7 +45,14 @@ export function Upload({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        onStart({ photographs, plantName, locationKind, locationText, notes });
+        onStart({
+          photographs,
+          plantName,
+          statedSpecies,
+          locationKind,
+          locationText,
+          notes,
+        });
       }}
     >
       {failure ? (
@@ -87,6 +95,19 @@ export function Upload({
         required
         readOnly={Boolean(fixedPlant)}
         hint={fixedPlant ? "Checking this plant again." : undefined}
+      />
+
+      <Field
+        label="Do you know what it is?"
+        value={statedSpecies}
+        onChange={(event) => setStatedSpecies(event.target.value)}
+        hint={
+          // Optional, and said so plainly. Most people asking what is wrong with a plant do
+          // not know what it is — that is frequently why they are asking — and a field that
+          // looked required would stop the people this exists for.
+          "Optional. A common or botanical name. Plantopia works it out from the " +
+          "photographs either way, and will say if it disagrees."
+        }
       />
 
       <fieldset className="grid gap-2">

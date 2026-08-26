@@ -172,9 +172,10 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
       {watched.questions && !over ? (
         <Questions
           questions={watched.questions}
+          identification={watched.identification}
           busy={answer.isPending}
           failure={answer.error}
-          onAnswer={(answers) => answer.mutate(answers)}
+          onAnswer={(answers, species) => answer.mutate({ answers, species })}
         />
       ) : null}
 

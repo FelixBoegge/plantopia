@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { readable } from "@/api/problems";
-import type { Question as Asked } from "@/api/types";
+import type { Question as Asked, SpeciesCandidate } from "@/api/types";
 import { Notice } from "@/components/Notice";
+import { Identification } from "@/screens/wizard/Identification";
 import { Question } from "@/screens/wizard/Question";
 import { Button } from "@/components/ui/button";
 
@@ -18,16 +19,25 @@ import { Button } from "@/components/ui/button";
  */
 export function Questions({
   questions,
+  identification,
   onAnswer,
   busy,
   failure,
 }: {
   questions: Asked[];
-  onAnswer: (answers: Record<string, string>) => void;
+  /** The identifications to choose between, or `null` when they agreed. */
+  identification: SpeciesCandidate[] | null;
+  onAnswer: (answers: Record<string, string>, species: SpeciesCandidate | null) => void;
   busy: boolean;
   failure: unknown;
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  // Starts on the leading candidate, which the run has already put first. Preselected
+  // rather than empty because there is no such thing as no species here — leaving it alone
+  // means proceeding on the leader, and an empty radiogroup would suggest otherwise.
+  const [species, setSpecies] = useState<SpeciesCandidate | null>(
+    identification?.[0] ?? null,
+  );
   const heading = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -47,6 +57,14 @@ export function Questions({
 
       {failure ? <Notice tone="failure">{readable(failure)}</Notice> : null}
 
+      {identification && species ? (
+        <Identification
+          candidates={identification}
+          chosen={species}
+          onChoose={setSpecies}
+        />
+      ) : null}
+
       <form
         className="grid gap-4"
         onSubmit={(event) => {
@@ -57,6 +75,11 @@ export function Questions({
             Object.fromEntries(
               Object.entries(answers).filter(([, given]) => given !== ""),
             ),
+            // Only when there was something to choose between *and* it differs from what
+            // the run would have done anyway. Sending back the leader unchanged would
+            // record that somebody confirmed it, which is a different fact from nobody
+            // having disagreed.
+            species && species !== identification?.[0] ? species : null,
           );
         }}
       >

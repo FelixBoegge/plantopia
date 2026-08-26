@@ -402,8 +402,13 @@ describe("when it asks something", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
 
+    // `species: null` is always present: one shape for the server to read rather than two,
+    // and null is the honest value when there was nothing to choose between.
     await waitFor(() =>
-      expect(sent).toEqual({ answers: { watering: "every other day" } }),
+      expect(sent).toEqual({
+        answers: { watering: "every other day" },
+        species: null,
+      }),
     );
   });
 

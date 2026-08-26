@@ -99,3 +99,60 @@ test("shows the finished diagnosis on the plant it created", async ({ page }) =>
   await expect(page.getByText(/Stop watering until/)).toBeVisible();
   await expect(page.getByRole("link", { name: "See the full differential" })).toBeVisible();
 });
+
+test("asks which plant it is when the methods disagree, and takes the answer", async ({
+  page,
+}) => {
+  // The scripted vision model says "Basil"; the scripted second opinion says "Thai basil"
+  // and "Holy basil". A disagreement is the case the choice screen exists for, so it is the
+  // one the browser walks through.
+  await signUp(page, "chooses");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByLabel("What is it called?").fill("Disputed basil");
+  await page.getByRole("button", { name: "Start the check" }).click();
+
+  await expect(page.getByRole("heading", { name: "Which plant is this?" })).toBeVisible({
+    timeout: 60_000,
+  });
+
+  // How each answer was reached, in words, and the credit its terms require.
+  await expect(page.getByText("Read from your photo")).toBeVisible();
+  // Two, because the specialist returned two candidates and each says where it came from.
+  await expect(page.getByText(/Matched against a plant database/)).toHaveCount(2);
+  await expect(page.getByText(/powered by Pl@ntNet/i)).toBeVisible();
+
+  // Confidence in words, never as a bare number.
+  await expect(page.getByText(/confident|guess/).first()).toBeVisible();
+  await expect(page.getByText(/0\.71|0\.85/)).toHaveCount(0);
+
+  // Overriding the leader with the specialist's answer.
+  await page.getByRole("radio", { name: /Thai basil/ }).check();
+  await page.getByLabel(/How often do you water/).fill("Twice a week");
+  await page.getByRole("button", { name: "Carry on" }).click();
+
+  await expect(page.getByRole("heading", { name: "What this looks like" })).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("carries a typed species through to the choice", async ({ page }) => {
+  await signUp(page, "typed");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByLabel("What is it called?").fill("My herb");
+  await page.getByLabel("Do you know what it is?").fill("Ocimum tenuiflorum");
+  await page.getByRole("button", { name: "Start the check" }).click();
+
+  await expect(page.getByRole("heading", { name: "Which plant is this?" })).toBeVisible({
+    timeout: 60_000,
+  });
+
+  // What the owner said leads, and both methods still ran and are still offered — which is
+  // the difference between leading and deciding.
+  await expect(page.getByText("What you told us")).toBeVisible();
+  await expect(page.getByRole("radio").first()).toBeChecked();
+  await expect(page.getByText("Read from your photo")).toBeVisible();
+});
