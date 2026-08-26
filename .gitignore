@@ -28,3 +28,8 @@ data/uploads/
 
 # Personal documents to track progress and what to do
 MY_QUESTION.md
+
+# The frontend's dependencies and build output.
+web/node_modules/
+web/dist/
+web/coverage/

@@ -11,15 +11,15 @@
 
 ## 2. The application shell
 
-- [ ] 2.1 Scaffold `web/` with Vite, TypeScript, Tailwind and shadcn/ui; verify `npm run build` and `npm run test` both succeed on a clean checkout.
-- [ ] 2.2 Add Vitest, React Testing Library and MSW with one passing example test; verify the example fails when its assertion is inverted, so the runner is known to be running.
-- [ ] 2.3 Add the API client and hand-written types for the shapes this consumes; verify a test that a problem-details response is parsed into its type and detail rather than a bare string.
-- [ ] 2.4 Add the fetch wrapper holding the access token in a module closure; verify tests that the token is sent as a header, never appears in a URL, and is not written to `localStorage` or `sessionStorage`.
-- [ ] 2.5 Renew once on an expired-token refusal and retry the original request; verify tests for a successful renewal being invisible to the caller, an unauthenticated refusal sending the person to sign in without renewing, and a failed renewal not retrying.
-- [ ] 2.6 Serialise concurrent renewals; verify a test that several requests failing at once produce exactly one refresh — several would rotate several times, and every rotation but one is a reused token that ends the session.
-- [ ] 2.7 Add routing and an authenticated layout; verify tests that an unauthenticated visit to an owner-scoped route lands on sign-in, and that the route asked for is returned to afterwards.
-- [ ] 2.8 Add TanStack Query with its provider and query-key conventions; verify a test that a mutation invalidates what it changed.
-- [ ] 2.9 Add light and dark themes honouring the system preference; verify a test that the choice persists across a reload and that neither theme is hard-coded in a component.
+- [x] 2.1 Scaffold `web/` with Vite, TypeScript, Tailwind and shadcn/ui; verify `npm run build` and `npm run test` both succeed on a clean checkout.
+- [x] 2.2 Add Vitest, React Testing Library and MSW with one passing example test; verify the example fails when its assertion is inverted, so the runner is known to be running.
+- [x] 2.3 Add the API client and hand-written types for the shapes this consumes; verify a test that a problem-details response is parsed into its type and detail rather than a bare string.
+- [x] 2.4 Add the fetch wrapper holding the access token in a module closure; verify tests that the token is sent as a header, never appears in a URL, and is not written to `localStorage` or `sessionStorage`.
+- [x] 2.5 Renew once on an expired-token refusal and retry the original request; verify tests for a successful renewal being invisible to the caller, an unauthenticated refusal sending the person to sign in without renewing, and a failed renewal not retrying.
+- [x] 2.6 Serialise concurrent renewals; verify a test that several requests failing at once produce exactly one refresh — several would rotate several times, and every rotation but one is a reused token that ends the session.
+- [x] 2.7 Add routing and an authenticated layout; verify tests that an unauthenticated visit to an owner-scoped route lands on sign-in, and that the route asked for is returned to afterwards.
+- [x] 2.8 Add TanStack Query with its provider and query-key conventions; verify a test that a mutation invalidates what it changed.
+- [x] 2.9 Add light and dark themes honouring the system preference; verify a test that the choice persists across a reload and that neither theme is hard-coded in a component.
 
 ## 3. Getting in
 
