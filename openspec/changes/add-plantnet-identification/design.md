@@ -75,6 +75,25 @@ keeps `test_question_shape_agrees.py` meaningful; the new block gets an agreemen
 own on the same reasoning, because it travels the same way and is invisible to OpenAPI for the
 same reason.
 
+### Neither method is told what the owner thinks
+
+The vision call used to be given the owner's name for the plant as a hint. It is not any
+more, and nor is the species they type — the two identifications see the photographs and
+nothing else.
+
+The reason is that the hint destroys the thing this change is for. A vision model told the
+owner's answer tends to return the owner's answer, so agreement between the owner, the vision
+model and the specialist would be one claim counted three times. The specialist never had the
+hint, which means before this the two methods were not even comparable: one was anchored and
+one was not.
+
+The nickname is the subtler half. `plant_name` is not a species field, and "Kitchen basil"
+contains the species regardless.
+
+Accepted cost: identification accuracy probably drops slightly. That is the price of an
+answer that can be checked, and it is the right way round — a confident wrong species that
+nothing contradicts is the failure this project already has no measurement for.
+
 ### What leads, and why it is not the highest confidence
 
 Precedence: **a species the person typed, then one both methods agree on, then the vision
@@ -176,6 +195,13 @@ is never offered, and the pipeline is what it is today. That is a property worth
 independently of rollback, and it is the same path a deployment without a key takes.
 
 ## Open Questions
+
+- **How the two methods are told apart in the interface.** Each candidate carries the method
+  that produced it, so the data is there; what is not settled is what a person is shown —
+  "Pl@ntNet" and "our vision model" name implementations rather than anything meaningful to
+  an owner, and "a specialist plant classifier" against "a general-purpose image model" is
+  more honest but longer. It changes wording and not structure, so it can be settled when
+  the chooser is built.
 
 - **Whether a plant's species should be re-openable after a diagnosis.** Somebody who realises
   the identification was wrong currently has no way to correct it except a new diagnosis. That

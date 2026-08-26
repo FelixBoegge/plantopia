@@ -9,8 +9,14 @@ which is markedly more accurate given them. Running the two in parallel would me
 the organs in a separate call — one more model call on every diagnosis, to save a second or
 two of a run that takes ninety.
 
-Neither method is authoritative. Both answers are carried as candidates, and where they
-disagree the owner settles it at the pause that already exists.
+**Neither method is told what the owner thinks it is.** Not the species they typed, and
+not the name they gave the plant — a hint would make the two identifications agree with the
+owner rather than with the evidence, and three parties agreeing because two were handed the
+third's answer is not agreement.
+
+Neither method is authoritative either. Both answers are carried as candidates; where all
+of them coincide the diagnosis proceeds without asking, and where they do not the owner
+settles it at the pause that already exists.
 """
 
 import logging
@@ -49,11 +55,24 @@ def make_identify_plant(deps: Deps) -> NodeFn:
         if state.species is not None:
             return {}
 
-        hint = f'The user calls this plant "{state.plant_name}".'
+        # **The photographs and nothing else.**
+        #
+        # This used to pass the owner's name for the plant as a hint. It cannot: neither
+        # the species they typed nor the name they gave it, and the name is the less
+        # obvious of the two — "Kitchen basil" is a nickname that contains the answer.
+        #
+        # A vision model told what the owner thinks tends to agree with the owner, so
+        # "both methods and the owner agree" would stop being corroboration and become an
+        # echo of one claim. The whole value of a second opinion is that it was reached
+        # separately, and this is the line that makes that true.
+        #
+        # It costs something: the identification is very likely slightly worse without the
+        # hint. Worth it, because an identification that is confidently wrong *and*
+        # unfalsifiable is worse than one that is honestly uncertain.
         messages = [
             SystemMessage(IDENTIFY_PLANT),
             build_image_message(
-                f"{hint}\n\nWhat species is this?",
+                "What species is this?",
                 state.images,
                 blobs=deps.blobs,
                 user_id=deps.user_id,
@@ -163,7 +182,7 @@ def _ranked(candidates: list[SpeciesCandidate], stated: str | None) -> list[Spec
         )
         # If a method independently named the same plant, that is agreement worth saying so,
         # not a duplicate row that makes somebody choose between a thing and itself.
-        rest = [other for other in candidates if not _same_plant(typed, other)]
+        rest = [other for other in candidates if not _matches_typed(stated, other)]
         return [typed, *rest]
 
     agreed = next((c for c in candidates if c.method is SpeciesMethod.AGREED), None)
@@ -171,6 +190,28 @@ def _ranked(candidates: list[SpeciesCandidate], stated: str | None) -> list[Spec
         return [agreed, *[c for c in candidates if c is not agreed]]
 
     return candidates
+
+
+def _matches_typed(stated: str, candidate: SpeciesCandidate) -> bool:
+    """Whether what somebody typed names the plant this candidate names.
+
+    Looser than the comparison between two identified candidates, and deliberately so. That
+    one insists on the scientific name because the alternative is a real collision — the
+    recorded fixture has two different plants both called "Mini monstera". This one has no
+    such luxury: the species field is a single free-text box, and a person will type
+    "basil" or "Ocimum basilicum" into it with equal cheerfulness, so the typed text is
+    compared against both of a candidate's names.
+
+    The cost of being wrong here is small in the direction it can be wrong: a false match
+    hides a candidate that agreed anyway, and a missed match shows a choice between two
+    spellings of the same plant. Neither produces a wrong diagnosis; a strict comparison
+    would produce the second one constantly.
+    """
+    typed = stated.casefold().strip()
+    names = {candidate.common_name.casefold()}
+    if candidate.scientific_name:
+        names.add(candidate.scientific_name.casefold())
+    return typed in names
 
 
 def _bytes_of(deps: Deps, ref: str) -> bytes:

@@ -88,15 +88,44 @@ class TestTheVisionIdentification:
 
         assert asked == []
 
-    def test_the_user_supplied_name_is_offered_as_a_hint(self, make_deps, sample_images):
+    def test_the_owners_name_for_the_plant_is_never_sent(self, make_deps, sample_images):
+        """This test used to assert the opposite, and the reversal is the point.
+
+        A vision model told what the owner thinks tends to agree with the owner. Then
+        "both methods and the owner agree" is not corroboration, it is one claim echoed
+        back twice — and the entire value of a second opinion is that it was reached
+        separately.
+
+        The nickname is the less obvious leak of the two: "Kitchen basil" is not a species
+        field, and it contains the answer.
+        """
         model = ScriptedStructuredModel([_seen()])
         deps = make_deps(vision_model=model)
-        state = _state(sample_images)
+        state = _state(sample_images, stated_species="Ocimum basilicum")
         state.plant_name = "my kitchen basil"
 
         make_identify_plant(deps)(state)
 
-        assert "my kitchen basil" in model.prompts[0][-1].content[0]["text"]
+        sent = model.prompts[0][-1].content[0]["text"]
+        assert "kitchen" not in sent.casefold()
+        assert "basil" not in sent.casefold()
+        assert "ocimum" not in sent.casefold()
+
+    def test_nothing_the_owner_said_reaches_the_system_prompt_either(
+        self, make_deps, sample_images
+    ):
+        """The instruction half of the message, checked separately: a hint moved into the
+        system prompt would pass the test above and defeat its purpose."""
+        model = ScriptedStructuredModel([_seen()])
+        deps = make_deps(vision_model=model)
+        state = _state(sample_images, stated_species="Ocimum basilicum")
+        state.plant_name = "my kitchen basil"
+
+        make_identify_plant(deps)(state)
+
+        system = model.prompts[0][0].content
+        assert "kitchen" not in system.casefold()
+        assert "ocimum" not in system.casefold()
 
     def test_an_already_identified_species_is_not_re_identified(self, make_deps, sample_images):
         """The re-check flow reuses this node with the species already known."""
@@ -417,3 +446,57 @@ class TestWhatLeadsWithNothingTyped:
 
         assert result["species"].common_name == "Basil"
         assert result["candidates"][0].method is SpeciesMethod.VISION
+
+
+class TestWhenThereIsNothingToAsk:
+    """Unanimity is the case that should cost the owner nothing.
+
+    A choice screen offered when every method — and the owner — named the same plant is an
+    interruption that asks somebody to confirm what nobody disputed. The rule the wizard
+    reads is simply how many candidates there are: one means do not ask.
+    """
+
+    def test_all_three_agreeing_leaves_one_candidate(self, make_deps, sample_images):
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen("Basil", "Ocimum basilicum")]),
+            identify_species=lambda _: [_candidate("Sweet basil", "Ocimum basilicum", 0.9)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images, stated_species="Ocimum basilicum"))
+
+        assert len(result["candidates"]) == 1
+
+    def test_both_methods_agreeing_with_nothing_typed_leaves_one_candidate(
+        self, make_deps, sample_images
+    ):
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen("Basil", "Ocimum basilicum")]),
+            identify_species=lambda _: [_candidate("Sweet basil", "Ocimum basilicum", 0.9)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert len(result["candidates"]) == 1
+        assert result["candidates"][0].method is SpeciesMethod.AGREED
+
+    def test_one_dissenter_is_enough_to_ask(self, make_deps, sample_images):
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen("Basil", "Ocimum basilicum")]),
+            identify_species=lambda _: [_candidate("Mint", "Mentha spicata", 0.7)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images, stated_species="Ocimum basilicum"))
+
+        assert len(result["candidates"]) > 1
+
+    def test_a_lone_method_is_also_nothing_to_ask(self, make_deps, sample_images):
+        """No key, or a service that answered nothing. There is one answer and no dispute
+        to put to anybody."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert len(result["candidates"]) == 1

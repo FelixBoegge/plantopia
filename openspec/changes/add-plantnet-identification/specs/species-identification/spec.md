@@ -10,17 +10,35 @@ so a wrong one is not a wrong field — it is a wrong diagnosis that reads as a 
 ### Requirement: Two independent methods identify the plant
 
 The system SHALL attempt identification by a general-purpose vision model and by a specialist
-identification service, and SHALL treat neither as authoritative over the other.
+identification service, SHALL give neither of them anything the owner said about what the
+plant is, and SHALL treat neither as authoritative over the other.
 
 One model asked one question produces an answer that nothing can check. Two methods built on
 different evidence produce either agreement, which is worth more than either alone, or a
 disagreement, which is a question worth putting to the person standing in front of the plant.
+
+**Independence is the whole mechanism, and it is fragile.** A method told what the owner
+believes tends to agree with the owner — and then "they all agree" is not three parties
+corroborating one another, it is one claim echoed back. That covers the name the owner gave
+the plant as well as any species they typed: a nickname is not a species field and routinely
+contains the species anyway.
+
+It costs accuracy. An identification made without a hint is very likely slightly worse than
+one made with it. That is the price of the result meaning something, and a confidently wrong
+identification nothing can contradict is worse than an honestly uncertain one.
 
 #### Scenario: Both methods answer
 
 - **WHEN** a diagnosis begins with photographs
 - **THEN** both methods are asked
 - **AND** each candidate is carried with the method that produced it and its confidence
+
+#### Scenario: What the methods are told
+
+- **WHEN** a method is asked to identify the plant
+- **THEN** it is given the photographs
+- **AND** it is given neither the species the owner typed nor the name the owner gave the
+  plant
 
 #### Scenario: The methods agree
 
@@ -123,6 +141,12 @@ double the cost of the one thing a diagnosis asks of somebody.
 
 - **WHEN** only one candidate exists
 - **THEN** no choice is presented
+
+#### Scenario: Everything agrees
+
+- **WHEN** the methods and any species the owner typed all name the same plant
+- **THEN** the diagnosis proceeds without asking the owner to choose
+- **AND** the run is not paused for the identification
 
 ### Requirement: Identification never blocks a diagnosis
 
