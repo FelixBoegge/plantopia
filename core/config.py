@@ -167,6 +167,13 @@ class Settings(BaseSettings):
     # model call, and intermediaries close connections that look idle.
     run_keepalive_seconds: int = Field(default=15, ge=1, le=300)
 
+    # Whether this process sweeps abandoned runs. One process should; several would each
+    # sweep, which is harmless but wasteful, and is the open question the deployment change
+    # settles. Off in tests, where runs are driven directly and a background loop would only
+    # add timing.
+    run_sweeper_enabled: bool = True
+    run_sweeper_interval_seconds: int = Field(default=60, ge=5)
+
     retrieval_score_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
     species_confidence_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     diagnosis_confidence_threshold: float = Field(default=0.35, ge=0.0, le=1.0)

@@ -8,6 +8,7 @@ the pause here is two calls to ``execute`` — and everything a client sees of i
 the bus, which is what lets one connection span both.
 """
 
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -307,3 +308,136 @@ def test_the_clock_used_is_the_real_one(db, owner, sample_images, settings, bus,
 
     events = RunRepository(db).events(owner, run.id)
     assert events[0].occurred_at >= before
+
+
+def test_a_paused_run_does_not_advance_further(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """The pause is the end of the pass. A worker that kept going would spend the second
+    half of a diagnosis on answers nobody gave."""
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    events = RunRepository(db).events(owner, run.id)
+    assert events[-1].kind == steps.QUESTIONS
+    assert RunRepository(db).get(owner, run.id).diagnosis_id is None
+
+
+def test_the_pause_releases_the_worker_rather_than_holding_it(
+    db, owner, sample_images, settings, bus, make_deps, make_pipeline_models
+):
+    """A pool of one, and a run waiting for a person.
+
+    If the pause blocked inside the graph, the second run could not start until somebody
+    read their email — and with a pool of one, nobody else could run anything at all. This
+    is why `awaiting_answers` is a real status rather than a label on a stuck thread.
+    """
+    from runs.executor import ThreadPoolRunExecutor
+
+    def _own_graph():
+        """Each run gets its own models: the scripts are ordered and consumed."""
+        gate, vision, chat = make_pipeline_models()
+        graph = build_diagnosis_graph(
+            make_deps(gate_model=gate, vision_model=vision, chat_model=chat), MemorySaver()
+        )
+        return lambda **_: graph
+
+    first, first_state = _run_and_state(db, owner, sample_images)
+    second, second_state = _run_and_state(db, owner, sample_images)
+    pool = ThreadPoolRunExecutor(pool_size=1, queue_limit=4)
+    finished = threading.Event()
+
+    try:
+        pool.submit(
+            lambda: _execute(
+                first, first_state, settings=settings, bus=bus, graph=_own_graph(), db=db
+            )
+        )
+        pool.submit(
+            lambda: (
+                _execute(
+                    second, second_state, settings=settings, bus=bus, graph=_own_graph(), db=db
+                ),
+                finished.set(),
+            )
+        )
+
+        assert finished.wait(timeout=20.0), "the second run never started"
+    finally:
+        pool.shutdown()
+
+    repo = RunRepository(db)
+    assert repo.get(owner, first.id).status == run_status.AWAITING_ANSWERS
+    assert repo.get(owner, second.id).status == run_status.AWAITING_ANSWERS
+
+
+def test_one_watcher_sees_both_halves_of_a_run(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """The property the whole bus indirection exists for.
+
+    A single subscription, held across the pause and the resume, receives the first half's
+    steps, the questions, and then the second half's — with the sequence continuing rather
+    than restarting. The graph's own generator ended in the middle of that; the watcher
+    never noticed.
+    """
+    run, state = _run_and_state(db, owner, sample_images)
+    watcher = bus.subscribe(run.id)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    received = []
+    while (event := watcher.next(timeout=0.1)) is not None:
+        received.append(event)
+
+    kinds = [event.kind for event in received]
+    assert steps.QUESTIONS in kinds
+    assert kinds[-1] == steps.COMPLETED
+    assert kinds.index(steps.QUESTIONS) < kinds.index(steps.COMPLETED)
+    assert [event.sequence for event in received] == sorted(event.sequence for event in received)
+
+
+def test_the_subscription_is_not_closed_by_the_pause(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """A pause that closed the stream would make every client handle a run as two."""
+    run, state = _run_and_state(db, owner, sample_images)
+    watcher = bus.subscribe(run.id)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    assert watcher.closed is False
+
+
+def test_the_step_in_flight_finishes_before_a_cancellation_takes_effect(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """Cooperative, not pre-emptive. Killing the thread mid-call would leak its connection
+    and could leave a half-written checkpoint, which is a worse trade than a few cents.
+    """
+    run, state = _run_and_state(db, owner, sample_images)
+    RunRepository(db).request_cancel(owner, run.id)
+    db.commit()
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    events = RunRepository(db).events(owner, run.id)
+    assert events, "the node already executing was abandoned rather than allowed to finish"
+    assert events[-1].kind == steps.CANCELLED
+
+
+def test_a_cancelled_run_records_what_it_spent(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """The money left when the model was called, not when somebody read the result."""
+    run, state = _run_and_state(db, owner, sample_images)
+    RunRepository(db).request_cancel(owner, run.id)
+    db.commit()
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    recorded = db.scalars(select(UsageEvent).where(UsageEvent.user_id == owner)).all()
+    assert len(recorded) == 1
+    assert recorded[0].succeeded is False

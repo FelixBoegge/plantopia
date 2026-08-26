@@ -251,9 +251,12 @@ def sample_plant(db, owner, now) -> UUID:
     return plant_id
 
 
-@pytest.fixture
-def pipeline_models():
+def _pipeline_models():
     """Scripted models covering a full happy-path run, one per tier.
+
+    A function rather than a fixture, so a test driving two runs can build two independent
+    sets — the scripts are ordered and consumed, and sharing one set between two runs
+    exhausts it partway through the second.
 
     Returns ``(gate, vision, chat)``:
 
@@ -354,3 +357,20 @@ def pipeline_models():
         ]
     )
     return gate, vision, chat
+
+
+@pytest.fixture
+def pipeline_models():
+    """One set of scripted models, for the many tests that drive a single run."""
+    return _pipeline_models()
+
+
+@pytest.fixture
+def make_pipeline_models():
+    """A factory, for the few tests that drive more than one run.
+
+    Each set is consumed in order as the graph calls it, so two runs need two sets — a
+    shared one runs out partway through the second and fails as a model error rather than
+    as whatever the test was about.
+    """
+    return _pipeline_models

@@ -132,6 +132,9 @@ def api_settings():
         openrouter_api_key="sk-test",
         jwt_secret=TEST_JWT_SECRET,
         secure_cookies=False,
+        # No background sweeping in tests: runs are driven directly here, and a loop on
+        # another thread would only add timing to results that are otherwise deterministic.
+        run_sweeper_enabled=False,
     )
 
 

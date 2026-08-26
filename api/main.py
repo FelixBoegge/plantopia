@@ -13,11 +13,15 @@ anything it was testing. Run it as a factory:
 """
 
 import logging
+import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from api import errors
 from core.config import Settings, get_settings
+from runs import sweeper
+from runs.bus import bus
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="1",
         docs_url=f"{settings.api_prefix}/docs",
         openapi_url=f"{settings.api_prefix}/openapi.json",
+        lifespan=_sweeping(settings),
     )
 
     errors.register(app)
@@ -54,6 +59,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(router, prefix=settings.api_prefix)
 
     return app
+
+
+def _sweeping(settings: Settings):
+    """A lifespan that runs the abandoned-run sweeper alongside the application.
+
+    In this process because there is one process; the executor and the event bus are here
+    for the same reason. Whether that survives a second process is the deployment change's
+    question — `M28` already constrains it the same way.
+
+    A daemon thread, stopped on shutdown so a reload does not leave one behind per restart.
+    """
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        if not settings.run_sweeper_enabled:
+            yield
+            return
+
+        stop = threading.Event()
+        thread = threading.Thread(
+            target=sweeper.run_periodically,
+            args=(settings, bus, stop),
+            name="run-sweeper",
+            daemon=True,
+        )
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+
+    return _lifespan
 
 
 def _configure_logging(settings: Settings) -> None:

@@ -35,20 +35,20 @@
 
 ## 5. The interrupt
 
-- [ ] 5.1 Flip a run to `awaiting_answers` on the interrupt and publish an event carrying the questions; verify a test that the status and the event both appear and that the run does not advance further.
-- [ ] 5.2 Release the pool slot at the interrupt rather than blocking a worker; verify a test that a second run can start while the first waits for answers, with a pool of one.
-- [ ] 5.3 `POST /runs/{id}/answers` resuming the run from its checkpoint; verify tests that the run returns to `running`, completes, and produces a diagnosis reflecting the answers rather than starting again.
-- [ ] 5.4 Keep the stream open across the pause; verify a test that one connection receives events from before and after the resume, with sequence numbers continuing rather than restarting.
-- [ ] 5.5 Refuse a second submission of answers with 409, and refuse answers to a run not awaiting them; verify a test per status that neither starts a second run nor disturbs the first.
-- [ ] 5.6 Refuse answers to another owner's run with 404 and leave it unaffected; verify a test asserting both.
+- [x] 5.1 Flip a run to `awaiting_answers` on the interrupt and publish an event carrying the questions; verify a test that the status and the event both appear and that the run does not advance further.
+- [x] 5.2 Release the pool slot at the interrupt rather than blocking a worker; verify a test that a second run can start while the first waits for answers, with a pool of one.
+- [x] 5.3 `POST /runs/{id}/answers` resuming the run from its checkpoint; verify tests that the run returns to `running`, completes, and produces a diagnosis reflecting the answers rather than starting again.
+- [x] 5.4 Keep the stream open across the pause; verify a test that one connection receives events from before and after the resume, with sequence numbers continuing rather than restarting.
+- [x] 5.5 Refuse a second submission of answers with 409, and refuse answers to a run not awaiting them; verify a test per status that neither starts a second run nor disturbs the first.
+- [x] 5.6 Refuse answers to another owner's run with 404 and leave it unaffected; verify a test asserting both.
 
 ## 6. Abandoning a run
 
-- [ ] 6.1 `DELETE /runs/{id}` setting a cancellation flag the worker checks between nodes; verify tests that a cancelled run stops advancing and that the step already in flight is allowed to finish.
-- [ ] 6.2 Refuse cancelling a run that has already reached a terminal status, with 409 and no status change; verify a test per terminal status.
-- [ ] 6.3 Add the sweeper failing runs past the working ceiling and, separately, past the answering ceiling; verify tests that each ceiling applies to its own status, that the answering one is measured from when the questions were asked, and that a run within its ceiling is left alone.
-- [ ] 6.4 Make the sweeper idempotent; verify a test that a run it has already failed is not failed twice and that usage already recorded is not recorded again.
-- [ ] 6.5 Distinguish a swept run's recorded reason from a run that failed while working; verify a test comparing the two.
+- [x] 6.1 `DELETE /runs/{id}` setting a cancellation flag the worker checks between nodes; verify tests that a cancelled run stops advancing and that the step already in flight is allowed to finish.
+- [x] 6.2 Refuse cancelling a run that has already reached a terminal status, with 409 and no status change; verify a test per terminal status.
+- [x] 6.3 Add the sweeper failing runs past the working ceiling and, separately, past the answering ceiling; verify tests that each ceiling applies to its own status, that the answering one is measured from when the questions were asked, and that a run within its ceiling is left alone.
+- [x] 6.4 Make the sweeper idempotent; verify a test that a run it has already failed is not failed twice and that usage already recorded is not recorded again.
+- [x] 6.5 Distinguish a swept run's recorded reason from a run that failed while working; verify a test comparing the two.
 
 ## 7. Chat over the same shape
 
@@ -60,7 +60,7 @@
 
 ## 8. Spend, and closing the gaps
 
-- [ ] 8.1 Record tokens and cost when a run reaches any terminal status, including cancelled and swept; verify tests for completed, failed, cancelled and swept, and that a provider reporting no cost leaves unknown rather than zero.
+- [x] 8.1 Record tokens and cost when a run reaches any terminal status, including cancelled and swept; verify tests for completed, failed, cancelled and swept, and that a provider reporting no cost leaves unknown rather than zero.
 - [x] 8.2 Delete `tests/unit/services/test_limits_are_not_wired_yet.py` and the note in `services/limits.py`; verify the suite is green with both gone and that the guard is genuinely called by a run.
 - [ ] 8.3 Confirm the evaluation harness still calls the graph directly rather than going through runs; verify a test asserting it, so the accuracy baseline cannot drift through this change.
 - [ ] 8.4 Strike `M29` as resolved with today's date, and record the in-process bus alongside `M28` as one constraint on the deployment rather than two; verify identifiers and dates against the file's conventions.
