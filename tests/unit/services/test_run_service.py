@@ -135,3 +135,29 @@ def test_a_cancelled_run_cannot_be_answered(service, started):
 
     with pytest.raises(RunConflictError):
         service.answer(started.id, ANSWERS)
+
+
+def test_a_typed_species_reaches_the_graphs_state(service, sample_images, db, monkeypatch):
+    """The seam between an HTTP form and a graph node.
+
+    The router strips a blank one and `identify_plant` decides what leads; this is only the
+    carriage between them, which is exactly the kind of thing that is silently dropped in a
+    rename and noticed three screens later.
+    """
+    seen = []
+    monkeypatch.setattr(
+        "services.run_service.execute",
+        lambda **kwargs: seen.append(kwargs.get("initial_state")),
+    )
+
+    db.commit()
+    service.start(
+        StartRequest(
+            images=sample_images,
+            plant_name="Kitchen basil",
+            location_kind="indoor",
+            stated_species="Ocimum basilicum",
+        )
+    )
+
+    assert seen[0].stated_species == "Ocimum basilicum"

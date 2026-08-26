@@ -349,3 +349,54 @@ def test_starting_a_run_without_a_session_is_refused(db, api_settings):
         )
 
     assert response.status_code == 401
+
+
+class TestTheSpeciesSomebodyTyped:
+    """Optional, and optional in both directions: supplying it must work, and omitting it
+    must leave the request exactly as it was before the field existed."""
+
+    def test_a_run_starts_with_a_species(self, client, executor):
+        response = _start(client, stated_species="Ocimum basilicum")
+
+        assert response.status_code == 202
+
+    def test_a_run_starts_without_one(self, client, executor):
+        response = _start(client)
+
+        assert response.status_code == 202
+
+    def test_a_blank_species_is_refused_entry(self, client, executor, monkeypatch):
+        """A form sends an empty string for a field somebody left alone. Carried through, it
+        would lead the candidates with nothing at all.
+
+        Asserted at the router because that is where the stripping happens; that the value
+        then reaches the graph is `tests/unit/services/test_run_service.py`.
+        """
+        seen = []
+        from services.run_service import RunService
+
+        original = RunService.start
+        monkeypatch.setattr(
+            RunService,
+            "start",
+            lambda self, request: seen.append(request) or original(self, request),
+        )
+
+        _start(client, stated_species="   ")
+
+        assert seen[0].stated_species is None
+
+    def test_a_species_reaches_the_service(self, client, executor, monkeypatch):
+        seen = []
+        from services.run_service import RunService
+
+        original = RunService.start
+        monkeypatch.setattr(
+            RunService,
+            "start",
+            lambda self, request: seen.append(request) or original(self, request),
+        )
+
+        _start(client, stated_species="Ocimum basilicum")
+
+        assert seen[0].stated_species == "Ocimum basilicum"

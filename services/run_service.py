@@ -51,6 +51,7 @@ class StartRequest:
     images: list[ImageRef]
     plant_name: str
     location_kind: str
+    stated_species: str | None = None
     location_text: str | None = None
     user_notes: str | None = None
     plant_id: UUID | None = None
@@ -126,6 +127,7 @@ class RunService:
         state = DiagnosisState(
             images=request.images,
             plant_name=request.plant_name,
+            stated_species=request.stated_species,
             location_kind=request.location_kind,
             location_text=request.location_text,
             user_notes=request.user_notes,

@@ -309,3 +309,111 @@ class TestWhenTheSecondOpinionCannotBeHad:
         result = make_identify_plant(deps)(_state(sample_images))
 
         assert result["species"].common_name == "Basil"
+
+
+class TestWhenSomebodyTypedTheSpecies:
+    """The owner leads, and is still shown what the machines thought.
+
+    A real trade, and worth naming where it is tested: the identification prompt tells the
+    model to treat a supplied name as a hint precisely because people mislabel their plants.
+    This makes that same name the default. What keeps it honest is the rest of this class —
+    both methods still run, both answers survive, and the disagreement is one choice away
+    from being settled the other way.
+    """
+
+    def test_what_was_typed_leads(self, make_deps, sample_images):
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [_candidate("Thai basil", "Ocimum africanum", 0.71)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images, stated_species="Holy basil"))
+
+        assert result["species"].common_name == "Holy basil"
+        assert result["candidates"][0].method is SpeciesMethod.TYPED
+
+    def test_both_methods_still_run(self, make_deps, sample_images):
+        """The point of leading rather than deciding. A typed species that silenced the
+        identifications would make a mislabel unfalsifiable."""
+        model = ScriptedStructuredModel([_seen()])
+        asked = []
+        deps = make_deps(
+            vision_model=model,
+            identify_species=lambda photographs: (
+                asked.append(photographs) or [_candidate("Thai basil", "Ocimum africanum", 0.71)]
+            ),
+        )
+
+        make_identify_plant(deps)(_state(sample_images, stated_species="Holy basil"))
+
+        assert model.call_count == 1
+        assert len(asked) == 1
+
+    def test_what_the_methods_concluded_survives_alongside_it(self, make_deps, sample_images):
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [_candidate("Thai basil", "Ocimum africanum", 0.71)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images, stated_species="Holy basil"))
+
+        assert [c.method for c in result["candidates"]] == [
+            SpeciesMethod.TYPED,
+            SpeciesMethod.VISION,
+            SpeciesMethod.PLANTNET,
+        ]
+
+    def test_a_method_that_agrees_with_it_is_not_offered_twice(self, make_deps, sample_images):
+        """Choosing between a thing and itself is not a choice."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen("Basil", None)]),
+            identify_species=lambda _: [],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images, stated_species="basil"))
+
+        assert len(result["candidates"]) == 1
+        assert result["candidates"][0].method is SpeciesMethod.TYPED
+
+    def test_a_blank_species_is_not_a_species(self, make_deps, sample_images):
+        """A form sends an empty string for a field somebody left alone. The router strips
+        it to None, and this is the belt to that braces."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images, stated_species=""))
+
+        assert result["species"].common_name == "Basil"
+        assert result["candidates"][0].method is SpeciesMethod.VISION
+
+
+class TestWhatLeadsWithNothingTyped:
+    def test_agreement_leads_over_a_lone_method(self, make_deps, sample_images):
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [
+                _candidate("Mint", "Mentha spicata", 0.99),
+                _candidate("Sweet basil", "Ocimum basilicum", 0.30),
+            ],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert result["candidates"][0].method is SpeciesMethod.AGREED
+        assert result["species"].common_name == "Sweet basil"
+
+    def test_the_vision_model_leads_when_nothing_agrees(self, make_deps, sample_images):
+        """And specifically not the higher number: 0.99 from one method and 0.85 from
+        another are not on the same scale, so choosing between them by size is arithmetic
+        dressed up as a decision."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen(confidence=0.85)]),
+            identify_species=lambda _: [_candidate("Mint", "Mentha spicata", 0.99)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert result["species"].common_name == "Basil"
+        assert result["candidates"][0].method is SpeciesMethod.VISION

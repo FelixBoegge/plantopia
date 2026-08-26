@@ -30,6 +30,7 @@ def start_run(
     photographs: Annotated[list[UploadFile], File()],
     location_text: Annotated[str | None, Form()] = None,
     user_notes: Annotated[str | None, Form()] = None,
+    stated_species: Annotated[str | None, Form()] = None,
     plant_id: Annotated[UUID | None, Form()] = None,
 ) -> RunOut:
     """Begin a diagnosis.
@@ -56,6 +57,10 @@ def start_run(
             location_kind=location_kind,
             location_text=location_text,
             user_notes=user_notes,
+            # Blank is absent. A form sends an empty string for a field somebody left
+            # alone, and an empty string carried as a species would lead the candidates
+            # with nothing.
+            stated_species=(stated_species or "").strip() or None,
             plant_id=plant_id,
         )
     )

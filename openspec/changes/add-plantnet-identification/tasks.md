@@ -31,16 +31,16 @@ second, because `U2` is what happens when an unverified shape is written into a 
 
 ## 4. The species somebody typed
 
-- [ ] 4.1 Accept an optional species when a run is started, through the API and into the initial state; verify an endpoint test asserts a run starts with and without it.
-- [ ] 4.2 Carry a typed species as a candidate rather than as the species; verify a test asserts the identifications still run when one was typed.
-- [ ] 4.3 Leave behaviour unchanged when the field is absent; verify an existing wizard test passes without modification.
+- [x] 4.1 Accept an optional species when a run is started, through the API and into the initial state; verify an endpoint test asserts a run starts with and without it.
+- [x] 4.2 Make a typed species the leading candidate, with both methods still run and still shown; verify tests assert it leads, that the identifications still ran, and that an identified candidate can be chosen over it.
+- [x] 4.3 Leave behaviour unchanged when the field is absent; verify an existing wizard test passes without modification.
 
 ## 5. The choice, through the interrupt and back
 
 - [ ] 5.1 Add the identification block to the interrupt payload alongside the questions; verify a test asserts the payload carries both and that `Question` is unchanged.
 - [ ] 5.2 Omit the block when there is nothing to choose between; verify a test asserts a single candidate produces no block.
 - [ ] 5.3 Accept a chosen species in the resume payload and apply it in `gather_context`; verify a test asserts the resumed run proceeds on the chosen species.
-- [ ] 5.4 Proceed on the highest-confidence candidate when no choice is made; verify a test asserts the diagnosis completes and the choice is recorded as unconfirmed.
+- [ ] 5.4 Proceed on the leading candidate when no choice is made — typed, then agreed, then vision; verify a test covers each precedence and asserts the choice is recorded as unconfirmed.
 - [ ] 5.5 Add a cross-language agreement test for the identification payload, on the model of `test_question_shape_agrees.py`; verify it fails when a field is renamed on either side.
 
 ## 6. What the diagnosis records
@@ -53,7 +53,7 @@ second, because `U2` is what happens when an unverified shape is written into a 
 ## 7. The wizard
 
 - [ ] 7.1 Add the optional species field to the upload step; verify a component test asserts a run starts with the field empty.
-- [ ] 7.2 Render the candidates at the pause with their method and confidence, confidence in words; verify a component test asserts no bare probability is rendered.
+- [ ] 7.2 Render the candidates at the pause with their method and confidence, confidence in words, the leading one preselected and a disagreement with a typed species made visible; verify a component test asserts no bare probability is rendered and that the disagreement is stated.
 - [ ] 7.3 Make choosing optional and submitting without a choice possible; verify a component test asserts the submit control is enabled with nothing chosen.
 - [ ] 7.4 Make the chooser keyboard-operable, with the selection conveyed by more than colour; verify the accessibility suite covers it and the axe pass is clean.
 - [ ] 7.5 Put the attribution inside the component that renders a service-derived candidate; verify a test asserts it appears whenever such a candidate is rendered and not when none is.

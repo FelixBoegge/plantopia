@@ -52,19 +52,39 @@ photographs.
 - **WHEN** the organ of a photograph is unclear
 - **THEN** it is sent without a claimed organ rather than with a guessed one
 
-### Requirement: A person may state the species themselves
+### Requirement: A person may state the species themselves, and it leads
 
-The system SHALL accept an optional species from the person starting a diagnosis, and SHALL
-carry it as a third candidate rather than as a fact.
+The system SHALL accept an optional species from the person starting a diagnosis, SHALL treat
+it as the leading candidate, and SHALL still present what each identification method
+concluded so that it can be overridden.
 
-Somebody who knows what their plant is should not have to watch two machines work it out. But
-a typed name is a claim like the others: people mislabel plants, and shop labels are wrong
-often enough that treating it as settled would import the error silently.
+Somebody who knows what their plant is should not have to watch two machines work it out, and
+should not have to correct them afterwards. The person is holding the plant; they may have
+the label, the receipt, or ten years of owning it.
+
+It leads, but it does not silence. A typed species is still a claim: people mislabel plants,
+shop labels are wrong, and the identification prompt already tells the model to treat a
+supplied name as a hint for exactly that reason. So the methods still run, their answers are
+still shown, and a disagreement with what was typed is made visible rather than resolved
+quietly — which is what makes correcting a wrong label a single click instead of a second
+diagnosis.
 
 #### Scenario: A species is typed
 
 - **WHEN** a person supplies a species when starting a diagnosis
-- **THEN** it is offered as a candidate alongside the two identified ones
+- **THEN** it is the leading candidate
+- **AND** what each method concluded is presented alongside it
+
+#### Scenario: A typed species that the methods contradict
+
+- **WHEN** a supplied species differs from what a method identified
+- **THEN** the diagnosis proceeds on the supplied one unless the person chooses otherwise
+- **AND** the disagreement is visible where the choice is offered
+
+#### Scenario: Overriding what was typed
+
+- **WHEN** a person chooses an identified candidate instead of the one they typed
+- **THEN** the diagnosis proceeds on the chosen one
 
 #### Scenario: No species is typed
 
@@ -89,8 +109,15 @@ double the cost of the one thing a diagnosis asks of somebody.
 #### Scenario: The owner does not choose
 
 - **WHEN** the owner answers the other questions without choosing a species
-- **THEN** the diagnosis proceeds on the highest-confidence candidate
+- **THEN** the diagnosis proceeds on the leading candidate
 - **AND** it is recorded as unconfirmed rather than as chosen
+
+#### Scenario: Which candidate leads
+
+- **WHEN** candidates are ranked
+- **THEN** a species the person supplied leads
+- **AND** otherwise a species both methods agree on leads
+- **AND** otherwise the general-purpose identification leads
 
 #### Scenario: There is nothing to choose between
 

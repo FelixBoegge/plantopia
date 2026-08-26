@@ -33,6 +33,12 @@ class DiagnosisState(BaseModel):
     # Inputs
     images: list[ImageRef] = Field(min_length=1)
     plant_name: str
+
+    # What the owner says the plant is, if they said. A name is not a species: "Kitchen
+    # basil" is what somebody calls their plant and "Ocimum basilicum" is what it is, and
+    # conflating them is how a nickname ends up being searched for in a disorder corpus.
+    stated_species: str | None = None
+
     location_kind: Literal["indoor", "outdoor"]
     location_text: str | None = None
     user_notes: str | None = None

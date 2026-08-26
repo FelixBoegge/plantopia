@@ -78,14 +78,18 @@ def make_identify_plant(deps: Deps) -> NodeFn:
             method=SpeciesMethod.VISION,
         )
         candidates, errors = _with_second_opinion(deps, state, seen, vision)
+        candidates = _ranked(candidates, state.stated_species)
 
-        # The species stays the vision model's until somebody says otherwise. Not the
-        # highest-confidence candidate: the two methods report confidence on scales that
-        # were never calibrated against each other, so preferring one number over the other
-        # would be arithmetic on incomparable quantities. The owner decides at the pause,
-        # and `gather_context` writes what they chose.
+        # The leading candidate, which `_ranked` has just put first. The owner can change
+        # it at the pause, and `gather_context` writes what they chose.
+        leader = candidates[0]
+
         return {
-            "species": seen.species(),
+            "species": SpeciesGuess(
+                common_name=leader.common_name,
+                scientific_name=leader.scientific_name,
+                confidence=leader.confidence,
+            ),
             "candidates": candidates,
             **({"errors": [*state.errors, *errors]} if errors else {}),
         }
@@ -126,6 +130,47 @@ def _with_second_opinion(
         return [vision], []
 
     return _merged(vision, found), []
+
+
+# How sure a typed species is. Not a probability and not comparable with the two methods'
+# scores — the person is not estimating a likelihood, they are telling you what their plant
+# is. Written as a named constant rather than an inline number so it cannot be mistaken for
+# a measurement, and set high enough that a chooser sorting by confidence still leads with
+# it.
+STATED_CONFIDENCE = 1.0
+
+
+def _ranked(candidates: list[SpeciesCandidate], stated: str | None) -> list[SpeciesCandidate]:
+    """Put the leading candidate first, and add the typed one if there is one.
+
+    Precedence: **what the owner typed, then what both methods agree on, then the vision
+    model's.** Never the highest confidence across methods, which would be arithmetic on
+    scales that were never calibrated against each other.
+
+    The owner leads because they are holding the plant and may have the label, the receipt,
+    or ten years of owning it. It is a real trade: the identification prompt tells the model
+    to treat a supplied name as a hint precisely because people mislabel their plants, and
+    this makes that same name the default. What keeps it honest is that both methods still
+    ran and both answers are still here — the disagreement is one click from being settled
+    the other way, rather than being resolved quietly in either direction.
+    """
+    if stated:
+        typed = SpeciesCandidate(
+            common_name=stated,
+            scientific_name=None,
+            confidence=STATED_CONFIDENCE,
+            method=SpeciesMethod.TYPED,
+        )
+        # If a method independently named the same plant, that is agreement worth saying so,
+        # not a duplicate row that makes somebody choose between a thing and itself.
+        rest = [other for other in candidates if not _same_plant(typed, other)]
+        return [typed, *rest]
+
+    agreed = next((c for c in candidates if c.method is SpeciesMethod.AGREED), None)
+    if agreed is not None:
+        return [agreed, *[c for c in candidates if c is not agreed]]
+
+    return candidates
 
 
 def _bytes_of(deps: Deps, ref: str) -> bytes:

@@ -75,6 +75,22 @@ keeps `test_question_shape_agrees.py` meaningful; the new block gets an agreemen
 own on the same reasoning, because it travels the same way and is invisible to OpenAPI for the
 same reason.
 
+### What leads, and why it is not the highest confidence
+
+Precedence: **a species the person typed, then one both methods agree on, then the vision
+model's.** Never the highest confidence across methods — the two report on scales that were
+never calibrated against each other, so comparing 0.71 from one with 0.62 from the other is
+arithmetic on incomparable quantities dressed up as a decision.
+
+The typed species leads on the owner's instruction, and the trade is worth naming: the
+identification prompt tells the model to treat a supplied name as a hint because people
+misidentify their own plants routinely, and this makes that same name the default. What keeps
+it honest is that both methods still run and both answers are still shown — a person who
+typed "monstera" and is shown a specialist classifier saying *Rhaphidophora tetrasperma* at
+0.63 has been given what they need to correct themselves, in one click, before the diagnosis
+proceeds on it. Silently overruling them would be worse in the other direction, and doing
+neither — refusing to lead with anything — just moves the guess into the interface.
+
 ### Where the choice is applied
 
 `gather_context` already writes `answers` from the resume payload. It will also write
