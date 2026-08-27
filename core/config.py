@@ -205,6 +205,13 @@ class Settings(BaseSettings):
     species_confidence_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     diagnosis_confidence_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
 
+    # How many questions the *agent* may add. The four fixed fields — watering, drainage,
+    # where the plant is, when the photograph was taken — sit outside this: without a place
+    # and a date there is no weather at all, which is a different thing from a shorter form.
+    #
+    # Four rather than two, because what the agent asks about is now the plant's recent
+    # history, and one question rarely covers it: repotted, fed, moved and treated are four
+    # separate facts, any of which explains symptoms that otherwise read as disease.
     max_clarifying_questions: int = Field(default=4, ge=1, le=8)
     max_upload_bytes: int = Field(default=8 * 1024 * 1024, gt=0)
     max_images_per_observation: int = Field(default=4, ge=1, le=10)

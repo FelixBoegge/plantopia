@@ -402,3 +402,65 @@ class TestCorrectingTheCaptureDate:
         result = _resumed({"answers": {"captured_at": "the day before yesterday"}, "species": None})
 
         assert "captured_at" not in result
+
+
+class TestWhatTheAgentIsAskedToAskAbout:
+    """The subject of the generated questions, pinned.
+
+    A prompt is the easiest thing in a codebase to rewrite by accident: it is prose, it
+    reads like documentation, and nothing breaks when its meaning changes. These assert the
+    two properties this project depends on rather than the wording.
+    """
+
+    @staticmethod
+    def _prompt() -> str:
+        """The prompt as one line.
+
+        A phrase that happens to straddle a line break is the same instruction to a model
+        and a different string to `in`. Normalising here means these tests pin the meaning
+        rather than the wrapping — which is what a reformat is allowed to change.
+        """
+        from agent.prompts.context import SELECT_QUESTIONS
+
+        return " ".join(SELECT_QUESTIONS.lower().split())
+
+    def test_it_asks_about_what_has_already_been_done(self):
+        """A plan that opens with "try feeding it" is worse than useless for somebody who
+        fed it last week — it costs them a fortnight of watching a plant get worse while
+        they wait for a treatment they already applied."""
+        prompt = self._prompt()
+        assert "repot" in prompt
+        assert "fed" in prompt or "feeding" in prompt
+        assert "treatment" in prompt or "treated" in prompt
+
+    def test_it_is_told_not_to_ask_what_is_already_asked(self):
+        """Four fields are fixed. A model asking for them again would produce two boxes for
+        one fact, and the person would reasonably wonder which one counted."""
+        prompt = self._prompt()
+        assert "watering frequency" in prompt
+        assert "drainage" in prompt
+        assert "where the plant is" in prompt
+        assert "when the photograph was taken" in prompt
+
+    def test_the_fixed_keys_are_the_ones_the_prompt_excludes(self, make_deps, sample_images):
+        """The prompt says what not to ask; this says what is asked. Two lists that have to
+        agree, in different languages, and nothing else notices when they stop."""
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+
+        keys = [q.key for q in select_questions(deps, _state(sample_images))]
+
+        assert keys[:4] == ["watering", "drainage", "location", "captured_at"]
+
+    def test_it_asks_for_three_or_four(self, make_deps, sample_images):
+        """Fewer than three rarely covers a plant's recent history — repotted, fed, moved
+        and treated are separate facts. More than four is an interrogation."""
+        assert "three and four" in self._prompt()
+
+    def test_the_cap_lets_four_through(self, make_deps, sample_images):
+        """The prompt asking for four and the cap allowing two would silently discard the
+        last two, and the discarding happens after the model has been paid for them."""
+        deps = make_deps(chat_model=_model_questions("a", "b", "c", "d"))
+
+        keys = [q.key for q in select_questions(deps, _state(sample_images))]
+
+        assert keys[4:] == ["a", "b", "c", "d"]
