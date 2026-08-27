@@ -1,0 +1,29 @@
+{
+  "place_id": 281930430,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "relation",
+  "osm_id": 72894,
+  "lat": "51.0833330",
+  "lon": "-3.0000000",
+  "category": "boundary",
+  "type": "administrative",
+  "place_rank": 12,
+  "importance": 0.45893150728289667,
+  "addresstype": "county",
+  "name": "Somerset",
+  "display_name": "Somerset, England, United Kingdom",
+  "address": {
+    "county": "Somerset",
+    "ISO3166-2-lvl6": "GB-SOM",
+    "state": "England",
+    "ISO3166-2-lvl4": "GB-ENG",
+    "country": "United Kingdom",
+    "country_code": "gb"
+  },
+  "boundingbox": [
+    "50.8208387",
+    "51.3329994",
+    "-3.8398029",
+    "-2.2444018"
+  ]
+}

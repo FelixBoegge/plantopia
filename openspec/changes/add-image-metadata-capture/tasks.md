@@ -21,12 +21,12 @@ change established as the way to avoid `U2`.
 
 ## 3. The place name, verified against the real service
 
-- [ ] 3.1 Write `tools/geocoding.py` on the pattern of `tools/weather.py`: no credential, a configurable base URL and user agent, and nothing on failure; verify a test asserts an empty result for a timeout, a 4xx, a 5xx and an unparseable body.
-- [ ] 3.2 Make one manual call to the live service with a real coarse position, and save the raw response under `tests/fixtures/`; verify the file exists and names a place.
-- [ ] 3.3 Reconcile the request against the service's terms — user agent, rate, and the response fields the parser reads; verify by the call in 3.2 succeeding, and record any correction made.
-- [ ] 3.4 Build the parsing tests from the recorded response rather than a written one; verify they fail if the fixture is replaced with an empty result.
-- [ ] 3.5 Cache results on the coarsened position; verify a test asserts two lookups of one position make one request.
-- [ ] 3.6 Add the settings for the base URL and user agent, with defaults that work on a fresh clone; verify the settings test covers both and `.env.example` names them.
+- [x] 3.1 Write `tools/geocoding.py` on the pattern of `tools/weather.py`: no credential, a configurable base URL and user agent, and nothing on failure; verify a test asserts an empty result for a timeout, a 4xx, a 5xx and an unparseable body.
+- [x] 3.2 Make one manual call to the live service with a real coarse position, and save the raw response under `tests/fixtures/`; verify the file exists and names a place.
+- [x] 3.3 Reconcile the request against the service's terms — user agent, rate, and the response fields the parser reads; verify by the call in 3.2 succeeding, and record any correction made.
+- [x] 3.4 Build the parsing tests from the recorded response rather than a written one; verify they fail if the fixture is replaced with an empty result.
+- [x] 3.5 Cache results on the coarsened position; verify a test asserts two lookups of one position make one request.
+- [x] 3.6 Add the settings for the base URL and user agent, with defaults that work on a fresh clone; verify the settings test covers both and `.env.example` names them.
 
 ## 4. What an observation records
 

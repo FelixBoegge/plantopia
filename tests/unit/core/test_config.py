@@ -43,6 +43,10 @@ def test_settings_applies_defaults(monkeypatch):
     assert 0.0 < settings.retrieval_score_threshold < 1.0
     assert settings.tavily_api_key is None
     assert settings.plantnet_api_key is None
+    # Keyless, so these have working defaults rather than being absent — the path is live on
+    # a fresh clone rather than dark until somebody configures it.
+    assert settings.geocoding_url.startswith("https://")
+    assert "Plantopia" in settings.geocoding_user_agent
 
 
 def test_the_database_url_names_its_driver(monkeypatch):

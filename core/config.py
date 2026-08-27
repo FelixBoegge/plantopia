@@ -64,6 +64,18 @@ class Settings(BaseSettings):
     # key takes.
     plantnet_api_key: str | None = None
 
+    # Reverse geocoding, for turning a position read from a photograph into a place name a
+    # person recognises. Keyless — OpenStreetMap's own service — so this works on a fresh
+    # clone rather than being dark until somebody registers.
+    #
+    # Both are configurable because the terms make them matter: the user agent must identify
+    # the application and should carry a real contact address, and a deployment doing more
+    # than the shared service's one-request-a-second should point at its own instance.
+    geocoding_url: str = "https://nominatim.openstreetmap.org/reverse"
+    geocoding_user_agent: str = (
+        "Plantopia/1.0 (plant health assistant; https://github.com/plantopia)"
+    )
+
     # LangSmith tracing. Optional in exactly the way tavily_api_key is: absent, the
     # application runs unchanged and tracing is simply off (spec §2.4). Because
     # LangChain's tracer is itself a callback, a key is all the wiring there is —
