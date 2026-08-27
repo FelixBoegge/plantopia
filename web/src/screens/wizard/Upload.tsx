@@ -12,6 +12,11 @@ import type { StartRun } from "@/api/hooks/runs";
  *
  * **Nothing starts until somebody says so.** A run costs real money and takes a minute and
  * a half, and beginning one as a side effect of choosing a file is a bill nobody agreed to.
+ *
+ * **Nobody is asked where the plant is here.** The photograph usually knows, and asking
+ * somebody to type what the file already says is asking them to do the machine's work.
+ * Where it does not know, the run asks at the pause it was going to make anyway — one
+ * interruption rather than two, and by then it is one field among several.
  */
 export function Upload({
   onStart,
@@ -33,7 +38,6 @@ export function Upload({
     "indoor",
   );
   const [statedSpecies, setStatedSpecies] = useState("");
-  const [locationText, setLocationText] = useState("");
   const [notes, setNotes] = useState("");
 
   return (
@@ -50,7 +54,6 @@ export function Upload({
           plantName,
           statedSpecies,
           locationKind,
-          locationText,
           notes,
         });
       }}
@@ -127,15 +130,6 @@ export function Upload({
           ))}
         </div>
       </fieldset>
-
-      {locationKind === "outdoor" ? (
-        <Field
-          label="Roughly where?"
-          value={locationText}
-          onChange={(event) => setLocationText(event.target.value)}
-          hint="A town is enough. It is used to look up the recent weather."
-        />
-      ) : null}
 
       <Field
         label="Anything else worth knowing?"

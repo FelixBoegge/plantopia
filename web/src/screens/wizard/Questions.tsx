@@ -31,7 +31,21 @@ export function Questions({
   busy: boolean;
   failure: unknown;
 }) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  // Seeded from the prefills. The run already believes these — a place read from the
+  // photograph, the date it was taken — and they are the answer unless somebody changes
+  // them, so they start in the fields rather than beside them.
+  const [answers, setAnswers] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      questions
+        .filter((question) => question.prefill)
+        .map((question) => [question.key, question.prefill as string]),
+    ),
+  );
+
+  // Which required questions were left empty when somebody tried to submit. Empty until
+  // they do: marking a field wrong before anybody has attempted anything is telling them
+  // off for not having finished yet.
+  const [missing, setMissing] = useState<string[]>([]);
   // Starts on the leading candidate, which the run has already put first. Preselected
   // rather than empty because there is no such thing as no species here — leaving it alone
   // means proceeding on the leader, and an empty radiogroup would suggest otherwise.
@@ -67,13 +81,39 @@ export function Questions({
 
       <form
         className="grid gap-4"
+        // The application says what is wrong, in its own words, somewhere a screen reader
+        // announces. A native validation bubble is none of those — and it silently swallows
+        // the submit event, which is how this was found: the message below never appeared
+        // because the handler never ran. `required` stays on the inputs, because assistive
+        // technology reads it; only the browser's own enforcement is turned off.
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
+
+          // The form's half of this. The server checks too, because a form stops somebody
+          // submitting by accident and stops nothing else — see `_require_answers`.
+          const empty = questions
+            .filter((question) => question.required)
+            .filter((question) => !(answers[question.key] ?? "").trim())
+            .map((question) => question.key);
+          setMissing(empty);
+          if (empty.length) return;
+
           // Only what was actually answered. An empty string is somebody who left a
           // question alone, and sending it as an answer is inventing one.
+          // An empty answer is dropped, unless the field was prefilled — in which case
+          // empty means somebody deliberately cleared what the run believed, and the
+          // difference matters: absent means "never asked, keep what you had", and empty
+          // means "forget it". Sending nothing for a cleared date would silently restore
+          // the date it was cleared from.
+          const prefilled = new Set(
+            questions.filter((question) => question.prefill).map((q) => q.key),
+          );
           onAnswer(
             Object.fromEntries(
-              Object.entries(answers).filter(([, given]) => given !== ""),
+              Object.entries(answers).filter(
+                ([key, given]) => given !== "" || prefilled.has(key),
+              ),
             ),
             // Only when there was something to choose between *and* it differs from what
             // the run would have done anyway. Sending back the leader unchanged would
@@ -88,6 +128,7 @@ export function Questions({
             key={question.key}
             question={question}
             value={answers[question.key] ?? ""}
+            invalid={missing.includes(question.key)}
             onChange={(given) =>
               setAnswers((so_far) => ({ ...so_far, [question.key]: given }))
             }

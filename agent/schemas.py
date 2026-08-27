@@ -215,9 +215,19 @@ class Question(BaseModel):
 
     key: str = Field(min_length=1)
     text: str = Field(min_length=5)
-    kind: Literal["text", "choice", "boolean"]
+    kind: Literal["text", "choice", "boolean", "date"]
     options: list[str] = Field(default_factory=list)
     prefill: str | None = None
+
+    # Where the prefilled answer came from, in a phrase to show under the field. Only the
+    # server knows — a location can be prefilled from a photograph or from what the plant
+    # already carried, and a client guessing would tell somebody their photograph knew
+    # something it did not.
+    #
+    # It also carries any credit the source's terms require, because the credit belongs
+    # with the datum rather than with the page.
+    prefill_note: str | None = None
+
     required: bool = False
 
     @model_validator(mode="after")

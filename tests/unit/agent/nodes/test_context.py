@@ -280,3 +280,78 @@ class TestResumingWithAChoice:
 
         assert _resumed(None) == {"answers": {}}
         assert _resumed("answers") == {"answers": {}}
+
+
+class TestWhenThePhotographWasTaken:
+    """Offered for correction, because a forwarded photograph carries somebody else's date.
+
+    That date decides which three weeks of weather the diagnosis is read against, so a wrong
+    one is not cosmetic — and it cannot be told from a right one automatically.
+    """
+
+    def test_it_is_asked_when_a_photograph_declared_one(self, make_deps, sample_images):
+        from datetime import UTC, datetime
+
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+        state = _state(sample_images, captured_at=datetime(2026, 8, 10, 10, 50, tzinfo=UTC))
+
+        questions = {q.key: q for q in select_questions(deps, state)}
+
+        assert questions["captured_at"].prefill == "2026-08-10"
+        assert questions["captured_at"].kind == "date"
+
+    def test_it_is_not_asked_when_no_photograph_declared_one(self, make_deps, sample_images):
+        """The upload date is the honest answer then, and asking would add a control that
+        earns nothing — nobody knows a photograph's date better than the photograph, except
+        when the photograph is somebody else's."""
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+
+        questions = {q.key for q in select_questions(deps, _state(sample_images))}
+
+        assert "captured_at" not in questions
+
+    def test_it_is_never_required(self, make_deps, sample_images):
+        from datetime import UTC, datetime
+
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+        state = _state(sample_images, captured_at=datetime(2026, 8, 10, tzinfo=UTC))
+
+        questions = {q.key: q for q in select_questions(deps, state)}
+
+        assert questions["captured_at"].required is False
+
+
+class TestCorrectingTheCaptureDate:
+    def test_a_corrected_date_replaces_what_the_photograph_said(self):
+        from datetime import UTC, datetime
+
+        from agent.nodes.context import _resumed
+
+        result = _resumed({"answers": {"captured_at": "2026-08-05"}, "species": None})
+
+        assert result["captured_at"] == datetime(2026, 8, 5, tzinfo=UTC)
+
+    def test_clearing_it_falls_back_to_the_upload_date(self):
+        """`None` is where every photograph that declared nothing already ends up."""
+        from agent.nodes.context import _resumed
+
+        result = _resumed({"answers": {"captured_at": ""}, "species": None})
+
+        assert result["captured_at"] is None
+
+    def test_a_question_that_was_never_asked_changes_nothing(self):
+        """Absent is different from empty: the run keeps what the photograph said."""
+        from agent.nodes.context import _resumed
+
+        result = _resumed({"answers": {"watering": "twice"}, "species": None})
+
+        assert "captured_at" not in result
+
+    def test_an_unusable_date_is_ignored_rather_than_believed(self):
+        """Nothing should send this. Believed, it would ask for weather from a time that
+        does not exist; raised, it would fail a run in the half after the expensive part."""
+        from agent.nodes.context import _resumed
+
+        result = _resumed({"answers": {"captured_at": "the day before yesterday"}, "species": None})
+
+        assert "captured_at" not in result

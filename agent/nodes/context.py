@@ -6,6 +6,7 @@ asking is not a nicety, it is a precondition for being right.
 """
 
 import logging
+from datetime import UTC, datetime
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
@@ -42,6 +43,42 @@ DRAINAGE_QUESTION = Question(
 # "the location one" still wants a name rather than a string literal.
 LOCATION_KEY = "location"
 
+# Asked only when a photograph declared a date, which is why it is not in `ALWAYS_ASK`.
+# With nothing detected the upload date is the honest answer and asking would be adding a
+# control that earns nothing — nobody knows the date of a photograph better than the
+# photograph, except when the photograph is somebody else's.
+CAPTURE_KEY = "captured_at"
+
+# What a prefilled answer is told to say about itself.
+FROM_THE_PHOTOGRAPH = "Read from your photograph"
+
+# Required by the reverse-geocoding service's terms wherever its data is shown. Kept beside
+# the phrase that carries it so the two cannot drift apart.
+PLACE_NAME_CREDIT = "OpenStreetMap contributors"
+
+
+def capture_question(state: DiagnosisState) -> Question | None:
+    """When the photograph was taken, offered for correction.
+
+    A photograph forwarded from a message carries its original sender's date, and this date
+    decides which three weeks of weather the diagnosis is read against. Shown so that a
+    wrong one is visible; editable so that seeing it is worth something.
+
+    Never required. Clearing it falls back to the upload date, which is what happens for
+    every photograph that declared nothing.
+    """
+    if state.captured_at is None:
+        return None
+
+    return Question(
+        key=CAPTURE_KEY,
+        text="When was the photograph taken?",
+        kind="date",
+        prefill=state.captured_at.date().isoformat(),
+        prefill_note=FROM_THE_PHOTOGRAPH,
+        required=False,
+    )
+
 
 def location_question(state: DiagnosisState, place: str | None) -> Question:
     """Where the plant is, asked here rather than before the run started.
@@ -56,13 +93,29 @@ def location_question(state: DiagnosisState, place: str | None) -> Question:
     frequently *is* the diagnosis and its absence costs a real part of the answer; indoors
     the connection is weak enough that demanding one would be demanding it for nothing.
     """
+    prefill = place or state.location_text
     return Question(
         key=LOCATION_KEY,
         text="Which town or city is the plant in? Recent weather may be part of the picture.",
         kind="text",
-        prefill=place or state.location_text,
+        prefill=prefill,
+        prefill_note=_where_the_place_came_from(place, prefill),
         required=state.location_kind == "outdoor",
     )
+
+
+def _where_the_place_came_from(place: str | None, prefill: str | None) -> str | None:
+    """The phrase shown under a prefilled location.
+
+    The credit travels with the name rather than sitting on the page, because a name from
+    the reverse-geocoding service comes with terms and a name the plant already carried does
+    not. Tying it to the datum is what stops a later screen showing one without the other.
+    """
+    if place:
+        return f"{FROM_THE_PHOTOGRAPH}, named by {PLACE_NAME_CREDIT}"
+    if prefill:
+        return "Where this plant was last time"
+    return None
 
 
 ALWAYS_ASK: tuple[Question, ...] = (WATERING_QUESTION, DRAINAGE_QUESTION)
@@ -82,6 +135,10 @@ def select_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
     """
     questions: list[Question] = list(ALWAYS_ASK)
     questions.append(location_question(state, _place(deps, state)))
+
+    asked_date = capture_question(state)
+    if asked_date is not None:
+        questions.append(asked_date)
 
     questions.extend(_model_questions(deps, state))
 
@@ -162,6 +219,30 @@ def make_select_questions(deps: Deps) -> NodeFn:
     return select_questions_node
 
 
+def _captured_from(answers) -> dict:
+    """What the capture-date answer means for state, if it was asked at all.
+
+    Absent means the question was never asked and state keeps what the photograph said.
+    Present and empty means somebody cleared it, which falls back to the upload date — the
+    same place every photograph that declared nothing ends up.
+    """
+    if CAPTURE_KEY not in answers:
+        return {}
+
+    given = (answers.get(CAPTURE_KEY) or "").strip()
+    if not given:
+        return {"captured_at": None}
+
+    try:
+        # Midnight UTC, on the same reasoning as reading the tag in the first place: the
+        # server has no idea what timezone somebody is in, and inventing one moves a date
+        # across a boundary for half the world.
+        return {"captured_at": datetime.fromisoformat(given).replace(tzinfo=UTC)}
+    except ValueError:
+        logger.warning("unusable capture date from a client: %r", given)
+        return {}
+
+
 def _method_of(name: str, candidates) -> SpeciesMethod:
     """Which method produced the candidate with this name.
 
@@ -227,13 +308,16 @@ def _resumed(given, candidates=()) -> dict:
         # The old shape: the mapping *is* the answers.
         return {"answers": dict(given)}
 
+    captured = _captured_from(answers)
+
     chosen = given.get("species")
     if not chosen:
-        return {"answers": dict(answers)}
+        return {"answers": dict(answers), **captured}
 
     name = chosen.get("common_name") or "Unknown"
     return {
         "answers": dict(answers),
+        **captured,
         "species": SpeciesGuess(
             common_name=name,
             scientific_name=chosen.get("scientific_name"),

@@ -192,7 +192,7 @@ export interface SpeciesCandidate {
 export interface Question {
   key: string;
   text: string;
-  kind: "text" | "choice" | "boolean";
+  kind: "text" | "choice" | "boolean" | "date";
   options: string[];
   /**
    * An answer the run already believes — a place read from the photograph, say.
@@ -202,6 +202,12 @@ export interface Question {
    * while a filled field asks only the uncommon one.
    */
   prefill: string | null;
+  /**
+   * Where a prefilled answer came from, in a phrase to show under the field — and any
+   * credit the source's terms require, because the credit belongs with the datum rather
+   * than with the page.
+   */
+  prefill_note: string | null;
   /** Whether the run refuses to continue while this is empty. Almost nothing is. */
   required: boolean;
 }
