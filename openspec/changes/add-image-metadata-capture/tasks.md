@@ -30,10 +30,10 @@ change established as the way to avoid `U2`.
 
 ## 4. What an observation records
 
-- [ ] 4.1 Add nullable captured-at and coarse position columns to `Observation` with a migration; verify the migration test passes and that it mentions no checkpoint table.
-- [ ] 4.2 Date the observation by the capture date where there is one; verify a test covers a photograph with a date, one without, and that the stored row reads back correctly.
-- [ ] 4.3 Anchor the weather window on the observation's date rather than today; verify a test asserts the window moves with a capture date three days old.
-- [ ] 4.4 Report an observation made before this change as knowing neither; verify a test asserts a row written without them reads as null rather than as a guess.
+- [x] 4.1 Add nullable captured-at and coarse position columns to `Observation` with a migration; verify the migration test passes and that it mentions no checkpoint table.
+- [x] 4.2 Date the observation by the capture date where there is one; verify a test covers a photograph with a date, one without, and that the stored row reads back correctly.
+- [x] 4.3 Anchor the weather window on the observation's date rather than today; verify a test asserts the window moves with a capture date three days old.
+- [x] 4.4 Report an observation made before this change as knowing neither; verify a test asserts a row written without them reads as null rather than as a guess.
 
 ## 5. Through the run
 

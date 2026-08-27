@@ -161,7 +161,7 @@ class TestOrdering:
     ):
         calls: list[tuple] = []
 
-        def _weather(location, days):
+        def _weather(location, days, as_of=None):
             calls.append((location, days))
             return None
 
@@ -179,7 +179,7 @@ class TestOrdering:
     ):
         calls: list[tuple] = []
 
-        def _weather(location, days):
+        def _weather(location, days, as_of=None):
             calls.append((location, days))
             return None
 

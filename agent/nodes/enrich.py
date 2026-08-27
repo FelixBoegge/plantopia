@@ -128,7 +128,11 @@ def _fetch_weather(deps: Deps, state: DiagnosisState, tools_used: list[str]):
         return None
 
     tools_used.append("get_local_weather")
-    return deps.weather(location, WEATHER_DAYS_BACK)
+    # Anchored on when the photograph was taken, where it said. Without this the window is
+    # the three weeks before the *upload*, which for anybody who did not upload immediately
+    # is three weeks the plant partly did not live through.
+    taken = state.captured_at.date() if state.captured_at else None
+    return deps.weather(location, WEATHER_DAYS_BACK, taken)
 
 
 def _care_baseline(deps: Deps, state: DiagnosisState, tools_used: list[str]) -> str | None:

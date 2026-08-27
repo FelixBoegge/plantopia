@@ -4,6 +4,7 @@ LangGraph accepts a Pydantic model as a state schema. Nodes return dicts holding
 only the keys they changed; LangGraph merges them.
 """
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -33,6 +34,17 @@ class DiagnosisState(BaseModel):
 
     # Inputs
     images: list[ImageRef] = Field(min_length=1)
+
+    # When the photographs say they were taken, where they said. Dates the observation and
+    # anchors the weather window; `None` means no photograph declared one, which is most of
+    # them.
+    captured_at: datetime | None = None
+
+    # Where, to about eleven kilometres, if a photograph said. Never finer: the coarsening
+    # happens in `core/metadata.py` where the value is read, and the precise fix is never
+    # carried anywhere that could write it down.
+    latitude: float | None = None
+    longitude: float | None = None
     plant_name: str
 
     # What the owner says the plant is, if they said. A name is not a species: "Kitchen

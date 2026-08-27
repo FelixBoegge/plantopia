@@ -94,3 +94,55 @@ def test_empty_location_returns_none_without_any_request():
 def test_days_back_must_be_positive():
     with pytest.raises(ValueError, match="days_back"):
         get_local_weather("Berlin", days_back=0)
+
+
+class TestTheWindowThisCovers:
+    """Which three weeks the diagnosis is read against.
+
+    A plant photographed on Sunday and uploaded on Wednesday was not standing in Monday's
+    and Tuesday's weather when the picture was made. Anchoring on the upload diagnoses it
+    against days it never had — and nothing downstream can question that, because by then
+    the two dates are indistinguishable.
+    """
+
+    @respx.mock
+    def test_ends_the_day_before_the_photograph_was_taken(self):
+        from datetime import date
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        get_local_weather("Berlin", 21, as_of=date(2026, 8, 10))
+
+        params = archive.calls[0].request.url.params
+        assert params["end_date"] == "2026-08-09"
+        assert params["start_date"] == "2026-07-20"
+
+    @respx.mock
+    def test_without_a_date_it_still_ends_yesterday(self):
+        """Every caller before a photograph could say anything meant this, and still does
+        when the photograph says nothing — which is most photographs."""
+        from datetime import UTC, datetime, timedelta
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        get_local_weather("Berlin", 21)
+
+        yesterday = datetime.now(tz=UTC).date() - timedelta(days=1)
+        assert archive.calls[0].request.url.params["end_date"] == yesterday.isoformat()
+
+    @respx.mock
+    def test_a_three_day_delay_moves_the_whole_window(self):
+        from datetime import date
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        get_local_weather("Berlin", 21, as_of=date(2026, 8, 10))
+        get_local_weather("Berlin", 21, as_of=date(2026, 8, 13))
+
+        first = archive.calls[0].request.url.params["end_date"]
+        second = archive.calls[1].request.url.params["end_date"]
+        assert first == "2026-08-09"
+        assert second == "2026-08-12"

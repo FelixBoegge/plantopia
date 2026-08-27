@@ -6,7 +6,7 @@ Everything arrives here, which is what makes the pipeline testable offline.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from langchain_core.language_models import BaseChatModel
@@ -55,7 +55,10 @@ class Deps:
     diagnoses: DiagnosisRepository
     roadmap: RoadmapRepository
 
-    weather: Callable[[str, int], WeatherSummary | None]
+    # The third argument is when to end the window: the day the photograph was taken,
+    # where it said. `None` means today, which is what every caller meant before a
+    # photograph could say anything.
+    weather: Callable[[str, int, date | None], WeatherSummary | None]
     web_search: Callable[[str], list[Passage]]
 
     # The second identification. A callable like the others, so the node cannot know

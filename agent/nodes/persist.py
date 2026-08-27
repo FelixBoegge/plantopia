@@ -79,6 +79,12 @@ def make_persist(deps: Deps) -> NodeFn:
                 photo_refs=[str(image.ref) for image in state.images],
                 user_notes=state.user_notes,
                 now=now,
+                # What the photographs said. `now` above stays the upload moment: the two
+                # are different facts and collapsing them would lose the ability to tell a
+                # week-old photograph from a stale record.
+                captured_at=state.captured_at,
+                latitude=state.latitude,
+                longitude=state.longitude,
             )
 
             usage = _usage_from(config)

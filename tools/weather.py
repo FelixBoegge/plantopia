@@ -8,7 +8,7 @@ widens the differential, it never fails the diagnosis.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
@@ -28,6 +28,7 @@ def get_local_weather(
     location: str,
     days_back: int = 21,
     *,
+    as_of: date | None = None,
     client: httpx.Client | None = None,
 ) -> WeatherSummary | None:
     """Summarise recent weather at a named location.
@@ -55,7 +56,7 @@ def get_local_weather(
         coordinates = _geocode(client, location)
         if coordinates is None:
             return None
-        return _fetch_archive(client, *coordinates, days_back=days_back)
+        return _fetch_archive(client, *coordinates, days_back=days_back, as_of=as_of)
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         logger.warning("weather lookup failed for %r", location, exc_info=True)
         return None
@@ -79,8 +80,19 @@ def _fetch_archive(
     longitude: float,
     *,
     days_back: int,
+    as_of: date | None = None,
 ) -> WeatherSummary | None:
-    end = datetime.now(tz=UTC).date() - timedelta(days=1)
+    """The window ending the day before ``as_of``, or the day before today.
+
+    ``as_of`` is when the photograph was taken. A plant photographed on Sunday and uploaded
+    on Wednesday was not standing in Monday's and Tuesday's weather when the picture was
+    made, and diagnosing it against three days it never had is a wrong answer nothing
+    downstream can question — the two dates are indistinguishable once the file is stored.
+
+    The day before, in both cases: the archive lags roughly a day, and asking for today
+    returns a row of nulls that the aggregates then average.
+    """
+    end = (as_of or datetime.now(tz=UTC).date()) - timedelta(days=1)
     start = end - timedelta(days=days_back - 1)
 
     response = client.get(

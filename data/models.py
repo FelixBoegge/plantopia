@@ -208,6 +208,21 @@ class Observation(Base):
     kind: Mapped[str] = mapped_column(Text)
     photo_refs: Mapped[str] = mapped_column(Text)
     user_notes: Mapped[str | None] = mapped_column(Text)
+
+    # When the photographs said they were taken, as distinct from when they were uploaded.
+    # `created_at` below is the upload; this is the observation. They differ whenever
+    # somebody photographs a plant and gets round to it later, and the difference decides
+    # which three weeks of weather the diagnosis is read against.
+    #
+    # Null means no photograph declared one, which is most of them and is not a failure.
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Where, to about eleven kilometres. Deliberately no finer: `core/metadata.py` coarsens
+    # on arrival and the precise fix is never handed to anything that could write it here.
+    # A database that never held somebody's address cannot leak one.
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+
     created_at: Mapped[datetime] = _when()
 
 

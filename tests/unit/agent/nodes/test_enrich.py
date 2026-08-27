@@ -388,3 +388,36 @@ class TestToolRecording:
         result = make_enrich(deps)(_state(sample_images))
         assert "get_local_weather" not in result["tools_used"]
         assert "web_search_plant_info" not in result["tools_used"]
+
+
+class TestTheWeatherWindow:
+    def test_the_capture_date_is_passed_to_the_weather_lookup(self, make_deps, sample_images):
+        """The seam between what a photograph said and which days get read. Dropped in a
+        rename, this fails silently — the weather still arrives, for the wrong weeks."""
+        from datetime import UTC, datetime
+
+        asked = []
+        deps = make_deps(
+            weather=lambda location, days, as_of=None: asked.append((location, days, as_of))
+        )
+        state = _state(
+            sample_images,
+            location_kind="outdoor",
+            location_text="Berlin",
+            captured_at=datetime(2026, 8, 10, 10, 50, tzinfo=UTC),
+        )
+
+        make_enrich(deps)(state)
+
+        assert asked[0][2] == datetime(2026, 8, 10).date()
+
+    def test_no_capture_date_asks_for_the_window_ending_now(self, make_deps, sample_images):
+        asked = []
+        deps = make_deps(
+            weather=lambda location, days, as_of=None: asked.append((location, days, as_of))
+        )
+        state = _state(sample_images, location_kind="outdoor", location_text="Berlin")
+
+        make_enrich(deps)(state)
+
+        assert asked[0][2] is None

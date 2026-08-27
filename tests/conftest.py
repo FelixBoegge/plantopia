@@ -133,7 +133,7 @@ def make_deps(db, owner, now, chroma_retriever):
             "observations": ObservationRepository(db),
             "diagnoses": DiagnosisRepository(db),
             "roadmap": RoadmapRepository(db),
-            "weather": lambda location, days: None,
+            "weather": lambda location, days, as_of=None: None,
             "web_search": lambda query: [],
             # No second identification unless a test asks for one. The same default the
             # application has without a key, so a node test that does not care about

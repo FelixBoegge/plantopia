@@ -64,6 +64,9 @@ class ObservationRepository:
         photo_refs: list[str],
         user_notes: str | None,
         now: datetime,
+        captured_at: datetime | None = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
     ) -> UUID:
         """Record an observation against a plant this owner holds.
 
@@ -77,6 +80,9 @@ class ObservationRepository:
             photo_refs=json.dumps(photo_refs),
             user_notes=user_notes,
             created_at=now,
+            captured_at=captured_at,
+            latitude=latitude,
+            longitude=longitude,
         )
         self._session.add(observation)
         self._session.flush()

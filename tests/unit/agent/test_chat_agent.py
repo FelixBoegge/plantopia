@@ -112,7 +112,7 @@ def test_the_weather_tool_reports_when_it_cannot_run(owner, make_deps, db, now):
         photo_ref=None,
         now=now(),
     )
-    deps = make_deps(weather=lambda location, days: None)
+    deps = make_deps(weather=lambda location, days, as_of=None: None)
     tools, _ = _make_tools(deps, plant_id)
     weather_tool = next(t for t in tools if t.name == "get_local_weather")
     assert "could not" in weather_tool.invoke({"location": "Berlin"}).lower()
