@@ -6,39 +6,62 @@ when a photograph says nothing at all — which is most of them.
 
 ## ADDED Requirements
 
-### Requirement: A photograph's capture date dates the observation
+### Requirement: Every diagnosis carries a date somebody has seen
 
-The system SHALL use the date a photograph declares it was taken as the date of the
-observation it belongs to, and SHALL fall back to the upload date when the photograph
-declares none.
+The system SHALL ask when the photograph was taken on every diagnosis, SHALL offer the date
+the photograph declared or today's date as the answer, SHALL require an answer, and SHALL
+anchor the weather window and date the observation by it.
 
 An observation dated by its upload is wrong whenever somebody photographs a plant and gets
 round to uploading it later, and the error is invisible: the two dates are indistinguishable
-once the file is stored. It also propagates, because the weather window is anchored on the
-observation's date, so a three-day delay diagnoses the plant against weather it never
-experienced.
+once the file is stored. It propagates, because the weather window is anchored on the
+observation's date — a three-day delay diagnoses the plant against weather it never had.
+
+**Always asked, and never empty.** Asked even when the photograph declared a date, because a
+photograph forwarded from a message carries its sender's and one from a camera with an unset
+clock carries nonsense — neither is distinguishable from a right answer automatically. Asked
+even when it declared nothing, because today is then a guess, and a guess somebody can see is
+a guess somebody can fix. Never empty, because an empty date is not a smaller answer than a
+wrong one: it is no weather at all.
 
 #### Scenario: A photograph that knows when it was taken
 
 - **WHEN** an uploaded photograph declares a capture date
-- **THEN** the observation is dated by it
-- **AND** the weather window is anchored on it
+- **THEN** that date is offered as the answer
+- **AND** where it came from is stated
 
 #### Scenario: A photograph that does not
 
 - **WHEN** an uploaded photograph declares no capture date
-- **THEN** the observation is dated by its upload, as before
+- **THEN** today's date is offered as the answer
+- **AND** it is stated that the photograph did not say
+
+#### Scenario: Accepting what was offered
+
+- **WHEN** the owner submits without changing the date
+- **THEN** the observation is dated by it
+- **AND** the weather window is anchored on it
+
+#### Scenario: Correcting it
+
+- **WHEN** the owner gives a different date
+- **THEN** the observation and the weather window use theirs
+
+#### Scenario: Leaving it empty
+
+- **WHEN** the owner clears the date
+- **THEN** the answers cannot be submitted until one is given
 
 #### Scenario: Several photographs with different dates
 
 - **WHEN** photographs in one upload declare different capture dates
-- **THEN** the earliest is used
+- **THEN** the earliest is offered
 - **AND** the others do not change it
 
 #### Scenario: A date that cannot be true
 
 - **WHEN** a declared capture date is in the future, or implausibly old
-- **THEN** it is ignored and the upload date is used
+- **THEN** it is ignored and today's date is offered instead
 
 ### Requirement: A precise position is never stored
 

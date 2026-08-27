@@ -110,6 +110,12 @@ case.
 - **THEN** the location field appears empty
 - **AND** the answers can be submitted with it still empty
 
+#### Scenario: When the photograph was taken
+
+- **WHEN** a run pauses
+- **THEN** a date field appears holding the photograph's date, or today's
+- **AND** the answers cannot be submitted while it is empty
+
 #### Scenario: Answering
 
 - **WHEN** the answers are submitted

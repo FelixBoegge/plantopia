@@ -1,6 +1,6 @@
 """Unit tests for the evaluation harness, using scripted models throughout."""
 
-from agent.nodes.context import ALWAYS_ASK, LOCATION_KEY
+from agent.nodes.context import ALWAYS_ASK, CAPTURE_KEY, LOCATION_KEY
 from eval.harness import CaseRun, run_case
 
 
@@ -44,6 +44,7 @@ def test_the_questions_asked_are_recorded(make_deps, pipeline_models, golden_cas
     assert run.questions_asked == [
         *(q.key for q in ALWAYS_ASK),
         LOCATION_KEY,
+        CAPTURE_KEY,
         "light_hours",
     ]
 

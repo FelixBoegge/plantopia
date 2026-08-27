@@ -6,7 +6,7 @@ asking is not a nicety, it is a precondition for being right.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
@@ -57,26 +57,39 @@ FROM_THE_PHOTOGRAPH = "Read from your photograph"
 PLACE_NAME_CREDIT = "OpenStreetMap contributors"
 
 
-def capture_question(state: DiagnosisState) -> Question | None:
-    """When the photograph was taken, offered for correction.
+def capture_question(state: DiagnosisState, today: date) -> Question:
+    """When the photograph was taken. Always asked, and always carrying a date.
 
-    A photograph forwarded from a message carries its original sender's date, and this date
-    decides which three weeks of weather the diagnosis is read against. Shown so that a
-    wrong one is visible; editable so that seeing it is worth something.
+    Every diagnosis is read against a stretch of weather, and which stretch depends entirely
+    on this. So the field is never empty: it holds what the photograph declared, or today,
+    and somebody who knows better changes it.
 
-    Never required. Clearing it falls back to the upload date, which is what happens for
-    every photograph that declared nothing.
+    Two reasons it is asked even when the photograph knew. A photograph forwarded from a
+    message carries its original sender's date, and one from a camera whose clock was never
+    set carries nonsense — neither can be told from a right answer automatically, and both
+    move the weather window somewhere the plant has never been.
+
+    And two reasons it is asked when the photograph knew nothing. Today is a guess, and a
+    guess a person can see is a guess a person can fix; the alternative is a silent
+    assumption that quietly decides part of the answer. It is also the *common* case —
+    messaging apps strip metadata and browser capture rarely has any — so the field being
+    present only sometimes would make it a surprise rather than a habit.
     """
-    if state.captured_at is None:
-        return None
+    declared = state.captured_at.date() if state.captured_at else None
 
     return Question(
         key=CAPTURE_KEY,
         text="When was the photograph taken?",
         kind="date",
-        prefill=state.captured_at.date().isoformat(),
-        prefill_note=FROM_THE_PHOTOGRAPH,
-        required=False,
+        prefill=(declared or today).isoformat(),
+        prefill_note=(
+            FROM_THE_PHOTOGRAPH
+            if declared
+            else "Your photograph did not say — change this if it was taken earlier"
+        ),
+        # It has to carry one. An empty date is not a smaller answer than a wrong one, it
+        # is no weather at all.
+        required=True,
     )
 
 
@@ -125,32 +138,33 @@ ALWAYS_ASK_KEYS: frozenset[str] = frozenset(q.key for q in ALWAYS_ASK)
 def select_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
     """Choose the questions to ask for this case.
 
-    Watering and drainage are always asked: they discriminate between the most common
-    disorders and owners almost never volunteer them. An outdoor plant with no known
-    location is also asked where it is, because weather history depends on it.
+    Four are always asked. Watering and drainage discriminate between the most common
+    disorders and owners almost never volunteer them. Where the plant is and when the
+    photograph was taken decide which stretch of weather the diagnosis is read against —
+    both prefilled from what is known, so the usual work of answering them is none.
 
-    Mandatory questions are placed first so the configured cap can never evict them.
-    The cap itself is clamped to be no smaller than the mandatory count, so even a
-    configured maximum below ``len(ALWAYS_ASK)`` cannot cut into that block.
+    **The cap governs the model's questions, not these four.** It used to govern the whole
+    list, which was the same thing when two of the four did not exist: a configured maximum
+    of four now leaves the model nothing, and the model's questions are the ones that
+    discriminate in the specific case rather than in general. So the fixed fields are
+    outside it, and what "at most four clarifying questions" limits is how many *the agent
+    thinks of* — which is what somebody setting it is trying to bound.
     """
-    questions: list[Question] = list(ALWAYS_ASK)
-    questions.append(location_question(state, _place(deps, state)))
+    fixed: list[Question] = [
+        *ALWAYS_ASK,
+        location_question(state, _place(deps, state)),
+        capture_question(state, deps.now().date()),
+    ]
 
-    asked_date = capture_question(state)
-    if asked_date is not None:
-        questions.append(asked_date)
+    asked = {question.key for question in fixed}
+    chosen: list[Question] = []
+    for question in _model_questions(deps, state):
+        if question.key in asked:
+            continue
+        asked.add(question.key)
+        chosen.append(question)
 
-    questions.extend(_model_questions(deps, state))
-
-    seen: set[str] = set()
-    unique: list[Question] = []
-    for question in questions:
-        if question.key not in seen:
-            seen.add(question.key)
-            unique.append(question)
-
-    cap = max(deps.settings.max_clarifying_questions, len(ALWAYS_ASK))
-    return unique[:cap]
+    return [*fixed, *chosen[: deps.settings.max_clarifying_questions]]
 
 
 def _model_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
@@ -220,18 +234,19 @@ def make_select_questions(deps: Deps) -> NodeFn:
 
 
 def _captured_from(answers) -> dict:
-    """What the capture-date answer means for state, if it was asked at all.
+    """What the capture-date answer means for state.
 
-    Absent means the question was never asked and state keeps what the photograph said.
-    Present and empty means somebody cleared it, which falls back to the upload date — the
-    same place every photograph that declared nothing ends up.
+    The question is required, so an empty answer should not arrive — the form refuses it and
+    so does the service. If one does, state keeps what it had rather than being emptied:
+    losing the date would silently widen the weather window to wherever today happens to be,
+    which is worse than the answer somebody failed to give.
     """
     if CAPTURE_KEY not in answers:
         return {}
 
     given = (answers.get(CAPTURE_KEY) or "").strip()
     if not given:
-        return {"captured_at": None}
+        return {}
 
     try:
         # Midnight UTC, on the same reasoning as reading the tag in the first place: the

@@ -64,17 +64,42 @@ def test_model_questions_are_included(make_deps, sample_images):
     assert "light_hours" in {q.key for q in questions}
 
 
-def test_count_is_capped_at_the_configured_maximum(make_deps, sample_images):
+def _capped_at(maximum: int) -> Settings:
+    return Settings(
+        openrouter_api_key="sk-test",
+        jwt_secret=TEST_JWT_SECRET,
+        max_clarifying_questions=maximum,
+        _env_file=None,
+    )
+
+
+def test_the_models_questions_are_capped_at_the_configured_maximum(make_deps, sample_images):
+    """The cap governs what the agent thinks of, not the four fixed fields.
+
+    It used to govern the whole list, which was the same thing when two of the four did not
+    exist. A configured maximum of four now leaves the model nothing — and the model's
+    questions are the ones that discriminate in the specific case rather than in general.
+    """
     deps = make_deps(
         chat_model=_model_questions("a", "b", "c", "d", "e", "f"),
-        settings=Settings(
-            openrouter_api_key="sk-test",
-            jwt_secret=TEST_JWT_SECRET,
-            max_clarifying_questions=4,
-            _env_file=None,
-        ),
+        settings=_capped_at(2),
     )
-    assert len(select_questions(deps, _state(sample_images))) == 4
+
+    keys = [q.key for q in select_questions(deps, _state(sample_images))]
+
+    assert keys[:4] == ["watering", "drainage", "location", "captured_at"]
+    assert keys[4:] == ["a", "b"]
+
+
+def test_the_fixed_fields_survive_a_cap_of_one(make_deps, sample_images):
+    """Somebody who wants to be asked as little as possible still has to be asked where the
+    plant is and when the photograph was taken — without those there is no weather at all,
+    which is a different thing from a shorter form."""
+    deps = make_deps(chat_model=_model_questions("a", "b"), settings=_capped_at(1))
+
+    keys = [q.key for q in select_questions(deps, _state(sample_images))]
+
+    assert keys == ["watering", "drainage", "location", "captured_at", "a"]
 
 
 def test_at_least_one_question_is_always_returned(make_deps, sample_images):
@@ -188,7 +213,7 @@ def test_model_failure_still_yields_the_always_asked_questions(make_deps, sample
     assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300
 
 
-def test_always_asked_questions_survive_the_cap(make_deps, sample_images):
+def test_always_asked_questions_survive_the_cap(make_deps, sample_images):  # noqa: D103
     """The cap must never evict a question we consider mandatory."""
     deps = make_deps(
         chat_model=_model_questions("a", "b", "c", "d", "e"),
@@ -283,13 +308,14 @@ class TestResumingWithAChoice:
 
 
 class TestWhenThePhotographWasTaken:
-    """Offered for correction, because a forwarded photograph carries somebody else's date.
+    """Always asked, and always carrying a date.
 
-    That date decides which three weeks of weather the diagnosis is read against, so a wrong
-    one is not cosmetic — and it cannot be told from a right one automatically.
+    Every diagnosis is read against a stretch of weather and this decides which stretch, so
+    the field is never empty: it holds what the photograph declared, or today, and somebody
+    who knows better changes it.
     """
 
-    def test_it_is_asked_when_a_photograph_declared_one(self, make_deps, sample_images):
+    def test_it_is_prefilled_from_the_photograph(self, make_deps, sample_images):
         from datetime import UTC, datetime
 
         deps = make_deps(chat_model=_model_questions("light_hours"))
@@ -300,17 +326,26 @@ class TestWhenThePhotographWasTaken:
         assert questions["captured_at"].prefill == "2026-08-10"
         assert questions["captured_at"].kind == "date"
 
-    def test_it_is_not_asked_when_no_photograph_declared_one(self, make_deps, sample_images):
-        """The upload date is the honest answer then, and asking would add a control that
-        earns nothing — nobody knows a photograph's date better than the photograph, except
-        when the photograph is somebody else's."""
+    def test_it_is_prefilled_with_today_when_the_photograph_said_nothing(
+        self, make_deps, sample_images, now
+    ):
+        """The common case — messaging apps strip metadata and browser capture rarely has
+        any. A guess somebody can see is a guess somebody can fix; the alternative is a
+        silent assumption quietly deciding part of the answer."""
         deps = make_deps(chat_model=_model_questions("light_hours"))
 
-        questions = {q.key for q in select_questions(deps, _state(sample_images))}
+        questions = {q.key: q for q in select_questions(deps, _state(sample_images))}
 
-        assert "captured_at" not in questions
+        assert questions["captured_at"].prefill == now().date().isoformat()
 
-    def test_it_is_never_required(self, make_deps, sample_images):
+    def test_it_says_when_the_date_is_only_a_guess(self, make_deps, sample_images):
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+
+        questions = {q.key: q for q in select_questions(deps, _state(sample_images))}
+
+        assert "did not say" in (questions["captured_at"].prefill_note or "")
+
+    def test_it_says_when_the_date_came_from_the_photograph(self, make_deps, sample_images):
         from datetime import UTC, datetime
 
         deps = make_deps(chat_model=_model_questions("light_hours"))
@@ -318,7 +353,16 @@ class TestWhenThePhotographWasTaken:
 
         questions = {q.key: q for q in select_questions(deps, state)}
 
-        assert questions["captured_at"].required is False
+        assert questions["captured_at"].prefill_note == "Read from your photograph"
+
+    def test_it_has_to_carry_a_date(self, make_deps, sample_images):
+        """An empty date is not a smaller answer than a wrong one. It is no weather at
+        all."""
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+
+        questions = {q.key: q for q in select_questions(deps, _state(sample_images))}
+
+        assert questions["captured_at"].required is True
 
 
 class TestCorrectingTheCaptureDate:
@@ -331,13 +375,16 @@ class TestCorrectingTheCaptureDate:
 
         assert result["captured_at"] == datetime(2026, 8, 5, tzinfo=UTC)
 
-    def test_clearing_it_falls_back_to_the_upload_date(self):
-        """`None` is where every photograph that declared nothing already ends up."""
+    def test_an_empty_answer_leaves_what_was_there(self):
+        """The question is required, so this should not arrive — the form refuses it and so
+        does the service. If one does, losing the date would silently widen the window to
+        wherever today happens to be, which is worse than the answer somebody failed to
+        give."""
         from agent.nodes.context import _resumed
 
         result = _resumed({"answers": {"captured_at": ""}, "species": None})
 
-        assert result["captured_at"] is None
+        assert "captured_at" not in result
 
     def test_a_question_that_was_never_asked_changes_nothing(self):
         """Absent is different from empty: the run keeps what the photograph said."""

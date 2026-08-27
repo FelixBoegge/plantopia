@@ -25,7 +25,15 @@ from runs.bus import EventBus
 from services.run_service import RunConflictError, RunService, StartRequest
 from tests.secrets import TEST_JWT_SECRET
 
-ANSWERS = {"watering": "every other day", "drainage": "No drainage holes"}
+# `captured_at` and `location` are among them because the run asks for both on every
+# diagnosis now, and the first is required — a resume without it is refused before the run
+# is claimed, which is the point of `_require_answers`.
+ANSWERS = {
+    "watering": "every other day",
+    "drainage": "No drainage holes",
+    "location": "Berlin",
+    "captured_at": "2026-08-10",
+}
 
 
 class Inline:
