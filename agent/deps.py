@@ -66,6 +66,12 @@ class Deps:
     # same thing the node does with a failure, and the node is better for not having a
     # branch on configuration in it.
     identify_species: Callable[[list[tuple[bytes, ImageOrgan]]], list[SpeciesCandidate]]
+
+    # Turns a coarse position into a place name. Reached from inside the run rather than
+    # from the upload request: the name is wanted at the pause, and a run already takes a
+    # minute and a half, so the one external call that would otherwise have happened while
+    # somebody watched an upload finish happens somewhere nobody is watching.
+    place_name: Callable[[float, float], str | None]
     care_profile: Callable[[str], CareProfile | None]
 
     # What the agent has learned about the owner, rendered for a prompt. A callable

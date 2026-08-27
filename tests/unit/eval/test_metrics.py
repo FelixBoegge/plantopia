@@ -5,7 +5,7 @@ import pytest
 from agent.nodes.context import (
     ALWAYS_ASK_KEYS,
     DRAINAGE_QUESTION,
-    LOCATION_QUESTION,
+    LOCATION_KEY,
     WATERING_QUESTION,
 )
 from core.cost import UsageSnapshot
@@ -205,7 +205,7 @@ def test_question_drift_excludes_deterministic_mandatory_questions():
                 questions_asked=[
                     WATERING_QUESTION.key,
                     DRAINAGE_QUESTION.key,
-                    LOCATION_QUESTION.key,
+                    LOCATION_KEY,
                     "light_hours",
                 ],
             ),
@@ -215,7 +215,7 @@ def test_question_drift_excludes_deterministic_mandatory_questions():
                 questions_asked=[
                     WATERING_QUESTION.key,
                     DRAINAGE_QUESTION.key,
-                    LOCATION_QUESTION.key,
+                    LOCATION_KEY,
                     "humidity",
                 ],
             ),
@@ -244,7 +244,7 @@ def test_question_drift_is_zero_when_only_deterministic_questions_differ():
                 questions_asked=[
                     WATERING_QUESTION.key,
                     DRAINAGE_QUESTION.key,
-                    LOCATION_QUESTION.key,
+                    LOCATION_KEY,
                 ],
             ),
         ]

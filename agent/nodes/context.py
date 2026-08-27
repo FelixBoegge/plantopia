@@ -37,11 +37,33 @@ DRAINAGE_QUESTION = Question(
     ],
 )
 
-LOCATION_QUESTION = Question(
-    key="location",
-    text="Which town or city is the plant in? Recent weather may be part of the picture.",
-    kind="text",
-)
+# The key on its own, because the question itself is now built per run — its prefill and
+# whether it is required both depend on the plant — while anything that only wants to say
+# "the location one" still wants a name rather than a string literal.
+LOCATION_KEY = "location"
+
+
+def location_question(state: DiagnosisState, place: str | None) -> Question:
+    """Where the plant is, asked here rather than before the run started.
+
+    Nobody is asked this on the upload form any more: the photograph usually knows, and
+    asking somebody to type what the file already says is asking them to do the machine's
+    work. Where it does not know, this is one field among several at a pause that was
+    happening anyway rather than a question standing on its own.
+
+    Prefilled with whatever is known — a place read from the photograph, or the location a
+    plant already carries from a previous run. Required only outdoors, where weather
+    frequently *is* the diagnosis and its absence costs a real part of the answer; indoors
+    the connection is weak enough that demanding one would be demanding it for nothing.
+    """
+    return Question(
+        key=LOCATION_KEY,
+        text="Which town or city is the plant in? Recent weather may be part of the picture.",
+        kind="text",
+        prefill=place or state.location_text,
+        required=state.location_kind == "outdoor",
+    )
+
 
 ALWAYS_ASK: tuple[Question, ...] = (WATERING_QUESTION, DRAINAGE_QUESTION)
 ALWAYS_ASK_KEYS: frozenset[str] = frozenset(q.key for q in ALWAYS_ASK)
@@ -59,9 +81,7 @@ def select_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
     configured maximum below ``len(ALWAYS_ASK)`` cannot cut into that block.
     """
     questions: list[Question] = list(ALWAYS_ASK)
-
-    if state.location_kind == "outdoor" and not state.location_text:
-        questions.append(LOCATION_QUESTION)
+    questions.append(location_question(state, _place(deps, state)))
 
     questions.extend(_model_questions(deps, state))
 
@@ -105,6 +125,22 @@ def _model_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
         return []
 
     return result.questions
+
+
+def _place(deps: Deps, state: DiagnosisState) -> str | None:
+    """Name the position a photograph carried, if it carried one.
+
+    Failure is silence: without a name the field is simply empty, and somebody types their
+    town as they did before any of this existed.
+    """
+    if state.latitude is None or state.longitude is None:
+        return None
+
+    try:
+        return deps.place_name(state.latitude, state.longitude)
+    except Exception as exc:  # noqa: BLE001 - a place name is never worth a failed run
+        logger.warning("could not name the place a photograph carried: %s", exc)
+        return None
 
 
 def make_select_questions(deps: Deps) -> NodeFn:

@@ -89,22 +89,97 @@ def test_duplicate_keys_are_removed(make_deps, sample_images):
     assert len(keys) == len(set(keys))
 
 
-def test_outdoor_plants_are_asked_for_a_location(make_deps, sample_images):
-    deps = make_deps(chat_model=_model_questions("light_hours"))
-    questions = select_questions(deps, _state(sample_images, location_kind="outdoor"))
-    assert "location" in {q.key for q in questions}
+def _location(questions):
+    """The location question, which is now always among them."""
+    found = [q for q in questions if q.key == "location"]
+    assert len(found) == 1, f"expected exactly one location question, got {len(found)}"
+    return found[0]
 
 
-def test_indoor_plants_are_not_asked_for_a_location(make_deps, sample_images):
-    deps = make_deps(chat_model=_model_questions("light_hours"))
-    questions = select_questions(deps, _state(sample_images, location_kind="indoor"))
-    assert "location" not in {q.key for q in questions}
+class TestWhereThePlantIs:
+    """Asked here rather than on the upload form, and prefilled where anything knows.
 
+    Two of these tests replaced ones asserting the opposite — that an indoor plant is not
+    asked, and that a plant with a known location is not asked again. Both were true of the
+    flow where somebody typed their town before starting a run. Now nobody is asked before
+    the run, so the question has to be here for everybody; what changes between cases is
+    what is already in the field and whether it may be left empty.
+    """
 
-def test_outdoor_plant_with_a_known_location_is_not_asked_again(make_deps, sample_images):
-    deps = make_deps(chat_model=_model_questions("light_hours"))
-    state = _state(sample_images, location_kind="outdoor", location_text="Berlin")
-    assert "location" not in {q.key for q in select_questions(deps, state)}
+    def test_it_is_asked_of_an_outdoor_plant(self, make_deps, sample_images):
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+
+        questions = select_questions(deps, _state(sample_images, location_kind="outdoor"))
+
+        assert _location(questions).required is True
+
+    def test_it_is_asked_of_an_indoor_plant_too_but_optionally(self, make_deps, sample_images):
+        """Weather frequently is the diagnosis outdoors, so its absence costs a real part
+        of the answer. Indoors the connection is weak enough that demanding one would be
+        demanding it for nothing."""
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+
+        questions = select_questions(deps, _state(sample_images, location_kind="indoor"))
+
+        assert _location(questions).required is False
+
+    def test_a_place_read_from_a_photograph_fills_it_in(self, make_deps, sample_images):
+        deps = make_deps(
+            chat_model=_model_questions("light_hours"),
+            place_name=lambda latitude, longitude: "Berlin",
+        )
+        state = _state(sample_images, location_kind="outdoor", latitude=52.5, longitude=13.4)
+
+        questions = select_questions(deps, state)
+
+        assert _location(questions).prefill == "Berlin"
+
+    def test_a_plants_own_location_fills_it_in_when_the_photograph_knew_nothing(
+        self, make_deps, sample_images
+    ):
+        """A re-check. The plant already carries where it lives, and asking again with an
+        empty field would make somebody retype it."""
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+        state = _state(sample_images, location_kind="outdoor", location_text="Berlin")
+
+        questions = select_questions(deps, state)
+
+        assert _location(questions).prefill == "Berlin"
+
+    def test_nothing_known_leaves_it_empty(self, make_deps, sample_images):
+        deps = make_deps(chat_model=_model_questions("light_hours"))
+
+        questions = select_questions(deps, _state(sample_images, location_kind="outdoor"))
+
+        assert _location(questions).prefill is None
+
+    def test_no_position_means_no_lookup(self, make_deps, sample_images):
+        """Most photographs carry none. A lookup for a position that does not exist would
+        be a request to a rate-limited free service for nothing."""
+        asked = []
+        deps = make_deps(
+            chat_model=_model_questions("light_hours"),
+            place_name=lambda latitude, longitude: asked.append((latitude, longitude)),
+        )
+
+        select_questions(deps, _state(sample_images, location_kind="outdoor"))
+
+        assert asked == []
+
+    def test_a_failing_lookup_leaves_the_field_empty(self, make_deps, sample_images):
+        """Somebody then types their town, as they did before any of this existed. A place
+        name is never worth a failed run."""
+
+        def _explodes(latitude, longitude):
+            raise RuntimeError("the service is down")
+
+        deps = make_deps(chat_model=_model_questions("light_hours"), place_name=_explodes)
+        state = _state(sample_images, location_kind="outdoor", latitude=52.5, longitude=13.4)
+
+        questions = select_questions(deps, state)
+
+        assert _location(questions).prefill is None
+        assert _location(questions).required is True
 
 
 def test_model_failure_still_yields_the_always_asked_questions(make_deps, sample_images):

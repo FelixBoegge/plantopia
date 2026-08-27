@@ -30,7 +30,7 @@ from identity.accounts import (
 from identity.sessions import SessionError
 from runs.executor import QueueFullError
 from services.limits import DailyCapReachedError, QuotaExceededError
-from services.run_service import RunConflictError
+from services.run_service import MissingAnswerError, RunConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ TYPE_UNAUTHENTICATED = "https://plantopia.example/problems/unauthenticated"
 TYPE_SESSION_EXPIRED = "https://plantopia.example/problems/session-expired"
 TYPE_QUOTA_EXCEEDED = "https://plantopia.example/problems/quota-exceeded"
 TYPE_DAILY_CAP = "https://plantopia.example/problems/daily-cap-reached"
+TYPE_MISSING_ANSWER = "https://plantopia.example/problems/missing-answer"
 TYPE_RATE_LIMITED = "https://plantopia.example/problems/rate-limited"
 TYPE_CONFLICT = "https://plantopia.example/problems/conflict"
 TYPE_BUSY = "https://plantopia.example/problems/too-busy"
@@ -92,6 +93,22 @@ def register(app: FastAPI) -> None:
             type_=TYPE_INVALID_REQUEST,
             title="That photograph could not be used",
             detail=exc.reason,
+        )
+
+    @app.exception_handler(MissingAnswerError)
+    def _missing_answer(request: Request, exc: MissingAnswerError) -> JSONResponse:
+        """A required question was left empty.
+
+        400 rather than 409: the run is exactly where it should be, and the request is
+        fixable by the person who made it. The keys travel with it so a client can point at
+        the field rather than showing a sentence beside the wrong one.
+        """
+        return problem(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            type_=TYPE_MISSING_ANSWER,
+            title="Something still needs answering",
+            detail=str(exc),
+            keys=exc.keys,
         )
 
     @app.exception_handler(RunConflictError)

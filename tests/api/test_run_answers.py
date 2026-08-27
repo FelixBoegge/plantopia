@@ -361,3 +361,104 @@ def test_cancelling_another_owners_run_does_not_ask_it_to_stop(client, db, other
     client.delete(f"/api/v1/runs/{run_id}")
 
     assert RunRepository(db).cancel_requested(run_id) is False
+
+
+class TestARequiredQuestion:
+    """The server's half of "you have to say where an outdoor plant is".
+
+    A form is a convenience: it stops somebody submitting by accident and stops nothing
+    else. This is the only place that can say no to a client that did not run one — and a
+    run resumed without an outdoor plant's location is a diagnosis missing the half that
+    weather explains.
+    """
+
+    def _paused_asking(self, db, owner, *, required: bool):
+        """A run paused with a location question, required or not."""
+        import json
+
+        from data.models import RunEvent
+        from runs import steps
+        from tests.runs import NOW, make_run
+
+        run = make_run(db, owner, status=run_status.AWAITING_ANSWERS)
+        db.add(
+            RunEvent(
+                run_id=run.id,
+                sequence=1,
+                kind=steps.QUESTIONS,
+                payload_json=json.dumps(
+                    {
+                        "questions": [
+                            {
+                                "key": "location",
+                                "text": "Which town or city is the plant in?",
+                                "kind": "text",
+                                "options": [],
+                                "prefill": None,
+                                "required": required,
+                            }
+                        ]
+                    }
+                ),
+                occurred_at=NOW,
+            )
+        )
+        run_id = run.id
+        db.commit()
+        return run_id
+
+    def test_an_empty_required_answer_is_refused(self, client, db, owner, executor):
+        run_id = self._paused_asking(db, owner, required=True)
+
+        response = client.post(f"/api/v1/runs/{run_id}/answers", json={"answers": {"location": ""}})
+
+        assert response.status_code == 400
+        assert response.json()["keys"] == ["location"]
+
+    def test_a_missing_required_answer_is_refused(self, client, db, owner, executor):
+        run_id = self._paused_asking(db, owner, required=True)
+
+        response = client.post(
+            f"/api/v1/runs/{run_id}/answers", json={"answers": {"watering": "twice"}}
+        )
+
+        assert response.status_code == 400
+
+    def test_whitespace_is_not_an_answer(self, client, db, owner, executor):
+        run_id = self._paused_asking(db, owner, required=True)
+
+        response = client.post(
+            f"/api/v1/runs/{run_id}/answers", json={"answers": {"location": "   "}}
+        )
+
+        assert response.status_code == 400
+
+    def test_the_run_is_left_answerable(self, client, db, owner, executor):
+        """Checked before the run is claimed. Refusing it after would leave it queued with
+        nothing coming to pick it up — a run somebody paid for, stuck."""
+        run_id = self._paused_asking(db, owner, required=True)
+
+        client.post(f"/api/v1/runs/{run_id}/answers", json={"answers": {"location": ""}})
+
+        assert client.get(f"/api/v1/runs/{run_id}").json()["status"] == (
+            run_status.AWAITING_ANSWERS
+        )
+        assert executor.submitted == []
+
+    def test_answering_it_resumes_the_run(self, client, db, owner, executor):
+        run_id = self._paused_asking(db, owner, required=True)
+
+        response = client.post(
+            f"/api/v1/runs/{run_id}/answers", json={"answers": {"location": "Berlin"}}
+        )
+
+        assert response.status_code == 200
+        assert len(executor.submitted) == 1
+
+    def test_an_optional_question_can_be_left_empty(self, client, db, owner, executor):
+        """An indoor plant. Demanding a place there would be demanding it for nothing."""
+        run_id = self._paused_asking(db, owner, required=False)
+
+        response = client.post(f"/api/v1/runs/{run_id}/answers", json={"answers": {"location": ""}})
+
+        assert response.status_code == 200

@@ -43,6 +43,7 @@ from knowledge.ingest import load_corpus
 from knowledge.retriever import ChromaRetriever, build_vectorstore
 from services.profile_service import ProfileService
 from tools.care_profiles import lookup_plant_care_profile
+from tools.geocoding import place_name as reverse_geocode
 from tools.plantnet import identify_species as plantnet_identify
 from tools.weather import get_local_weather
 from tools.web_search import web_search_plant_info
@@ -170,6 +171,12 @@ def build_deps(
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
         identify_species=lambda photographs: plantnet_identify(
             photographs, api_key=settings.plantnet_api_key
+        ),
+        place_name=lambda latitude, longitude: reverse_geocode(
+            latitude,
+            longitude,
+            base_url=settings.geocoding_url,
+            user_agent=settings.geocoding_user_agent,
         ),
         care_profile=lookup_plant_care_profile,
         profile_facts=profile_facts,

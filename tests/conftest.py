@@ -139,6 +139,9 @@ def make_deps(db, owner, now, chroma_retriever):
             # application has without a key, so a node test that does not care about
             # identification exercises the path most deployments are on.
             "identify_species": lambda photographs: [],
+            # No place name unless a test asks for one, which is the same thing a run gets
+            # when the photograph carried no position — the ordinary case.
+            "place_name": lambda latitude, longitude: None,
             "care_profile": lambda species: None,
             "profile_facts": lambda: "",
             "now": now,

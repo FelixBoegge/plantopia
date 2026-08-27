@@ -15,9 +15,10 @@ a value through the pool solely to satisfy a signature.
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
-from agent.schemas import ImageRef
+from agent.schemas import ImageRef, Question
 from agent.state import DiagnosisState
 from agent.threads import diagnosis_thread
 from core.config import Settings
@@ -36,6 +37,20 @@ from services import limits
 logger = logging.getLogger(__name__)
 
 
+class MissingAnswerError(Exception):
+    """A required question was left empty.
+
+    Distinct from a conflict: the run is exactly where it should be and the request is
+    fixable by the person who made it, which is the definition of a 400 rather than a 409.
+    """
+
+    def __init__(self, keys: list[str]) -> None:
+        self.keys = keys
+        super().__init__(
+            "these questions have to be answered before the check can go on: " + ", ".join(keys)
+        )
+
+
 class RunConflictError(Exception):
     """The run is not in a state where this makes sense.
 
@@ -52,6 +67,12 @@ class StartRequest:
     plant_name: str
     location_kind: str
     stated_species: str | None = None
+
+    # What the photographs said about themselves. Read on the way in, because the bytes
+    # that carried it are re-saved before they are stored.
+    captured_at: datetime | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     location_text: str | None = None
     user_notes: str | None = None
     plant_id: UUID | None = None
@@ -128,6 +149,9 @@ class RunService:
             images=request.images,
             plant_name=request.plant_name,
             stated_species=request.stated_species,
+            captured_at=request.captured_at,
+            latitude=request.latitude,
+            longitude=request.longitude,
             location_kind=request.location_kind,
             location_text=request.location_text,
             user_notes=request.user_notes,
@@ -169,6 +193,7 @@ class RunService:
         one thread — which would run the expensive half twice against one checkpoint.
         """
         run = self.get(run_id)
+        self._require_answers(run_id, answers)
         if self._runs.cancel_requested(run_id):
             # Asked to stop, and then answered. Honouring the answer would restart work
             # somebody has already said they do not want.
@@ -197,6 +222,39 @@ class RunService:
             resume={"answers": answers, "species": species},
         )
         return self.get(run_id)
+
+    def _require_answers(self, run_id: UUID, answers: dict[str, str]) -> None:
+        """Refuse a resume that leaves a required question empty.
+
+        **Checked here as well as in the form.** A form is a convenience: it stops somebody
+        submitting by accident, and it stops nothing else. This is the only place that can
+        say no to a client that did not run one, and a run resumed without an outdoor
+        plant's location is a diagnosis missing the half that weather explains.
+
+        Checked *before* the run is claimed, so a refused submission leaves it paused and
+        answerable rather than queued with nothing coming to pick it up.
+        """
+        missing = [
+            question.key
+            for question in self._questions_of(run_id)
+            if question.required and not (answers.get(question.key) or "").strip()
+        ]
+        if missing:
+            raise MissingAnswerError(missing)
+
+    def _questions_of(self, run_id: UUID) -> list[Question]:
+        """What the run asked, read back from the event it published when it paused.
+
+        The graph's own state would answer this too, and reading it means opening a
+        checkpoint connection for a validation. The event is already stored, already this
+        owner's, and says exactly what the client was shown.
+        """
+        for event in self._runs.events(self._user_id, run_id):
+            if event.kind != steps.QUESTIONS:
+                continue
+            asked = event.payload.get("questions") or []
+            return [Question.model_validate(question) for question in asked]
+        return []
 
     def cancel(self, run_id: UUID) -> None:
         """Stop a run.

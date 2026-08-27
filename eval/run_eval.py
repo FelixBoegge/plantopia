@@ -117,6 +117,9 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
         # nothing here scores — and would put a network call, and its failures, inside a
         # measurement that is supposed to vary only with the model.
         identify_species=lambda _photographs: [],
+        # No place names either. A golden case carries no photograph with a position, so
+        # this would be a network call answering a question nothing here asks.
+        place_name=lambda _latitude, _longitude: None,
         care_profile=lookup_plant_care_profile,
         profile_facts=lambda: profile_block,
         now=lambda: datetime.now(tz=UTC),

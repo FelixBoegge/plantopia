@@ -201,10 +201,24 @@ class PlantCheck(BaseModel):
 
 
 class Question(BaseModel):
+    """One thing the agent needs to know before it can go on.
+
+    ``prefill`` is an answer the system already believes — a place read from a photograph,
+    say. It is offered *as the answer* rather than as a suggestion beside an empty field,
+    because that is what it is: it will be used unless somebody says otherwise. A suggestion
+    asks the common case to do work; a filled field asks only the uncommon one.
+
+    ``required`` refuses a submission that leaves the field empty. Almost nothing is: a
+    question somebody cannot answer is a question they should be able to skip, and the one
+    exception is where the answer's absence costs a real part of the diagnosis.
+    """
+
     key: str = Field(min_length=1)
     text: str = Field(min_length=5)
     kind: Literal["text", "choice", "boolean"]
     options: list[str] = Field(default_factory=list)
+    prefill: str | None = None
+    required: bool = False
 
     @model_validator(mode="after")
     def _choice_needs_options(self) -> Self:

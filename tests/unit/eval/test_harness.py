@@ -1,6 +1,6 @@
 """Unit tests for the evaluation harness, using scripted models throughout."""
 
-from agent.nodes.context import ALWAYS_ASK
+from agent.nodes.context import ALWAYS_ASK, LOCATION_KEY
 from eval.harness import CaseRun, run_case
 
 
@@ -38,7 +38,14 @@ def test_the_questions_asked_are_recorded(make_deps, pipeline_models, golden_cas
 
     run = run_case(golden_case, deps=deps, graph=_build_graph(deps), thread_id="eval-2")
 
-    assert run.questions_asked == [*(q.key for q in ALWAYS_ASK), "light_hours"]
+    # `location` is among them now: it is asked on every run rather than only when an
+    # outdoor plant had no location, because nobody is asked before the run starts any
+    # more. Whether it is *required* is what varies, and that is not this list.
+    assert run.questions_asked == [
+        *(q.key for q in ALWAYS_ASK),
+        LOCATION_KEY,
+        "light_hours",
+    ]
 
 
 def test_retrieved_passages_become_contexts(make_deps, pipeline_models, golden_case):

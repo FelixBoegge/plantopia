@@ -14,6 +14,7 @@ from api import converters, streaming
 from api.dependencies import BlobStoreDep, RunServiceDep, SessionDep, SettingsDep
 from api.schemas import AnswersIn, RunOut
 from core.images import store_upload
+from core.metadata import earliest
 from runs.bus import bus
 from services.run_service import StartRequest
 
@@ -50,6 +51,9 @@ def start_run(
         for photograph in photographs
     ]
     images = [photograph.ref for photograph in stored]
+    # What the photographs declared, combined: the earliest capture date, and the first
+    # position any of them carried.
+    declared = earliest([photograph.metadata for photograph in stored])
 
     run = service.start(
         StartRequest(
@@ -62,6 +66,9 @@ def start_run(
             # alone, and an empty string carried as a species would lead the candidates
             # with nothing.
             stated_species=(stated_species or "").strip() or None,
+            captured_at=declared.captured_at,
+            latitude=declared.position.latitude if declared.position else None,
+            longitude=declared.position.longitude if declared.position else None,
             plant_id=plant_id,
         )
     )

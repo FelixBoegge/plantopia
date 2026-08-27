@@ -37,11 +37,11 @@ change established as the way to avoid `U2`.
 
 ## 5. Through the run
 
-- [ ] 5.1 Carry the detected date and place on the run's initial state; verify a test asserts both reach the graph and that absent means absent.
-- [ ] 5.2 Give `Question` a prefilled answer and a required flag; verify the question-shape agreement test covers both and fails when either side is renamed.
-- [ ] 5.3 Ask the location question on every run, prefilled with any detected place, required only when the plant is outdoors; verify tests cover detected/not-detected against indoors/outdoors.
-- [ ] 5.4 Refuse an answer submission that leaves a required question empty; verify a test asserts the run stays paused and says which question is missing.
-- [ ] 5.5 Use what the person left rather than what was detected; verify a test asserts a corrected place wins over the detected one.
+- [x] 5.1 Carry the detected date and place on the run's initial state; verify a test asserts both reach the graph and that absent means absent.
+- [x] 5.2 Give `Question` a prefilled answer and a required flag; verify the question-shape agreement test covers both and fails when either side is renamed.
+- [x] 5.3 Ask the location question on every run, prefilled with any detected place, required only when the plant is outdoors; verify tests cover detected/not-detected against indoors/outdoors.
+- [x] 5.4 Refuse an answer submission that leaves a required question empty; verify a test asserts the run stays paused and says which question is missing.
+- [x] 5.5 Use what the person left rather than what was detected; verify a test asserts a corrected place wins over the detected one.
 
 ## 6. The wizard
 

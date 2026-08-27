@@ -8,7 +8,7 @@ precisely so that this module stays offline and deterministic.
 from dataclasses import dataclass, field
 from itertools import combinations
 
-from agent.nodes.context import ALWAYS_ASK_KEYS, LOCATION_QUESTION
+from agent.nodes.context import ALWAYS_ASK_KEYS, LOCATION_KEY
 from core.cost import UsageSnapshot
 from eval.cases import GoldenCase
 from eval.harness import CaseRun
@@ -21,7 +21,7 @@ from eval.harness import CaseRun
 # varies (spec §3.4). They are subtracted here, at the metric, from the same
 # production constants the questions were generated from — not hardcoded — so this
 # stays correct if the mandatory set ever changes.
-_DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_QUESTION.key}
+_DETERMINISTIC_QUESTION_KEYS = ALWAYS_ASK_KEYS | {LOCATION_KEY}
 
 
 def _normalise_id(disorder_id: str) -> str:

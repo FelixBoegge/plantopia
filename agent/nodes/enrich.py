@@ -123,7 +123,11 @@ def _fetch_weather(deps: Deps, state: DiagnosisState, tools_used: list[str]):
     if state.location_kind != "outdoor":
         return None
 
-    location = state.location_text or state.answers.get("location")
+    # The answer first. It is what the person left in the field at the pause, which is
+    # either the place read from their photograph, the location the plant already had, or
+    # the correction they typed over one of those — and a correction that lost to a stored
+    # value would be a correction nobody could make.
+    location = state.answers.get("location") or state.location_text
     if not location:
         return None
 

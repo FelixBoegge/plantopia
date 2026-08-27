@@ -194,4 +194,14 @@ export interface Question {
   text: string;
   kind: "text" | "choice" | "boolean";
   options: string[];
+  /**
+   * An answer the run already believes — a place read from the photograph, say.
+   *
+   * Rendered *as the answer*, not as a suggestion beside an empty field: it is what will be
+   * used unless somebody says otherwise, and a suggestion asks the common case to do work
+   * while a filled field asks only the uncommon one.
+   */
+  prefill: string | null;
+  /** Whether the run refuses to continue while this is empty. Almost nothing is. */
+  required: boolean;
 }
