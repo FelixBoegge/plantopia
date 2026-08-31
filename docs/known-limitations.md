@@ -75,6 +75,8 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | M37 | **The two methods' confidences are not comparable, and the interface shows both.** Each candidate carries the number its own method produced, rendered in words. Nothing calibrates them against each other, so "very confident" from the vision model and "very confident" from the classifier are not the same claim — and a person choosing between them is being invited, gently, to compare two things that do not compare. | Every alternative is worse. Hiding confidence removes the only signal a person has; normalising them would invent a calibration nobody measured; picking a winner by number is the arithmetic this change explicitly refuses. Words rather than numbers at least blunt the false precision. | Calibration needs the same image set as `U10`. With it, both methods' scores could be mapped onto one scale of observed accuracy, and the words would then mean the same thing whichever produced them. |
 | M38 | **The test photographs carried GPS coordinates, and git history still holds them.** `test_pics/*.jpg` were committed in `172c421` with a full GPS block — latitude, longitude and altitude of where they were taken, which is a home. The working copies were stripped on 2026-08-26, keeping their capture dates and pixels; the original blobs remain reachable in earlier commits. Camera make, model and software are still present in the stripped files, which identify a phone rather than a person. | Carried rather than closed because closing it means `git filter-repo` and rewriting every commit hash from that point, which is a decision about the repository rather than about the code, and was declined for now. Found while starting `add-image-metadata-capture` — the change whose entire purpose is coarsening exactly this data before it is stored, which makes the repository shipping the precise version worth recording rather than quietly fixing. | Before this repository is made public: `git filter-repo --path test_pics --invert-paths` and re-add the stripped files, or replace the photographs with ones carrying no personal metadata. Either rewrites history, so it wants doing before anything is pushed rather than after. |
 | M39 | **This is the first change since the migration that the evaluation numbers should be expected to move under, and the baseline in `eval/REPORT.md` (2026-08-19) is no longer comparable.** The harness scripts the gate and vision tiers and uses a *real* reasoning model, which is the tier that selects clarifying questions — so rewriting that prompt to ask about a plant's recent treatment, and raising the count from at most two to three or four, changes what every golden case is asked and therefore what its `situation` string contains. Two metrics read that string directly (`answer_relevancy`, and the question-drift figure), and the diagnosis itself sees different context. | Carried rather than measured, because measuring it means an evaluation run and those cost about €1.50 each — the owner's standing constraint is to keep that spend low, and a run commissioned by me rather than asked for is exactly the spend they meant. The change is also not optional: asking what has already been done to a plant is what stops a treatment plan opening with something the owner did last week. | Run the harness once when the remaining functional changes are done, and record the new figures as the baseline rather than comparing them to the old ones. Comparing across this change would attribute a prompt rewrite to whatever else moved in between. |
+| M40 | **The coarse position is stored and never read.** `observations.latitude` and `longitude` are written on every upload that carried a fix, and nothing queries them: the weather lookup still takes a *place name* and forward-geocodes it through Open-Meteo, so a position read from a photograph becomes a name and the name becomes a position again. Two geocoding round trips to arrive back where it started. | The name is what a person can confirm or correct, and the correction has to be the thing the run uses — otherwise somebody fixes a wrong town and the diagnosis quietly proceeds on the coordinates behind it. So the name is authoritative today and the position is recorded for later rather than used now. Recording it costs nothing and having to re-read every photograph later would cost everything, because the metadata is stripped on the way in. | `add-granular-weather` is where it earns its place: an hourly window and a forecast want coordinates rather than a town, and the position is already there and already coarse. The open question it inherits is which wins when both exist — recorded in that change's design rather than guessed here. |
+| M41 | **Reverse geocoding was verified against the live service once, on 2026-08-27.** Three responses recorded — a city, a rural county, and a position in the North Sea — and every parsing test is built from them. The third is why recording matters: a position with nothing at it answers HTTP **200** with `{"error": "Unable to geocode"}`, which no amount of imagining would have produced. What the recordings do not cover: a rate-limited response under real load, a place whose most specific name is in a script the interface renders badly, and whatever the response gains in a future version. | The same position `M35` records for Pl@ntNet, and the same answer: one recording is a large improvement on none, and the adapter treats an unrecognised response as a failure like any other, so a shape that changes underneath this costs a place name rather than an upload. | Record another fixture the first time the parser drops something — it logs. The service reports no version, so there is no signal to watch for other than the log. |
 
 ---
 
@@ -332,6 +334,58 @@ and three specific holes turned up while implementing it rather than while desig
 retrieval move is deferred, and it also means an evaluation run is not perfectly
 reproducible even at temperature 0 — a second source of variation alongside the model,
 worth remembering before reading a small change in `eval/REPORT.md` as a real one.
+
+
+### What a photograph knows about itself (2026-08-31)
+
+Two things a photograph already carries, one of which the system was getting silently wrong.
+An observation was dated by its upload, and the weather window anchored on that date — so a
+plant photographed on Sunday and uploaded on Wednesday was diagnosed against three days it
+never lived through, with nothing to notice, because by then the two dates are
+indistinguishable.
+
+**The privacy property is the interesting part, and the first version of it was incomplete.**
+Coarsening a position to eleven kilometres before writing it to `observations` protects the
+*column*. It does nothing about the precise fix still sitting in the uploaded file — and that
+file is stored too. `upright_bytes` re-saves a photograph that needs turning, which
+incidentally drops its metadata, so a portrait photograph out of a phone was fine; an upright
+one is returned untouched, and every landscape photograph is upright. Roughly half of uploads
+would have kept a doorstep on disk beside a row reading "near Frankfurt".
+
+Found by asking what happens to the file rather than the column, before a photograph with a
+real position was uploaded to it rather than after. The fix cuts the metadata segments out at
+the byte level rather than re-encoding around them: a hash of a real phone photograph showed
+that re-saving through Pillow, even at identical quantisation tables, does not return the
+pixels that went in — and `store_upload` promises the model sees what the owner uploaded. A
+privacy fix is not a licence to quietly resample it.
+
+**Three ordering constraints, each of which is one line and reversible by accident.** Metadata
+is read before normalisation, because the normalisation destroys it. The position is stripped
+after the turn has been applied, because the tag saying which way to turn lives in the block
+being stripped. And the strip happens before storage rather than after. The first has a test
+that fails when the two calls are swapped — and only one test does, the one using a
+photograph that needed turning, because an upright photograph is never re-saved and reading
+afterwards appears to work perfectly. Every photograph out of a phone carries an orientation,
+which makes the case that catches this the ordinary one and the case that hides it the
+exception. That is the reverse of how it looks while writing the test.
+
+**Verified live on 2026-08-31** with a photograph taken that morning in Frankfurt: the date
+reached the field, the position resolved to a real place name, the stored position read 50.1
+by 8.7 — eleven kilometres — and the stored photograph declared neither.
+
+**The flow moved as a consequence, and two required fields disappeared from the first
+screen.** Nobody is asked where the plant is before a run starts, because the photograph
+usually knows and asking somebody to type what the file already says is asking them to do the
+machine's work. Nobody is asked to name the plant either: somebody arriving with a sick plant
+is asking what it is, and requiring a name first asks them to name the thing they came here to
+have named. Both moved to where they can be answered well — the location to the pause,
+prefilled; the name to the plant's own page, after the identification has proposed one.
+
+**Which turned up a regression in the cap, and a better rule.** With four always-asked
+questions and a default maximum of four, the agent's own questions were evicted entirely —
+and those are the ones that discriminate in the specific case rather than in general. The cap
+now governs what the agent thinks of rather than the whole list, which is what somebody
+setting "at most four clarifying questions" is trying to bound.
 
 
 ### A second opinion on the species (2026-08-26)

@@ -127,8 +127,13 @@ not a request — it is a run you start and then watch.
 ```bash
 TOKEN=<the access token from signing in>
 
-curl -X POST localhost:8000/api/v1/runs   -H "Authorization: Bearer $TOKEN"   -F plant_name='Kitchen basil' -F location_kind=indoor   -F photographs=@leaf.jpg
+curl -X POST localhost:8000/api/v1/runs   -H "Authorization: Bearer $TOKEN"   -F location_kind=indoor -F photographs=@leaf.jpg
 ```
+
+Photographs and whether it lives indoors or outdoors, and that is all that is required. The
+plant is named by whatever the identification finds and can be renamed afterwards; where it
+is and when the photograph was taken are asked at the pause, already filled in with whatever
+the file knew. `stated_species` and `plant_name` are accepted here if you have them.
 
 That answers immediately with a run and its status. Follow it:
 
@@ -141,8 +146,12 @@ reference" — and part-way through, one carries the questions the agent needs a
 Answer them and the same stream continues:
 
 ```bash
-curl -X POST localhost:8000/api/v1/runs/<run-id>/answers   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json'   -d '{"answers":{"watering":"every other day","drainage":"No drainage holes"}}'
+curl -X POST localhost:8000/api/v1/runs/<run-id>/answers   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json'   -d '{"answers":{"watering":"every other day","drainage":"No drainage holes","captured_at":"2026-08-31","location":"Frankfurt"}}'
 ```
+
+Each question says whether it is `required` and what it is already filled in with. A
+submission that leaves a required one empty is refused with a 400 naming the keys — the
+capture date always, and the location for an outdoor plant.
 
 That same event can carry an `identification` block, and the answer can carry a `species`
 — see [Two opinions on what the plant is](#two-opinions-on-what-the-plant-is).
@@ -207,6 +216,48 @@ offered and nothing in the interface mentions it.
 term of the free tier rather than a courtesy, and the interface does it for you: the credit
 is rendered by the component that renders the candidate, so a screen that shows one cannot
 omit it.
+
+### What a photograph tells us, and what it is not allowed to keep
+
+A photograph already knows two things worth having, and one of them was silently wrong
+before this existed.
+
+**When it was taken.** An observation used to be dated by its upload, and the weather window
+anchored on that date — so somebody who photographed a plant on Sunday and got round to
+uploading it on Wednesday was diagnosed against three days of weather the plant never had.
+Nothing noticed, because the two dates are indistinguishable once the file is stored. The
+capture date is now read from the file and shown at the pause in a field that always holds a
+date: what the camera recorded, or today. It is required, because an empty date is not a
+smaller answer than a wrong one — it is no weather at all.
+
+**Roughly where.** A GPS fix is **coarsened to about eleven kilometres before anything is
+written down**, and the precise position never leaves the function that read it. Weather at
+that distance is indistinguishable from weather at the doorstep, which is the only thing the
+position is for, and eleven kilometres describes a district rather than an address.
+
+**The photograph itself is stripped too.** Coarsening the number in the database does nothing
+about the precise fix still inside the uploaded file, and that file is stored as well. The
+metadata is cut out of the bytes — not re-encoded around, so the picture the model sees is
+the picture you uploaded, to the hash — and an upload whose position cannot be removed is
+refused rather than stored.
+
+Nothing else is read. Cameras write lens, exposure and serial numbers; none of it is used, so
+none of it is looked at.
+
+**Most photographs carry none of this**, and that is the ordinary path rather than a
+fallback. Messaging apps strip metadata, browser camera capture rarely has any, and a screen
+grab never did. Then the date field offers today and the location field is empty, and an
+outdoor plant has to be given one.
+
+Turning a position into a place name needs a service, and this one needs no key:
+[Nominatim](https://nominatim.openstreetmap.org), OpenStreetMap's own. Its terms are
+requirements rather than courtesies, and all three are met — a `User-Agent` that identifies
+the application, at most one request a second (which the cache makes true, since every
+photograph from one garden rounds to the same position), and **attribution wherever the data
+appears**, which the interface does for you. Set `PLANTOPIA_GEOCODING_USER_AGENT` to
+something with your own contact address, and point `PLANTOPIA_GEOCODING_URL` at your own
+instance if you outgrow the shared one. Without either, a name is simply not offered and the
+field is empty.
 
 ### Accounts and roles
 
