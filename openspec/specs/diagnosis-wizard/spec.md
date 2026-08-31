@@ -9,8 +9,9 @@ somebody has already paid for when the connection between them and it fails.
 
 ### Requirement: Starting a diagnosis is one deliberate step
 
-The wizard SHALL accept one or more photographs, a name for the plant, where it lives, and
-optionally the species, and SHALL start a run only when a person asks it to.
+The wizard SHALL accept one or more photographs, whether the plant lives indoors or
+outdoors, and optionally the species, and SHALL start a run only when a person asks it to.
+It SHALL NOT ask where the plant is, nor what it is called, before the run starts.
 
 A run costs real money and takes a minute and a half. Starting one as a side effect of
 choosing a file is a bill somebody did not agree to.
@@ -19,6 +20,17 @@ The species field is optional and stays optional. Most people asking what is wro
 plant do not know what it is — that is frequently why they are asking — so a required field
 would stop the people this exists for. Somebody who does know should not have to wait while
 two machines work it out.
+
+**Where the plant is is no longer asked here.** The photograph usually knows, and asking
+somebody to type what the file already says is asking them to do the machine's work. Where
+the photograph does not know, the question is put at the pause the run already makes — one
+interruption rather than two, and by then it is one field among several rather than a
+question standing on its own.
+
+**Nor is the plant's name.** Somebody arriving with a sick plant is asking what it is;
+requiring a name first asks them to name the thing they came here to have named. The plant
+is named from what the identification found, and can be renamed on its own page afterwards —
+by which point they know what it is.
 
 #### Scenario: Starting
 
@@ -46,6 +58,24 @@ two machines work it out.
 
 - **WHEN** the species field is left empty
 - **THEN** the run starts and behaves exactly as it did before the field existed
+
+#### Scenario: Nobody is asked where the plant is
+
+- **WHEN** the upload step is shown
+- **THEN** it does not ask where the plant is
+- **AND** a run can be started without anybody saying
+
+#### Scenario: Nobody is asked to name the plant
+
+- **WHEN** the upload step is shown
+- **THEN** it does not ask what the plant is called
+- **AND** a run can be started without anybody saying
+
+#### Scenario: What an unnamed plant ends up called
+
+- **WHEN** a run creates a plant nobody named
+- **THEN** it is called what the identification found
+- **AND** it can be renamed afterwards
 
 ### Requirement: The agent's progress is visible while it works
 
@@ -83,6 +113,12 @@ The pause is the middle of the run, not the end of it. Sending somebody elsewher
 and back again would make every run feel like two — and that argument applies twice over to
 adding a second pause of its own for the species.
 
+**Where the plant is is asked here, in a field the run has already filled in where it could.**
+A place read from the photograph appears as the answer rather than as a suggestion beside an
+empty box: it is what will be used, and it is there to be corrected. Somebody who recognises
+their own town confirms it by doing nothing, which is the right amount of work for the common
+case.
+
 #### Scenario: Being asked
 
 - **WHEN** a run reports that it needs answers
@@ -100,6 +136,35 @@ adding a second pause of its own for the species.
 
 - **WHEN** a run offers only one identification
 - **THEN** no choice is presented and the questions appear alone
+
+#### Scenario: A place the photograph knew
+
+- **WHEN** a place was detected from the photographs
+- **THEN** the location field appears already holding it
+- **AND** submitting without touching it uses that place
+
+#### Scenario: Correcting the place
+
+- **WHEN** the person changes what the location field holds
+- **THEN** the run uses what they left rather than what was detected
+
+#### Scenario: A place nobody knows, outdoors
+
+- **WHEN** no place was detected and the plant lives outdoors
+- **THEN** the location field appears empty
+- **AND** the answers cannot be submitted until it is filled in
+
+#### Scenario: A place nobody knows, indoors
+
+- **WHEN** no place was detected and the plant lives indoors
+- **THEN** the location field appears empty
+- **AND** the answers can be submitted with it still empty
+
+#### Scenario: When the photograph was taken
+
+- **WHEN** a run pauses
+- **THEN** a date field appears holding the photograph's date, or today's
+- **AND** the answers cannot be submitted while it is empty
 
 #### Scenario: Answering
 
