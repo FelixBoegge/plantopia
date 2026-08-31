@@ -141,19 +141,19 @@ describe("an answer the run already has", () => {
 
   it("says where it came from", async () => {
     pausedAsking(
-      question({ prefill: "Berlin", prefill_note: "Read from your photograph" }),
+      question({ prefill: "Berlin", prefill_note: "Recorded by your camera" }),
     );
 
     open();
 
-    expect(await screen.findByText("Read from your photograph")).toBeInTheDocument();
+    expect(await screen.findByText("Recorded by your camera")).toBeInTheDocument();
   });
 
   it("credits the source its terms require crediting", async () => {
     pausedAsking(
       question({
         prefill: "Berlin",
-        prefill_note: "Read from your photograph, named by OpenStreetMap contributors",
+        prefill_note: "Recorded by your camera, named by OpenStreetMap contributors",
       }),
     );
 
@@ -173,13 +173,13 @@ describe("an answer the run already has", () => {
 
   it("describes the field by its note, so it is read with it", async () => {
     pausedAsking(
-      question({ prefill: "Berlin", prefill_note: "Read from your photograph" }),
+      question({ prefill: "Berlin", prefill_note: "Recorded by your camera" }),
     );
 
     open();
 
     expect(await screen.findByLabelText(/Which town or city/)).toHaveAccessibleDescription(
-      "Read from your photograph",
+      "Recorded by your camera",
     );
   });
 });
@@ -276,7 +276,7 @@ describe("when the photograph was taken", () => {
         text: "When was the photograph taken?",
         kind: "date",
         prefill: "2026-08-10",
-        prefill_note: "Read from your photograph",
+        prefill_note: "Recorded by your camera",
       }),
     );
 

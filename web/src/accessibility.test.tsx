@@ -323,6 +323,109 @@ describe("choosing between two machines", () => {
   });
 });
 
+const FRAME = 'id: 1\nevent: questions\ndata: {"questions":[{"key":"location","text":"Which town or city is the plant in?","kind":"text","options":[],"prefill":"Berlin","prefill_note":"Recorded by your camera, named by OpenStreetMap contributors","required":true},{"key":"captured_at","text":"When was the photograph taken?","kind":"date","options":[],"prefill":"2026-08-10","prefill_note":"Recorded by your camera","required":true}]}\n\n';
+const EMPTY_REQUIRED = 'id: 1\nevent: questions\ndata: {"questions":[{"key":"location","text":"Which town or city is the plant in?","kind":"text","options":[],"prefill":null,"prefill_note":null,"required":true}]}\n\n';
+
+describe("the fields a photograph filled in", () => {
+  it("finds nothing to fix in a prefilled, required question", async () => {
+    everything();
+    server.use(
+      http.get(`/api/v1/runs/${RUN}`, () =>
+        HttpResponse.json({
+          id: RUN,
+          plant_id: null,
+          kind: "diagnosis",
+          status: "awaiting_answers",
+          created_at: "2026-03-01T12:00:00Z",
+          finished_at: null,
+          diagnosis_id: null,
+          error: null,
+        }),
+      ),
+      http.get(
+        `/api/v1/runs/${RUN}/events`,
+        () =>
+          new HttpResponse(new TextEncoder().encode(FRAME), {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+      ),
+    );
+
+    const { container } = render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    await screen.findByLabelText(/Which town or city/);
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("finds nothing to fix once a required field has been refused", async () => {
+    // The state with an alert on screen and a field marked invalid, which is the one a
+    // checker is most likely to find something in.
+    everything();
+    server.use(
+      http.get(`/api/v1/runs/${RUN}`, () =>
+        HttpResponse.json({
+          id: RUN,
+          plant_id: null,
+          kind: "diagnosis",
+          status: "awaiting_answers",
+          created_at: "2026-03-01T12:00:00Z",
+          finished_at: null,
+          diagnosis_id: null,
+          error: null,
+        }),
+      ),
+      http.get(
+        `/api/v1/runs/${RUN}/events`,
+        () =>
+          new HttpResponse(new TextEncoder().encode(EMPTY_REQUIRED), {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+      ),
+    );
+
+    const { container } = render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    await screen.findByLabelText(/Which town or city/);
+    await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
+    await screen.findByRole("alert");
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("announces a refusal rather than only showing it", async () => {
+    everything();
+    server.use(
+      http.get(`/api/v1/runs/${RUN}`, () =>
+        HttpResponse.json({
+          id: RUN,
+          plant_id: null,
+          kind: "diagnosis",
+          status: "awaiting_answers",
+          created_at: "2026-03-01T12:00:00Z",
+          finished_at: null,
+          diagnosis_id: null,
+          error: null,
+        }),
+      ),
+      http.get(
+        `/api/v1/runs/${RUN}/events`,
+        () =>
+          new HttpResponse(new TextEncoder().encode(EMPTY_REQUIRED), {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    await screen.findByLabelText(/Which town or city/);
+    await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
+
+    // `role="alert"` rather than a red paragraph, and tied to the field by
+    // `aria-describedby` so it is read with the thing it is about rather than after it.
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Which town or city/)).toBeInvalid();
+  });
+});
+
 describe("using it without a pointer", () => {
   it("reaches every control on the sign-in screen by tabbing", async () => {
     signedOut();

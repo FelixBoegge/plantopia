@@ -58,6 +58,13 @@ agent.wiring.build_embeddings = lambda: HashingEmbeddings()
 # disagree is the part of this worth driving a browser through.
 agent.wiring.plantnet_identify = lambda photographs, **_: scripted_second_opinion(photographs)
 
+# Reverse geocoding, scripted. The photographs under `test_pics/` carry no position since
+# their GPS was stripped, so nothing would call this today — which is exactly why it is
+# patched: a fixture that gains a position later would otherwise reach a live, rate-limited
+# service from a test suite that promises to make no network calls, and nothing would say
+# so.
+agent.wiring.reverse_geocode = lambda latitude, longitude, **_: "Testville"
+
 # Mail goes to a file the browser tests read, so a test can click the link a person would
 # have been sent rather than reaching past it into the database.
 import core.mail

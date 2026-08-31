@@ -49,9 +49,9 @@ change established as the way to avoid `U2`.
 - [x] 6.2 Render a prefilled question with its answer already in the field; verify a component test asserts submitting untouched sends the prefilled value.
 - [x] 6.3 Mark a required question and refuse submission while it is empty; verify a component test covers outdoors-with-nothing-detected and indoors-with-nothing-detected.
 - [x] 6.4 Credit the naming source wherever a detected place name is shown; verify a test asserts the credit appears with a name and not without one.
-- [ ] 6.5 Keep the whole thing reachable and operable from the keyboard, and announce a refused submission; verify the accessibility suite covers it and the axe pass is clean.
-- [ ] 6.6 Add a browser flow uploading a photograph with metadata, correcting the prefilled place, and starting the run; verify it passes against the real stack.
-- [ ] 6.7 Add a browser flow for an outdoor plant whose photograph knew nothing; verify the run cannot be resumed until a place is given.
+- [x] 6.5 Keep the whole thing reachable and operable from the keyboard, and announce a refused submission; verify the accessibility suite covers it and the axe pass is clean.
+- [x] 6.6 Add a browser flow uploading a photograph with metadata, correcting the prefilled place, and starting the run; verify it passes against the real stack.
+- [x] 6.7 Add a browser flow for an outdoor plant whose photograph knew nothing; verify the run cannot be resumed until a place is given.
 
 ## 7. Proving it works, and closing
 

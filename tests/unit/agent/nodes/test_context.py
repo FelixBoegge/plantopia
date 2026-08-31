@@ -343,7 +343,7 @@ class TestWhenThePhotographWasTaken:
 
         questions = {q.key: q for q in select_questions(deps, _state(sample_images))}
 
-        assert "did not say" in (questions["captured_at"].prefill_note or "")
+        assert "did not record" in (questions["captured_at"].prefill_note or "")
 
     def test_it_says_when_the_date_came_from_the_photograph(self, make_deps, sample_images):
         from datetime import UTC, datetime
@@ -353,7 +353,7 @@ class TestWhenThePhotographWasTaken:
 
         questions = {q.key: q for q in select_questions(deps, state)}
 
-        assert questions["captured_at"].prefill_note == "Read from your photograph"
+        assert questions["captured_at"].prefill_note == "Recorded by your camera"
 
     def test_it_has_to_carry_a_date(self, make_deps, sample_images):
         """An empty date is not a smaller answer than a wrong one. It is no weather at

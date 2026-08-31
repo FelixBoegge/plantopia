@@ -50,7 +50,14 @@ LOCATION_KEY = "location"
 CAPTURE_KEY = "captured_at"
 
 # What a prefilled answer is told to say about itself.
-FROM_THE_PHOTOGRAPH = "Read from your photograph"
+#
+# "Recorded by your camera" rather than "read from your photograph", and the distinction is
+# real rather than stylistic: the identification chooser says "read from your photo" about a
+# species the vision model inferred from the pixels, while this is data the camera itself
+# wrote into the file. Two sentences that sound alike, on the same screen, describing
+# different kinds of knowing — and the first version of this collided with that one badly
+# enough that a browser test could not tell them apart either.
+FROM_THE_PHOTOGRAPH = "Recorded by your camera"
 
 # Required by the reverse-geocoding service's terms wherever its data is shown. Kept beside
 # the phrase that carries it so the two cannot drift apart.
@@ -85,7 +92,7 @@ def capture_question(state: DiagnosisState, today: date) -> Question:
         prefill_note=(
             FROM_THE_PHOTOGRAPH
             if declared
-            else "Your photograph did not say — change this if it was taken earlier"
+            else "Your camera did not record one — change this if the photograph is older"
         ),
         # It has to carry one. An empty date is not a smaller answer than a wrong one, it
         # is no weather at all.
