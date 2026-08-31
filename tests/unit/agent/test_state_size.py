@@ -35,12 +35,32 @@ def _serialised(state: DiagnosisState) -> bytes:
     return json.dumps(state.model_dump(mode="json")).encode()
 
 
+# A ceiling on an empty state referencing four photographs.
+#
+# **Raised deliberately, and rarely.** It was 1024 and was tripped honestly on 2026-08-31 by
+# four scalar fields two changes had added — a capture date, a coarse position, a detected
+# place name. Fifteen bytes over, all of them nulls. Raising a threshold because it failed is
+# how a guard dies, so the number moved once, with a note, and the *property* that actually
+# guards M15 is asserted separately below: a state must not grow with the photographs it
+# references. That one cannot be satisfied by editing a constant.
+MAX_STATE_BYTES = 2048
+
+
 def test_state_holding_four_photographs_stays_small(stored_images):
-    """Sixteen megabytes of photographs, and the state that references them is under a
-    kilobyte — which is the whole point of carrying keys."""
+    """Sixteen megabytes of photographs, and the state that references them is a couple of
+    kilobytes — which is the whole point of carrying keys."""
     state = DiagnosisState(images=stored_images, plant_name="Basil", location_kind="indoor")
 
-    assert len(_serialised(state)) < 1024
+    assert len(_serialised(state)) < MAX_STATE_BYTES
+
+
+def test_the_state_is_negligible_beside_the_photographs(stored_images):
+    """The bound that does not need maintaining. Sixteen megabytes of photographs against a
+    state that references them: any arrangement carrying pixels fails this by five orders of
+    magnitude, whatever the constant above happens to be."""
+    state = DiagnosisState(images=stored_images, plant_name="Basil", location_kind="indoor")
+
+    assert len(_serialised(state)) < len(BIG_IMAGE) / 1000
 
 
 def test_no_image_bytes_appear_in_serialised_state(stored_images):

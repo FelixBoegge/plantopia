@@ -142,7 +142,7 @@ ALWAYS_ASK: tuple[Question, ...] = (WATERING_QUESTION, DRAINAGE_QUESTION)
 ALWAYS_ASK_KEYS: frozenset[str] = frozenset(q.key for q in ALWAYS_ASK)
 
 
-def select_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
+def select_questions(deps: Deps, state: DiagnosisState, place: str | None = None) -> list[Question]:
     """Choose the questions to ask for this case.
 
     Four are always asked. Watering and drainage discriminate between the most common
@@ -159,7 +159,7 @@ def select_questions(deps: Deps, state: DiagnosisState) -> list[Question]:
     """
     fixed: list[Question] = [
         *ALWAYS_ASK,
-        location_question(state, _place(deps, state)),
+        location_question(state, place if place is not None else _place(deps, state)),
         capture_question(state, deps.now().date()),
     ]
 
@@ -235,7 +235,12 @@ def make_select_questions(deps: Deps) -> NodeFn:
     def select_questions_node(state: DiagnosisState) -> dict:
         if state.answers or state.questions:
             return {}
-        return {"questions": select_questions(deps, state)}
+
+        place = _place(deps, state)
+        return {
+            "questions": select_questions(deps, state, place),
+            "detected_place": place,
+        }
 
     return select_questions_node
 
@@ -293,6 +298,11 @@ def make_gather_context(deps: Deps) -> NodeFn:
         given = interrupt(
             {
                 "questions": [q.model_dump() for q in state.questions],
+                # How old a photograph may be before it is worth saying so. Sent rather than
+                # decided here because the date is still being edited: the field is
+                # prefilled and the owner may correct it, and the warning has to follow what
+                # is in the field rather than what the camera happened to record.
+                "stale_after_days": deps.settings.stale_photograph_days,
                 # Only when there is a decision to make. One candidate means every method,
                 # and the owner if they said anything, named the same plant — asking
                 # somebody to confirm what nobody disputed is an interruption, not a

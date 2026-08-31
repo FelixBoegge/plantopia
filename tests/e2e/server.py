@@ -33,7 +33,7 @@ from sqlalchemy.engine import make_url
 # names at import time, so patching only the defining module would arrive after the binding
 # and do nothing — which is why each one is replaced in both places.
 import core.llm
-from tests.e2e.models import ScriptedGraphModel, scripted_second_opinion
+from tests.e2e.models import ScriptedGraphModel, scripted_second_opinion, scripted_weather
 from tests.fakes.embeddings import HashingEmbeddings
 
 core.llm.build_reasoning_model = lambda **_: ScriptedGraphModel()
@@ -64,6 +64,13 @@ agent.wiring.plantnet_identify = lambda photographs, **_: scripted_second_opinio
 # service from a test suite that promises to make no network calls, and nothing would say
 # so.
 agent.wiring.reverse_geocode = lambda latitude, longitude, **_: "Testville"
+
+# Weather, scripted. This one was reaching Open-Meteo for real on every outdoor run — the
+# only outbound call in this file's list that was not patched, and it went unnoticed because
+# an outdoor browser test passes whether the weather is real or not. Scripted it is also
+# *deterministic*: a test that asserts on a frost date cannot do so against whatever the
+# weather actually did.
+agent.wiring.get_local_weather = scripted_weather
 
 # Mail goes to a file the browser tests read, so a test can click the link a person would
 # have been sent rather than reaching past it into the database.

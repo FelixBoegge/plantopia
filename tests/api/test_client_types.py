@@ -29,6 +29,8 @@ PAIRS = {
     "PlantDetail": "PlantDetailOut",
     "Candidate": "CandidateOut",
     "Diagnosis": "DiagnosisOut",
+    "WeatherDay": "WeatherDay",
+    "WeatherSummary": "WeatherSummary",
     "RoadmapStep": "RoadmapStepOut",
     "DiagnosisDetail": "DiagnosisDetailOut",
     "Message": "MessageOut",

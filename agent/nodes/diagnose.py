@@ -7,12 +7,14 @@ cause this, and here is how to tell them apart".
 
 import logging
 from collections.abc import Callable
+from datetime import date
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agent.deps import Deps
 from agent.nodes.intake import NodeFn
 from agent.prompts.diagnose import DIAGNOSE
+from agent.prompts.weather import render as render_weather
 from agent.schemas import Differential
 from agent.state import DiagnosisState
 from agent.structured import StructuredOutputFailed, invoke_structured
@@ -25,7 +27,13 @@ def make_diagnose(deps: Deps) -> NodeFn:
     """Produce a differential diagnosis from everything gathered so far."""
 
     def diagnose(state: DiagnosisState) -> dict:
-        messages = [SystemMessage(DIAGNOSE), HumanMessage(_build_case(state, deps.profile_facts))]
+        case = _build_case(
+            state,
+            deps.profile_facts,
+            stale_after_days=deps.settings.stale_photograph_days,
+            today=deps.now().date(),
+        )
+        messages = [SystemMessage(DIAGNOSE), HumanMessage(case)]
         try:
             differential = invoke_structured(deps.chat_model, Differential, messages)
         except StructuredOutputFailed as exc:
@@ -41,8 +49,19 @@ def make_diagnose(deps: Deps) -> NodeFn:
     return diagnose
 
 
-def _build_case(state: DiagnosisState, profile_facts: Callable[[], str]) -> str:
-    """Assemble the case description, fencing anything that came from outside."""
+def _build_case(
+    state: DiagnosisState,
+    profile_facts: Callable[[], str],
+    *,
+    stale_after_days: int,
+    today: date,
+) -> str:
+    """Assemble the case description, fencing anything that came from outside.
+
+    The age arguments have no defaults deliberately. A default would let a call site forget
+    them and produce a case that looks complete and silently never mentions a three-week-old
+    photograph — which is the failure this project keeps finding in green suites.
+    """
     sections: list[str] = [f"Species: {state.species_name or 'unidentified'}"]
     sections.append(f"Setting: {state.location_kind}")
 
@@ -65,13 +84,11 @@ def _build_case(state: DiagnosisState, profile_facts: Callable[[], str]) -> str:
         sections.append(state.care_baseline_text)
 
     if state.weather:
-        weather = state.weather
-        sections.append(
-            f"Recent weather over {weather.days_covered} days: "
-            f"low {weather.min_temp_c} °C, high {weather.max_temp_c} °C, "
-            f"{weather.total_precip_mm} mm rain, "
-            f"{weather.frost_days} frost days, {weather.heat_days} heat days."
-        )
+        sections.append(render_weather(state.weather))
+
+    stale = _staleness(state, stale_after_days, today)
+    if stale:
+        sections.append(stale)
 
     if state.retrieved:
         sections.append(_format_passages(state.retrieved, "Reference material"))
@@ -141,3 +158,35 @@ def _format_passages(passages: list, heading: str) -> str:
             )
         )
     return f"{heading}:\n\n" + "\n\n".join(blocks)
+
+
+def _staleness(state: DiagnosisState, threshold: int, today: date) -> str:
+    """Told how old the photograph is, when it is old enough to matter.
+
+    A plant changes. Diagnosing a three-week-old photograph as though the plant were
+    standing there produces advice about a plant that has since recovered or got
+    considerably worse — and the confident tone is the same either way, so nothing in the
+    answer would tell the owner which they were reading.
+
+    Nothing is said about a recent photograph. A sentence on every run saying the
+    photograph is fine is a sentence the model learns to skip, and it would cost tokens on
+    every run to say nothing.
+
+    Judged by ``captured_at``, which is what the owner left at the pause rather than what
+    the camera recorded — they may have corrected it, and a correction that changed nothing
+    would be a control that does nothing.
+    """
+    if state.captured_at is None:
+        return ""
+
+    age = (today - state.captured_at.date()).days
+    if age <= threshold:
+        return ""
+
+    return (
+        f"This photograph is {age} days old. The plant has had {age} days to change since "
+        "it was taken, and may look considerably better or worse now. Diagnose what the "
+        "photograph shows, but say plainly in your reasoning that the photograph is "
+        f"{age} days old, that this makes the answer less reliable, and that a photograph "
+        "taken today would give a better one."
+    )

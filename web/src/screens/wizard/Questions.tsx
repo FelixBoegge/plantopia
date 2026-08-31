@@ -5,6 +5,7 @@ import type { Question as Asked, SpeciesCandidate } from "@/api/types";
 import { Notice } from "@/components/Notice";
 import { Identification } from "@/screens/wizard/Identification";
 import { Question } from "@/screens/wizard/Question";
+import { CAPTURE_KEY, Staleness } from "@/screens/wizard/Staleness";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/button";
 export function Questions({
   questions,
   identification,
+  staleAfterDays,
   onAnswer,
   busy,
   failure,
@@ -27,6 +29,8 @@ export function Questions({
   questions: Asked[];
   /** The identifications to choose between, or `null` when they agreed. */
   identification: SpeciesCandidate[] | null;
+  /** How old a photograph may be before it is worth saying so. */
+  staleAfterDays: number | null;
   onAnswer: (answers: Record<string, string>, species: SpeciesCandidate | null) => void;
   busy: boolean;
   failure: unknown;
@@ -70,6 +74,14 @@ export function Questions({
       </h2>
 
       {failure ? <Notice tone="failure">{readable(failure)}</Notice> : null}
+
+      {/*
+        Follows the date field rather than the metadata, so correcting the date corrects
+        the verdict. Above the form because it is a reason to stop and take another
+        photograph, and something that only appeared beside the submit button would be read
+        after the decision had already been made.
+      */}
+      <Staleness captured={answers[CAPTURE_KEY]} threshold={staleAfterDays} />
 
       {identification && species ? (
         <Identification

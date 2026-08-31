@@ -167,7 +167,9 @@ def build_deps(
         observations=ObservationRepository(session),
         diagnoses=DiagnosisRepository(session),
         roadmap=RoadmapRepository(session),
-        weather=lambda location, days, as_of=None: get_local_weather(location, days, as_of=as_of),
+        weather=lambda location, days, as_of=None, position=None: get_local_weather(
+            location, days, as_of=as_of, position=position
+        ),
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
         identify_species=lambda photographs: plantnet_identify(
             photographs, api_key=settings.plantnet_api_key

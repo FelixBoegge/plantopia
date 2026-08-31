@@ -201,7 +201,13 @@ def _publish_step(runs, session, bus, run_id, node: str) -> None:
 def _pause(runs, session, bus, run_id, interrupts) -> None:
     """The graph stopped to ask. That is a status, not a failure."""
     asked = _asked(interrupts)
-    payload = {"questions": asked.get("questions", [])}
+
+    # Everything the pause carries, passed through rather than named here. This was a
+    # whitelist of two keys, and the first key added to the interrupt afterwards — the
+    # staleness threshold — was silently dropped: the graph sent it, every test on either
+    # side agreed it was sent, and the browser never saw it.
+    payload = {key: value for key, value in asked.items() if key != "identification"}
+    payload.setdefault("questions", [])
     # Absent rather than empty when there is nothing to choose between, so a client can
     # test for the block rather than for the length of it.
     if asked.get("identification"):

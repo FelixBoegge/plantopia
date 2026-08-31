@@ -29,6 +29,16 @@ FORECAST_DAYS = 7
 
 FROST_THRESHOLD_C = 0.0
 HEAT_THRESHOLD_C = 32.0
+
+# A day this dry is a day the plant was not watered by the sky. One is unremarkable; a run
+# of them is a drought, which is why the run length below exists rather than a day count.
+DRY_DAY_MM = 1.0
+DRY_SPELL_DAYS = 7
+
+# Sustained wet rather than one downpour: waterlogging and root rot are what a run of these
+# causes, and a single heavy afternoon usually drains.
+WET_DAY_MM = 10.0
+WET_SPELL_DAYS = 3
 _TIMEOUT = httpx.Timeout(10.0)
 
 
@@ -37,6 +47,7 @@ def get_local_weather(
     days_back: int = 21,
     *,
     as_of: date | None = None,
+    position: tuple[float, float] | None = None,
     client: httpx.Client | None = None,
 ) -> WeatherSummary | None:
     """Summarise recent weather at a named location.
@@ -55,13 +66,16 @@ def get_local_weather(
     if days_back <= 0:
         raise ValueError("days_back must be positive")
 
-    if not location.strip():
+    if position is None and not location.strip():
         return None
 
     owns_client = client is None
     client = client or httpx.Client(timeout=_TIMEOUT)
     try:
-        coordinates = _geocode(client, location)
+        # A position skips the geocoder entirely. Where one exists it is *where the name
+        # came from* — resolving that name back into coordinates is a round trip to arrive
+        # where it started, losing a little at each end.
+        coordinates = position or _geocode(client, location)
         if coordinates is None:
             return None
 

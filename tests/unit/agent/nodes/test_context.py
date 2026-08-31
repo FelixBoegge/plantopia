@@ -464,3 +464,38 @@ class TestWhatTheAgentIsAskedToAskAbout:
         keys = [q.key for q in select_questions(deps, _state(sample_images))]
 
         assert keys[4:] == ["a", "b", "c", "d"]
+
+
+class TestThePlaceTheRunOffered:
+    """`detected_place` decides whether a stored position is used, so it has to be what
+    *this run* offered rather than anything a client sent back."""
+
+    def test_a_client_cannot_write_it(self):
+        from agent.nodes.context import _resumed
+
+        result = _resumed(
+            {"answers": {"location": "Frankfurt"}, "detected_place": "Frankfurt"},
+            (),
+        )
+
+        assert "detected_place" not in result
+
+    def test_nor_through_the_older_payload_shape(self):
+        """The old shape is the answers themselves, so a key of that name lands among the
+        answers — where nothing reads it — rather than in state."""
+        from agent.nodes.context import _resumed
+
+        result = _resumed({"detected_place": "Frankfurt"}, ())
+
+        assert "detected_place" not in result
+        assert result == {"answers": {"detected_place": "Frankfurt"}}
+
+    def test_only_the_run_writes_it(self, make_deps, sample_images):
+        """Written where the prefill is produced, from the position on the state, so the
+        name compared against is the one the owner was actually shown."""
+        from agent.nodes.context import make_select_questions
+
+        state = _state(sample_images, location_kind="outdoor", latitude=50.1, longitude=8.7)
+        deps = make_deps(place_name=lambda lat, lon: "Frankfurt")
+
+        assert make_select_questions(deps)(state)["detected_place"] == "Frankfurt"

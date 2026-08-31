@@ -14,6 +14,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 
 from agent.deps import Deps
+from agent.prompts.weather import render as render_weather
 from tools.knowledge import search_plant_knowledge
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,38 @@ def _make_tools(deps: Deps, plant_id: UUID) -> tuple[list, dict]:
         )
 
     @tool
+    def get_plant_weather(days_back: int = 21) -> str:
+        """Report the weather where *this plant* is, day by day with dates.
+
+        Prefer this over `get_local_weather`: it knows where the plant is without being
+        told, and it reports the weather the diagnosis was actually made against rather
+        than whatever the weather has done since.
+        """
+        recorded = _recorded_weather(deps, plant_id)
+        if recorded is not None and _covers(recorded, days_back):
+            # Answered from the record, which is cheaper and — more to the point — is what
+            # makes the answer consistent with the diagnosis. An agent that re-fetched
+            # could tell somebody about weather the diagnosis never saw, and be confidently
+            # contradicting its own reasoning.
+            return render_weather(recorded)
+
+        plant = deps.plants.get(deps.user_id, plant_id)
+        where = (plant.location_text if plant else None) or ""
+        if not where:
+            if recorded is not None:
+                # Narrower than asked for, and said so, rather than nothing at all.
+                return (
+                    f"Only {recorded.days_covered} days are recorded for this plant, and "
+                    "there is no place on record to look up more.\n\n" + render_weather(recorded)
+                )
+            return "No weather is recorded for this plant, and no place is on record."
+
+        summary = deps.weather(where, days_back, None, None)
+        if summary is None:
+            return f"Weather could not be retrieved for {where}."
+        return render_weather(summary)
+
+    @tool
     def web_search_plant_info(query: str) -> str:
         """Search the web about a plant or its care.
 
@@ -250,6 +283,7 @@ def _make_tools(deps: Deps, plant_id: UUID) -> tuple[list, dict]:
         )
 
     tools = [
+        get_plant_weather,
         get_local_weather,
         web_search_plant_info,
         lookup_plant_care_profile,
@@ -258,3 +292,27 @@ def _make_tools(deps: Deps, plant_id: UUID) -> tuple[list, dict]:
         suggest_new_diagnosis,
     ]
     return tools, escalation
+
+
+def _recorded_weather(deps: Deps, plant_id: UUID):
+    """The most recent weather recorded against this plant, or ``None``.
+
+    The most recent rather than the union of all of them: two observations a month apart
+    hold two disjoint windows, and stitching them together would report a continuous stretch
+    the plant was never observed across.
+    """
+    for observation in reversed(deps.observations.list_for_plant(deps.user_id, plant_id)):
+        if observation.weather is not None:
+            return observation.weather
+    return None
+
+
+def _covers(summary, days_back: int) -> bool:
+    """Whether the recorded window is long enough to answer a question about ``days_back``.
+
+    Length only. The record is anchored on the photograph and a fresh fetch would anchor on
+    today, so a record that is merely *old* still answers "what was the weather when this
+    was taken?" — which is the question worth being consistent with the diagnosis about.
+    Somebody who wants today's weather has `get_local_weather`.
+    """
+    return summary.days_covered >= days_back

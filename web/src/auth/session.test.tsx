@@ -8,7 +8,7 @@
 
 import { HttpResponse, http } from "msw";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { currentToken, forget } from "@/api/session";
 import { PROBLEM } from "@/api/problems";
@@ -36,6 +36,22 @@ const REFUSED = {
 };
 
 describe("signing out", () => {
+  // Vitest fails a run on an unhandled rejection, but reports it against whichever test
+  // happened to be in flight — which is how the cause of this one stayed hidden. Collected
+  // here so the test that provokes it can assert on it directly.
+  let unhandled: unknown[] = [];
+  const collect = (reason: unknown) => {
+    unhandled.push(reason);
+  };
+
+  beforeEach(() => {
+    unhandled = [];
+    process.on("unhandledRejection", collect);
+  });
+  afterEach(() => {
+    process.off("unhandledRejection", collect);
+  });
+
   it("returns to the sign-in screen", async () => {
     server.use(
       http.post("/api/v1/auth/refresh", () =>
@@ -96,6 +112,11 @@ describe("signing out", () => {
       await screen.findByRole("heading", { name: "Sign in" }),
     ).toBeInTheDocument();
     expect(currentToken()).toBeNull();
+    // And the promise resolves. Telling the server is a courtesy; the sign-out has
+    // happened locally either way, so there is nothing for a caller to handle. Rethrowing
+    // left the button's click handler with a rejected promise nobody awaited — an
+    // unhandled rejection that turned the whole suite red for a sign-out that worked.
+    expect(unhandled).toEqual([]);
   });
 
   it("leaves nothing of the account behind", async () => {

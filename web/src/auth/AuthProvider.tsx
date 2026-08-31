@@ -93,6 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut: async () => {
         try {
           await request("/auth/logout", { method: "POST" });
+        } catch {
+          // Swallowed rather than rethrown. Telling the server is a courtesy — it lets it
+          // drop the refresh token early — and the sign-out itself has still happened
+          // locally, so there is nothing for a caller to handle and no failure to report.
+          //
+          // Rethrowing left every caller with a rejected promise nobody awaited, which is
+          // an unhandled rejection: the suite went red for a sign-out that worked.
         } finally {
           // Cleared whatever the server said. A sign-out that left somebody signed in
           // because the network failed would be the worst possible outcome of asking.

@@ -72,6 +72,7 @@ def test_every_tool_gets_a_clean_model_visible_name(owner, make_deps, db, now):
     assert names == [
         "get_local_weather",
         "get_plant_journal",
+        "get_plant_weather",
         "lookup_plant_care_profile",
         "search_plant_knowledge",
         "suggest_new_diagnosis",
@@ -112,7 +113,7 @@ def test_the_weather_tool_reports_when_it_cannot_run(owner, make_deps, db, now):
         photo_ref=None,
         now=now(),
     )
-    deps = make_deps(weather=lambda location, days, as_of=None: None)
+    deps = make_deps(weather=lambda location, days, as_of=None, position=None: None)
     tools, _ = _make_tools(deps, plant_id)
     weather_tool = next(t for t in tools if t.name == "get_local_weather")
     assert "could not" in weather_tool.invoke({"location": "Berlin"}).lower()
@@ -308,3 +309,194 @@ class TestGroundingInstructions:
         prompt = build_chat_system_prompt(make_deps(), sample_plant)
 
         assert "Do not re-search" in prompt
+
+
+class TestTheWeatherWhereThisPlantIs:
+    """`get_plant_weather` reads the record before it reaches for the network.
+
+    Not only because it is cheaper. It is what makes the answer *consistent with the
+    diagnosis*, which was made against those days. An agent that re-fetched could tell
+    somebody about weather the diagnosis never saw, and confidently contradict its own
+    reasoning while doing it.
+    """
+
+    def _plant(self, db, owner, now, *, location_text=None):
+        return PlantRepository(db).create(
+            owner,
+            name="Basil",
+            species="Basil",
+            species_confidence=0.9,
+            location_kind="outdoor",
+            location_text=location_text,
+            photo_ref=None,
+            now=now(),
+        )
+
+    def _record(self, db, owner, plant_id, now, days: int = 21):
+        from datetime import date, timedelta
+
+        from agent.schemas import WeatherDay
+        from data.repositories.observations import ObservationRepository
+        from tools.weather import summarise
+
+        summary = summarise(
+            [
+                WeatherDay(
+                    on=date(2026, 8, 1) + timedelta(days=i),
+                    # One frost, on a date worth being able to name later.
+                    min_temp_c=-2.0 if i == 4 else 11.0,
+                    max_temp_c=19.0,
+                    precip_mm=1.5,
+                )
+                for i in range(days)
+            ]
+        )
+        ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+            weather=summary,
+        )
+        return summary
+
+    def _tool(self, deps, plant_id):
+        from agent.chat_agent import _make_tools
+
+        tools, _ = _make_tools(deps, plant_id)
+        return next(t for t in tools if t.name == "get_plant_weather")
+
+    def test_a_covered_window_is_answered_without_fetching(self, db, owner, now, make_deps):
+        plant_id = self._plant(db, owner, now, location_text="Berlin")
+        self._record(db, owner, plant_id, now)
+        fetches = []
+        deps = make_deps(
+            weather=lambda *args, **kwargs: fetches.append(args) or None,
+        )
+
+        answer = self._tool(deps, plant_id).invoke({"days_back": 21})
+
+        assert fetches == []
+        assert "2026-08-05" in answer  # the frost, by date
+
+    def test_a_shorter_question_is_still_covered(self, db, owner, now, make_deps):
+        plant_id = self._plant(db, owner, now, location_text="Berlin")
+        self._record(db, owner, plant_id, now)
+        fetches = []
+        deps = make_deps(weather=lambda *args, **kwargs: fetches.append(args) or None)
+
+        self._tool(deps, plant_id).invoke({"days_back": 7})
+
+        assert fetches == []
+
+    def test_a_window_the_record_does_not_cover_is_fetched(self, db, owner, now, make_deps):
+        from agent.schemas import WeatherDay
+        from tools.weather import summarise
+
+        plant_id = self._plant(db, owner, now, location_text="Berlin")
+        self._record(db, owner, plant_id, now, days=5)
+        from datetime import date, timedelta
+
+        fetched = summarise(
+            [
+                WeatherDay(
+                    on=date(2026, 7, 1) + timedelta(days=i),
+                    min_temp_c=10.0,
+                    max_temp_c=20.0,
+                    precip_mm=0.0,
+                )
+                for i in range(60)
+            ]
+        )
+        asked = []
+        deps = make_deps(
+            weather=lambda location, days, as_of=None, position=None: (
+                asked.append((location, days)) or fetched
+            )
+        )
+
+        answer = self._tool(deps, plant_id).invoke({"days_back": 60})
+
+        assert asked == [("Berlin", 60)]
+        assert "2026-07-01" in answer
+
+    def test_no_record_and_no_place_says_so_rather_than_guessing(self, db, owner, now, make_deps):
+        plant_id = self._plant(db, owner, now)
+        deps = make_deps(weather=lambda *args, **kwargs: None)
+
+        answer = self._tool(deps, plant_id).invoke({"days_back": 21})
+
+        assert "no place is on record" in answer
+
+    def test_a_short_record_with_no_place_is_offered_narrowed(self, db, owner, now, make_deps):
+        """Narrower than asked for, and said so, rather than nothing at all. Five days of
+        real weather answers more questions than a refusal does."""
+        plant_id = self._plant(db, owner, now)
+        self._record(db, owner, plant_id, now, days=5)
+        deps = make_deps(weather=lambda *args, **kwargs: None)
+
+        answer = self._tool(deps, plant_id).invoke({"days_back": 21})
+
+        assert "Only 5 days are recorded" in answer
+        assert "2026-08-05" in answer
+
+    def test_the_most_recent_record_wins(self, db, owner, now, make_deps):
+        """Two observations a month apart hold two disjoint windows. Stitching them
+        together would report a continuous stretch the plant was never observed across."""
+        from datetime import date, timedelta
+
+        from agent.schemas import WeatherDay
+        from data.repositories.observations import ObservationRepository
+        from tools.weather import summarise
+
+        plant_id = self._plant(db, owner, now, location_text="Berlin")
+        self._record(db, owner, plant_id, now)
+        later = summarise(
+            [
+                WeatherDay(
+                    on=date(2026, 9, 1) + timedelta(days=i),
+                    min_temp_c=14.0,
+                    max_temp_c=24.0,
+                    precip_mm=0.0,
+                )
+                for i in range(21)
+            ]
+        )
+        ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="recheck",
+            photo_refs=["img-2"],
+            user_notes=None,
+            now=now(),
+            weather=later,
+        )
+        deps = make_deps(weather=lambda *args, **kwargs: None)
+
+        answer = self._tool(deps, plant_id).invoke({"days_back": 21})
+
+        assert "2026-09-21" in answer
+        assert "2026-08-05" not in answer
+
+    def test_an_observation_with_no_weather_is_skipped(self, db, owner, now, make_deps):
+        """An indoor recheck, or one from before the series was kept, should not hide the
+        weather an earlier observation does hold."""
+        from data.repositories.observations import ObservationRepository
+
+        plant_id = self._plant(db, owner, now, location_text="Berlin")
+        self._record(db, owner, plant_id, now)
+        ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="recheck",
+            photo_refs=["img-2"],
+            user_notes=None,
+            now=now(),
+        )
+        deps = make_deps(weather=lambda *args, **kwargs: None)
+
+        answer = self._tool(deps, plant_id).invoke({"days_back": 21})
+
+        assert "2026-08-05" in answer

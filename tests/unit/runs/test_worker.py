@@ -127,6 +127,26 @@ def test_the_pause_carries_the_questions(db, owner, sample_images, settings, bus
     assert {question["key"] for question in asking[0].payload["questions"]} >= {"watering"}
 
 
+def test_the_pause_carries_everything_the_graph_put_in_it(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """This was a whitelist of two keys, and the third key the graph started sending was
+    dropped here without a word: the graph sent it, the graph's own tests agreed it was
+    sent, the client read for it, and the browser never saw it.
+
+    Asserted against the interrupt rather than against a list of names, so the next key
+    added does not need this test edited to survive the trip.
+    """
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    events = RunRepository(db).events(owner, run.id)
+    asking = [event for event in events if event.kind == steps.QUESTIONS][0]
+
+    assert asking.payload["stale_after_days"] == settings.stale_photograph_days
+
+
 def test_answering_completes_the_run(db, owner, sample_images, settings, bus, scripted_graph):
     """The second pass, which the spike proved continues the same thread rather than
     starting again."""

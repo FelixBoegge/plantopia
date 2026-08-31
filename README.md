@@ -28,7 +28,9 @@ answers, the way a clinician takes a history.
   similarity search ranks them — which took the correct document from reaching the
   model in 23 of 28 golden cases to 28 of 28
 - **Escalates to web search** only when the corpus falls short
-- **Fetches recent weather** for outdoor plants — a late frost is often the diagnosis
+- **Fetches recent weather** for outdoor plants, day by day with dates — a late frost is
+  often the diagnosis, and "two frost days in the last three weeks" cannot say whether they
+  were last night or a fortnight ago
 - **Returns a differential**, not a single answer: two or three ranked candidates,
   each with supporting evidence, contradicting evidence, and a test you can run in
   five minutes to tell them apart
@@ -243,6 +245,48 @@ refused rather than stored.
 
 Nothing else is read. Cameras write lens, exposure and serial numbers; none of it is used, so
 none of it is looked at.
+
+**And a photograph can be too old to trust.** A plant changes. A three-week-old photograph
+shows a plant that no longer exists, and a diagnosis of it is a diagnosis of the past
+presented as advice about the present — confident, detailed, and about something that has
+since recovered or got considerably worse. Past a threshold (seven days by default,
+`PLANTOPIA_STALE_PHOTOGRAPH_DAYS`) the age is said out loud twice: at the pause, where you
+can still go and take another one before paying for a diagnosis, and in the diagnosis itself,
+which is told the age and instructed to say so. The run always completes either way —
+somebody whose plant died last week and who has only last week's photograph is exactly who
+needs an answer. The age is judged by the date left in the field, not the one the camera
+recorded, so correcting a wrong camera clock corrects the verdict.
+
+### What weather a diagnosis sees
+
+Two windows, because there are two questions.
+
+**What the plant stood in** — the three weeks ending the day the photograph was taken. Not
+the three weeks ending today: a plant photographed a week ago did not stand in this week's
+weather.
+
+**What it is about to face** — the seven days ahead, from today. Every diagnosis ends in a
+plan, and a plan that does not know a frost is due on Thursday has a hole in it.
+
+Neither is dumped into the prompt. Thirty-seven rows of unremarkable weather bury the one
+frost date that explains the plant and cost tokens on every outdoor run to do it, so what the
+model reads is a *reading*: the notable events with their dates — frosts, heat spells,
+droughts, prolonged wet — then the seven days immediately before the photograph and the seven
+ahead, day by day. An unremarkable window is one sentence rather than a table.
+
+Where a photograph carried a position and you accepted the place name derived from it, that
+position is used directly rather than resolved back from the name — a round trip that loses a
+little at each end. Change the name and what you typed wins, because a correction that lost
+to the coordinates behind it would be a control that does nothing.
+
+The series is **kept on the observation**, so a diagnosis's evidence stays recoverable: "why
+did it say frost damage?" has an answer only while the frost is still on the record. It comes
+back on the diagnosis endpoint, and the chat agent answers weather questions from it before
+it reaches for the network — which is not only cheaper but is what keeps the answer
+consistent with the diagnosis, made against those same days.
+
+Indoor plants fetch no weather. Unchanged, and deliberate: the connection is weak enough that
+demanding a place for it would be demanding it for nothing.
 
 **Most photographs carry none of this**, and that is the ordinary path rather than a
 fallback. Messaging apps strip metadata, browser camera capture rarely has any, and a screen

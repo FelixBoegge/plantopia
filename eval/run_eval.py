@@ -109,7 +109,11 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
         observations=ObservationRepository(session),
         diagnoses=DiagnosisRepository(session),
         roadmap=RoadmapRepository(session),
-        weather=get_local_weather,
+        # Wrapped rather than passed bare: `position` is keyword-only on the function and
+        # the port passes four positional arguments.
+        weather=lambda location, days, as_of=None, position=None: get_local_weather(
+            location, days, as_of=as_of, position=position
+        ),
         web_search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
         # No second identification, deliberately. A golden case supplies its symptoms as
         # text and is injected past identification entirely, so asking a specialist

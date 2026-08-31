@@ -33,6 +33,7 @@ BACKLOG = 128
 TOOL_NAMES = {
     "search_plant_knowledge": "the disorder reference",
     "lookup_plant_care_profile": "care guidance for this species",
+    "get_plant_weather": "the weather where this plant is",
     "get_local_weather": "the local weather",
     "web_search_plant_info": "the web",
     "get_plant_journal": "this plant's history",

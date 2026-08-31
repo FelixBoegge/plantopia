@@ -58,7 +58,9 @@ class Deps:
     # The third argument is when to end the window: the day the photograph was taken,
     # where it said. `None` means today, which is what every caller meant before a
     # photograph could say anything.
-    weather: Callable[[str, int, date | None], WeatherSummary | None]
+    # The fourth argument is a coarse position to use instead of resolving the name, where
+    # the owner accepted the name that position produced.
+    weather: Callable[[str, int, date | None, tuple[float, float] | None], WeatherSummary | None]
     web_search: Callable[[str], list[Passage]]
 
     # The second identification. A callable like the others, so the node cannot know

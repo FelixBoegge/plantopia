@@ -45,6 +45,12 @@ class DiagnosisState(BaseModel):
     # carried anywhere that could write it down.
     latitude: float | None = None
     longitude: float | None = None
+
+    # The place name the run derived from that position and offered as the location answer.
+    # Kept so that "did the owner change it?" is a comparison against what *this run* said,
+    # rather than something re-derived later from a service that may answer differently or
+    # not at all.
+    detected_place: str | None = None
     # What the owner calls this plant, if they said. Optional, and asked nowhere in the
     # wizard: somebody arriving with a sick plant is being asked to identify it, and
     # requiring a name first asks them to name a thing they came here to have named.

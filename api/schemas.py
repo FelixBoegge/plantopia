@@ -12,6 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
+from agent.schemas import WeatherSummary
+
 
 class PlantOut(BaseModel):
     id: UUID
@@ -49,6 +51,13 @@ class DiagnosisOut(BaseModel):
     # honestly says about itself.
     species_method: Literal["typed", "vision", "plantnet", "agreed"] | None = None
     species_confirmed: bool = False
+
+    # The weather this was reasoned against, day by day, or `null` where none was recorded.
+    #
+    # `null` covers an indoor plant, a lookup that failed, and every diagnosis made before
+    # the series was kept. It is deliberately not an empty window, which would say the
+    # weather was looked up and found to be nothing at all.
+    weather: WeatherSummary | None = None
 
 
 class ObservationOut(BaseModel):

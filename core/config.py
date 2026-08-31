@@ -213,6 +213,17 @@ class Settings(BaseSettings):
     # history, and one question rarely covers it: repotted, fed, moved and treated are four
     # separate facts, any of which explains symptoms that otherwise read as disease.
     max_clarifying_questions: int = Field(default=4, ge=1, le=8)
+
+    # How old a photograph may be before the owner is warned and the diagnosis is told.
+    #
+    # A plant changes. A photograph three weeks old shows a plant that no longer exists, and
+    # a diagnosis of it is a diagnosis of the past presented as advice about the present.
+    #
+    # Seven days because that is roughly the period over which the disorders in this corpus
+    # become visibly different — a week of overwatering shows, a week of nitrogen deficiency
+    # shows — and because it is a period a person can hold in their head. Configuration
+    # rather than a constant so that a deployment with a slower corpus can move it.
+    stale_photograph_days: int = Field(default=7, ge=1, le=365)
     max_upload_bytes: int = Field(default=8 * 1024 * 1024, gt=0)
     max_images_per_observation: int = Field(default=4, ge=1, le=10)
 

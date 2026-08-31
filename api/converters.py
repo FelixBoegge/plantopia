@@ -68,6 +68,7 @@ def diagnosis(record: DiagnosisRecord) -> DiagnosisOut:
         ],
         created_at=record.created_at,
         cost_usd=record.cost_usd,
+        weather=record.weather,
     )
 
 

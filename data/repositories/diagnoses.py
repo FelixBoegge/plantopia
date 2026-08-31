@@ -15,8 +15,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from agent.schemas import ContagionAssessment, Differential, Passage
-from data.models import Diagnosis, Plant
+from agent.schemas import ContagionAssessment, Differential, Passage, WeatherSummary
+from data.models import Diagnosis, Observation, Plant
 from data.repositories._ownership import require_plant
 
 
@@ -40,8 +40,19 @@ class DiagnosisRecord:
     species_method: str | None = None
     species_confirmed: bool = False
 
+    # The weather this diagnosis was reasoned against, read from its observation.
+    #
+    # Carried here rather than left for a caller to fetch separately, because "why did it
+    # say frost damage?" is a question about the diagnosis, and an answer that needs a
+    # second request is one most callers will not make.
+    #
+    # ``None`` means no weather was recorded — an indoor plant, a failed lookup, or a
+    # diagnosis made before the series was kept. Different from an empty window, which
+    # would claim the weather was looked up and found to be nothing at all.
+    weather: WeatherSummary | None = None
 
-def _to_record(row: Diagnosis) -> DiagnosisRecord:
+
+def _to_record(row: Diagnosis, weather_json: str | None = None) -> DiagnosisRecord:
     return DiagnosisRecord(
         id=row.id,
         observation_id=row.observation_id,
@@ -59,6 +70,7 @@ def _to_record(row: Diagnosis) -> DiagnosisRecord:
         created_at=row.created_at,
         species_method=row.species_method,
         species_confirmed=bool(row.species_confirmed),
+        weather=(WeatherSummary.model_validate_json(weather_json) if weather_json else None),
     )
 
 
@@ -114,32 +126,40 @@ class DiagnosisRepository:
         return diagnosis.id
 
     def get(self, user_id: UUID, diagnosis_id: UUID) -> DiagnosisRecord | None:
-        row = self._session.scalar(self._owned(user_id).where(Diagnosis.id == diagnosis_id))
-        return _to_record(row) if row else None
+        row = self._session.execute(
+            self._owned(user_id).where(Diagnosis.id == diagnosis_id)
+        ).first()
+        return _to_record(*row) if row else None
 
     def latest_for_plant(self, user_id: UUID, plant_id: UUID) -> DiagnosisRecord | None:
-        row = self._session.scalar(
+        row = self._session.execute(
             self._owned(user_id)
             .where(Diagnosis.plant_id == plant_id)
             .order_by(Diagnosis.created_at.desc(), Diagnosis.id.desc())
             .limit(1)
-        )
-        return _to_record(row) if row else None
+        ).first()
+        return _to_record(*row) if row else None
 
     def list_for_plant(self, user_id: UUID, plant_id: UUID) -> list[DiagnosisRecord]:
         """Return every diagnosis for a plant, newest first."""
-        rows = self._session.scalars(
+        rows = self._session.execute(
             self._owned(user_id)
             .where(Diagnosis.plant_id == plant_id)
             .order_by(Diagnosis.created_at.desc(), Diagnosis.id.desc())
         ).all()
-        return [_to_record(r) for r in rows]
+        return [_to_record(*row) for row in rows]
 
     @staticmethod
     def _owned(user_id: UUID):
-        """Every read starts here, so none of them can forget the join."""
+        """Every read starts here, so none of them can forget the join.
+
+        Selects the observation's weather alongside the diagnosis. A second query per
+        diagnosis would be an N+1 on the plant page, which lists every diagnosis a plant
+        has; one join costs nothing and cannot be forgotten at a call site.
+        """
         return (
-            select(Diagnosis)
+            select(Diagnosis, Observation.weather_json)
             .join(Plant, Diagnosis.plant_id == Plant.id)
+            .join(Observation, Diagnosis.observation_id == Observation.id)
             .where(Plant.user_id == user_id)
         )

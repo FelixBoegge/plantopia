@@ -363,3 +363,44 @@ class TestTheDaysAhead:
 
         assert get_local_weather("Berlin") is None
         assert forecast.call_count == 0
+
+
+class TestBeingGivenAPosition:
+    @respx.mock
+    def test_no_geocoding_happens(self):
+        """`M40`: a position turned into a name and resolved back into a position has made
+        two round trips to arrive where it started."""
+        from tools.weather import FORECAST_URL
+
+        geocode = respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        respx.get(FORECAST_URL).mock(return_value=httpx.Response(200, json={"daily": {}}))
+
+        summary = get_local_weather("Frankfurt", position=(50.1, 8.7))
+
+        assert summary is not None
+        assert geocode.call_count == 0
+
+    @respx.mock
+    def test_the_position_is_what_is_asked_about(self):
+        from tools.weather import FORECAST_URL
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        respx.get(FORECAST_URL).mock(return_value=httpx.Response(200, json={"daily": {}}))
+
+        get_local_weather("Frankfurt", position=(50.1, 8.7))
+
+        params = archive.calls[0].request.url.params
+        assert params["latitude"] == "50.1"
+        assert params["longitude"] == "8.7"
+
+    @respx.mock
+    def test_a_position_works_without_a_name_at_all(self):
+        """The naming service can fail while the position is perfectly good."""
+        from tools.weather import FORECAST_URL
+
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        respx.get(FORECAST_URL).mock(return_value=httpx.Response(200, json={"daily": {}}))
+
+        assert get_local_weather("", position=(50.1, 8.7)) is not None

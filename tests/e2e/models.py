@@ -16,6 +16,7 @@ travels from an upload through an interrupt to a rendered differential — not w
 said. A varying answer would only make a flake harder to read.
 """
 
+from datetime import date, timedelta
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -179,6 +180,15 @@ REPLY = (
     "before you water it again, and it should pick up within a few days."
 )
 
+# A question about the weather reaches for a different tool, so the browser can watch that
+# announcement too. Chosen from the question rather than from a counter, for the same reason
+# the reply is: a counter is wrong the moment the agent retries, and wrong silently.
+WEATHER_LOOKUP = "get_plant_weather"
+WEATHER_REPLY = (
+    "There was a frost in the three weeks before your photograph, which is the most "
+    "likely reason the lower leaves went first."
+)
+
 
 class ScriptedGraphModel(BaseChatModel):
     """Answers every structured request the graph makes, and runs one chat turn.
@@ -201,11 +211,19 @@ class ScriptedGraphModel(BaseChatModel):
         return "scripted-graph"
 
     def _generate(self, messages: list[BaseMessage], **kwargs: Any) -> ChatResult:
+        about_weather = any(
+            "weather" in str(getattr(message, "content", "")).casefold()
+            for message in messages
+            if not isinstance(message, ToolMessage)
+        )
+
         if self._bound_tools and not any(isinstance(m, ToolMessage) for m in messages):
             call = AIMessage(
                 content="",
                 tool_calls=[
-                    {
+                    {"name": WEATHER_LOOKUP, "args": {"days_back": 21}, "id": "scripted-lookup"}
+                    if about_weather
+                    else {
                         "name": LOOKUP,
                         "args": {"query": "basil lower leaves yellowing wet compost"},
                         "id": "scripted-lookup",
@@ -214,7 +232,10 @@ class ScriptedGraphModel(BaseChatModel):
             )
             return ChatResult(generations=[ChatGeneration(message=call)])
 
-        content = REPLY if self._bound_tools else "scripted"
+        if not self._bound_tools:
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content="scripted"))])
+
+        content = WEATHER_REPLY if about_weather else REPLY
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> BaseChatModel:
@@ -254,3 +275,41 @@ def scripted_second_opinion(_photographs) -> list[SpeciesCandidate]:
     a browser for.
     """
     return list(SECOND_OPINION)
+
+
+# A fixed three weeks of weather, with one frost on a date a test can name. Fixed because a
+# browser test that asserted on real weather would assert on whatever the sky happened to be
+# doing, and would start failing in a month for no reason anybody could act on.
+_FROST_ON = 4
+
+
+def scripted_weather(location, days_back=21, *, as_of=None, position=None, client=None):
+    """Stands in for `tools.weather.get_local_weather`.
+
+    The full signature, including the arguments this ignores: a stub narrower than the real
+    function passes every test until the day something starts passing the argument it does
+    not take — which is exactly how the four-argument `weather` port broke two real wirings
+    while fifteen hundred tests stayed green.
+    """
+    from agent.schemas import WeatherDay
+    from tools.weather import summarise
+
+    end = as_of or date(2026, 8, 10)
+    days = [
+        WeatherDay(
+            on=end - timedelta(days=days_back - 1 - i),
+            min_temp_c=-2.0 if i == _FROST_ON else 11.0,
+            max_temp_c=19.0,
+            precip_mm=1.2,
+        )
+        for i in range(days_back)
+    ]
+    summary = summarise(days)
+    if summary is not None:
+        summary.forecast = [
+            WeatherDay(
+                on=end + timedelta(days=i + 1), min_temp_c=9.0, max_temp_c=17.0, precip_mm=0.0
+            )
+            for i in range(7)
+        ]
+    return summary

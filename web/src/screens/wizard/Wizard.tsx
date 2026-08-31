@@ -173,6 +173,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
         <Questions
           questions={watched.questions}
           identification={watched.identification}
+          staleAfterDays={watched.staleAfterDays}
           busy={answer.isPending}
           failure={answer.error}
           onAnswer={(answers, species) => answer.mutate({ answers, species })}

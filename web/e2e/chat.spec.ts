@@ -70,3 +70,43 @@ test("keeps what a reply consulted, on the reply", async ({ page }) => {
   await expect(page.getByText(/Let the top third dry out/)).toBeVisible();
   await expect(page.getByText("the disorder reference")).toBeVisible();
 });
+
+test("announces the weather lookup, and answers from what the diagnosis saw", async ({
+  page,
+}) => {
+  // A different tool from the one above, and the one worth watching separately: it reads
+  // the series stored against the observation rather than fetching, which is what keeps the
+  // answer consistent with the diagnosis that was made against those days.
+  await signUp(page, "chat-weather");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("radio", { name: "Outdoors" }).check();
+  await page.getByRole("button", { name: "Start the check" }).click();
+
+  await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
+  await page.getByLabel(/How often do you water/).fill("Twice a week");
+  // Outdoors the place is required, and it is what makes weather part of this run at all.
+  await page.getByLabel(/Which town or city/).fill("Berlin");
+  await page.getByRole("button", { name: "Carry on" }).click();
+  await page
+    .getByRole("heading", { name: "What this looks like" })
+    .waitFor({ timeout: 60_000 });
+
+  await page.getByRole("link", { name: "Plantopia" }).click();
+  await page.getByText("Basil").first().click();
+  await page.getByRole("heading", { name: "Basil" }).waitFor();
+
+  const announcement = page
+    .getByRole("region", { name: "Ask about this plant" })
+    .locator("[aria-live='polite']");
+
+  await page.getByLabel("Your question").fill("What has the weather been doing?");
+  await page.getByRole("button", { name: "Ask" }).click();
+
+  await expect(announcement).toContainText("the weather where this plant is", {
+    timeout: 60_000,
+  });
+
+  await expect(page.getByText(/There was a frost/)).toBeVisible({ timeout: 60_000 });
+});

@@ -94,6 +94,36 @@ export interface Candidate {
   distinguishing_test: string;
 }
 
+/** One day of weather where the plant is. */
+export interface WeatherDay {
+  /** The date, in ISO form. The whole point: a plant responds to *when*. */
+  on: string;
+  min_temp_c: number;
+  max_temp_c: number;
+  precip_mm: number;
+}
+
+/**
+ * The weather a diagnosis was reasoned against.
+ *
+ * `days` is the window before the photograph was taken; `forecast` is the week ahead from
+ * the day the run happened. Two anchors because there are two questions — what the plant
+ * stood in, and what the plan has to survive.
+ *
+ * Both are empty on a summary stored before the series was kept, which still carries the
+ * aggregates below.
+ */
+export interface WeatherSummary {
+  min_temp_c: number;
+  max_temp_c: number;
+  total_precip_mm: number;
+  frost_days: number;
+  heat_days: number;
+  days_covered: number;
+  days: WeatherDay[];
+  forecast: WeatherDay[];
+}
+
 export interface Diagnosis {
   id: string;
   plant_id: string;
@@ -105,6 +135,14 @@ export interface Diagnosis {
   species_method: "typed" | "vision" | "plantnet" | "agreed" | null;
   /** Whether a person picked that species, as opposed to it being the leading candidate. */
   species_confirmed: boolean;
+  /**
+   * The weather this was reasoned against, or `null` where none was recorded.
+   *
+   * `null` covers an indoor plant, a lookup that failed, and every diagnosis made before
+   * the series was kept — deliberately not an empty window, which would say the weather was
+   * looked up and found to be nothing at all.
+   */
+  weather: WeatherSummary | null;
   created_at: string;
   cost_usd: number | null;
 }

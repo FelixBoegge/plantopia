@@ -39,6 +39,13 @@ export interface Watched {
    * question to put to anybody.
    */
   identification: SpeciesCandidate[] | null;
+  /**
+   * How many days old a photograph may be before it is worth saying so.
+   *
+   * Configuration rather than a constant here, so a deployment with a slower corpus can
+   * move it without a rebuild. `null` until the run pauses.
+   */
+  staleAfterDays: number | null;
   /** Set when the run ends, whatever the ending. */
   ending: {
     kind: "completed" | "failed" | "cancelled";
@@ -55,6 +62,7 @@ const NOTHING: Watched = {
   steps: [],
   questions: null,
   identification: null,
+  staleAfterDays: null,
   ending: null,
   connected: false,
 };
@@ -164,6 +172,10 @@ export function useRunStream(runId: string | null): Watched {
           // of them is ever sent.
           identification:
             (payload.identification as SpeciesCandidate[] | undefined) ?? null,
+          staleAfterDays:
+            typeof payload.stale_after_days === "number"
+              ? payload.stale_after_days
+              : null,
         }));
         return;
       }

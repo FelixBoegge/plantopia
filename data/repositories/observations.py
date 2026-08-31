@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from agent.schemas import WeatherSummary
 from data.models import Observation, Plant
 from data.repositories._ownership import require_plant
 
@@ -30,6 +31,13 @@ class ObservationRecord:
     user_notes: str | None
     created_at: datetime
 
+    # The weather this observation was made against, or `None` where none was recorded.
+    #
+    # `None` and an empty window are deliberately different. `None` is "nothing was looked
+    # up" — an indoor plant, a run before this existed, a lookup that failed — and an empty
+    # window would claim the weather was looked up and found to be nothing at all.
+    weather: WeatherSummary | None = None
+
 
 def _to_record(row: Observation) -> ObservationRecord:
     return ObservationRecord(
@@ -39,6 +47,9 @@ def _to_record(row: Observation) -> ObservationRecord:
         photo_refs=json.loads(row.photo_refs),
         user_notes=row.user_notes,
         created_at=row.created_at,
+        weather=(
+            WeatherSummary.model_validate_json(row.weather_json) if row.weather_json else None
+        ),
     )
 
 
@@ -67,6 +78,7 @@ class ObservationRepository:
         captured_at: datetime | None = None,
         latitude: float | None = None,
         longitude: float | None = None,
+        weather: WeatherSummary | None = None,
     ) -> UUID:
         """Record an observation against a plant this owner holds.
 
@@ -83,6 +95,9 @@ class ObservationRepository:
             captured_at=captured_at,
             latitude=latitude,
             longitude=longitude,
+            # Serialised by the model that defines it, so the stored shape and the shape
+            # everything else reads cannot drift apart.
+            weather_json=weather.model_dump_json() if weather else None,
         )
         self._session.add(observation)
         self._session.flush()

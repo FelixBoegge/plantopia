@@ -106,6 +106,10 @@ def make_persist(deps: Deps) -> NodeFn:
                 captured_at=state.captured_at,
                 latitude=state.latitude,
                 longitude=state.longitude,
+                # The weather the diagnosis was reasoned against, kept rather than
+                # discarded. A diagnosis's evidence should be recoverable: "why did it say
+                # frost damage?" has an answer only if the frost is still on the record.
+                weather=state.weather,
             )
 
             usage = _usage_from(config)

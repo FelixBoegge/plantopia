@@ -223,6 +223,19 @@ class Observation(Base):
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
 
+    # The weather the diagnosis was made against, day by day, as a serialised
+    # `WeatherSummary`.
+    #
+    # One column rather than a table of weather rows: nothing queries across observations by
+    # weather, the series is always read whole and always belongs to exactly one
+    # observation, and a table would be a join to reconstruct a list that was always a list.
+    #
+    # Stored because a diagnosis's evidence should be recoverable — the argument
+    # `species_method` already made. Null means no weather was recorded, which is true of
+    # every observation made before this column existed and of every indoor plant. That is a
+    # different fact from an empty window, and the two are kept distinguishable.
+    weather_json: Mapped[str | None] = mapped_column(Text)
+
     created_at: Mapped[datetime] = _when()
 
 

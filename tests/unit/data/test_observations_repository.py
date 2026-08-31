@@ -135,3 +135,113 @@ class TestWhatThePhotographsSaid:
         assert row.captured_at is None
         assert row.latitude is None
         assert row.longitude is None
+
+
+class TestTheWeatherAnObservationWasMadeAgainst:
+    """A diagnosis's evidence should be recoverable.
+
+    "Why did it say frost damage?" has an answer only while the frost is still on the
+    record. The five aggregate numbers this replaced went into a prompt and were never kept,
+    so every past diagnosis's weather is gone.
+    """
+
+    def _series(self, days: int = 3):
+        from datetime import date, timedelta
+
+        from agent.schemas import WeatherDay
+        from tools.weather import summarise
+
+        return summarise(
+            [
+                WeatherDay(
+                    on=date(2026, 8, 10) + timedelta(days=i),
+                    min_temp_c=-1.5 + i,
+                    max_temp_c=18.0 + i,
+                    precip_mm=0.5 * i,
+                )
+                for i in range(days)
+            ]
+        )
+
+    def test_a_series_round_trips_day_for_day(self, db, owner, now, plant_id):
+        """Day for day, not merely "a series was stored". A round trip that kept the
+        aggregates and lost the dates would pass a shallower assertion and lose the whole
+        point of the change."""
+        summary = self._series()
+
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+            weather=summary,
+        )
+
+        read = ObservationRepository(db).get(owner, observation_id)
+        assert read is not None
+        assert read.weather is not None
+        assert read.weather.days == summary.days
+        assert read.weather == summary
+
+    def test_the_forecast_round_trips_too(self, db, owner, now, plant_id):
+        from datetime import date
+
+        from agent.schemas import WeatherDay
+
+        summary = self._series()
+        summary.forecast = [
+            WeatherDay(on=date(2026, 9, 1), min_temp_c=8.0, max_temp_c=19.0, precip_mm=2.0)
+        ]
+
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+            weather=summary,
+        )
+
+        read = ObservationRepository(db).get(owner, observation_id)
+        assert read is not None
+        assert read.weather is not None
+        assert read.weather.forecast == summary.forecast
+
+    def test_an_observation_from_before_this_reports_no_weather(self, db, owner, now, plant_id):
+        """`None`, not an empty window.
+
+        An empty window claims the weather was looked up and found to be nothing at all.
+        Every row written before this column existed, and every indoor plant, means the
+        other thing: nothing was looked up. Reporting them the same way would make a
+        diagnosis that ignored the weather indistinguishable from one made in a place where
+        nothing happened.
+        """
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+        )
+
+        read = ObservationRepository(db).get(owner, observation_id)
+        assert read is not None
+        assert read.weather is None
+        assert read.weather != []
+
+    def test_the_column_itself_is_null_rather_than_the_string_null(self, db, owner, now, plant_id):
+        """`json.dumps(None)` is the four characters `null`, which reads back as a value."""
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+        )
+
+        assert db.get(Observation, observation_id).weather_json is None

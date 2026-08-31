@@ -136,7 +136,32 @@ def _fetch_weather(deps: Deps, state: DiagnosisState, tools_used: list[str]):
     # the three weeks before the *upload*, which for anybody who did not upload immediately
     # is three weeks the plant partly did not live through.
     taken = state.captured_at.date() if state.captured_at else None
-    return deps.weather(location, WEATHER_DAYS_BACK, taken)
+    return deps.weather(location, WEATHER_DAYS_BACK, taken, _position_if_accepted(state))
+
+
+def _position_if_accepted(state: DiagnosisState) -> tuple[float, float] | None:
+    """The photograph's position, but only where the name it produced was left alone.
+
+    A position that becomes a name and is then resolved back into a position has been
+    round-tripped through a geocoder to arrive where it started. So where the owner accepted
+    the name, the position is used directly.
+
+    Where they *changed* it, the name wins and this returns nothing. A correction that lost
+    to the coordinates behind it would be a control that does nothing: somebody fixes a wrong
+    town, watches the diagnosis proceed on the wrong weather anyway, and has no way to tell.
+
+    Compared against what this run offered — `detected_place` — rather than against anything
+    a client sent or anything re-derived later. A naming service that answered differently
+    the second time would otherwise turn an accepted name into a corrected one.
+    """
+    if state.latitude is None or state.longitude is None or not state.detected_place:
+        return None
+
+    answered = (state.answers.get("location") or "").strip()
+    if answered.casefold() != state.detected_place.strip().casefold():
+        return None
+
+    return (state.latitude, state.longitude)
 
 
 def _care_baseline(deps: Deps, state: DiagnosisState, tools_used: list[str]) -> str | None:

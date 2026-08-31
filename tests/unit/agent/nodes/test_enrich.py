@@ -398,7 +398,9 @@ class TestTheWeatherWindow:
 
         asked = []
         deps = make_deps(
-            weather=lambda location, days, as_of=None: asked.append((location, days, as_of))
+            weather=lambda location, days, as_of=None, position=None: asked.append(
+                (location, days, as_of, position)
+            )
         )
         state = _state(
             sample_images,
@@ -414,10 +416,96 @@ class TestTheWeatherWindow:
     def test_no_capture_date_asks_for_the_window_ending_now(self, make_deps, sample_images):
         asked = []
         deps = make_deps(
-            weather=lambda location, days, as_of=None: asked.append((location, days, as_of))
+            weather=lambda location, days, as_of=None, position=None: asked.append(
+                (location, days, as_of, position)
+            )
         )
         state = _state(sample_images, location_kind="outdoor", location_text="Berlin")
 
         make_enrich(deps)(state)
 
         assert asked[0][2] is None
+
+
+class TestWhichPlaceIsLookedUp:
+    """`M40`'s open question, answered: the position where its name was accepted, the name
+    where it was changed.
+
+    A position that becomes a name and is resolved back into a position has round-tripped a
+    geocoder to arrive where it started, losing a little at each end. But a name the owner
+    *corrected* is a correction, and a correction that lost to the coordinates behind it
+    would be a control that does nothing.
+    """
+
+    def _asked(self, make_deps, sample_images, **state_kwargs):
+        asked = []
+        deps = make_deps(
+            weather=lambda location, days, as_of=None, position=None: asked.append(
+                (location, position)
+            )
+        )
+        state = _state(sample_images, location_kind="outdoor", **state_kwargs)
+        make_enrich(deps)(state)
+        return asked[0] if asked else None
+
+    def test_the_position_is_used_when_its_name_was_accepted(self, make_deps, sample_images):
+        location, position = self._asked(
+            make_deps,
+            sample_images,
+            latitude=50.1,
+            longitude=8.7,
+            detected_place="Frankfurt",
+            answers={"location": "Frankfurt"},
+        )
+
+        assert position == (50.1, 8.7)
+
+    def test_the_name_is_used_when_it_was_corrected(self, make_deps, sample_images):
+        """Somebody who fixes a wrong town and watches the diagnosis proceed on the wrong
+        weather anyway has been given a control that does nothing."""
+        location, position = self._asked(
+            make_deps,
+            sample_images,
+            latitude=50.1,
+            longitude=8.7,
+            detected_place="Frankfurt",
+            answers={"location": "Munich"},
+        )
+
+        assert position is None
+        assert location == "Munich"
+
+    def test_case_and_spacing_do_not_count_as_a_correction(self, make_deps, sample_images):
+        location, position = self._asked(
+            make_deps,
+            sample_images,
+            latitude=50.1,
+            longitude=8.7,
+            detected_place="Frankfurt",
+            answers={"location": "  frankfurt "},
+        )
+
+        assert position == (50.1, 8.7)
+
+    def test_no_position_means_the_name_is_resolved(self, make_deps, sample_images):
+        location, position = self._asked(make_deps, sample_images, answers={"location": "Berlin"})
+
+        assert position is None
+        assert location == "Berlin"
+
+    def test_a_position_whose_name_never_resolved_is_not_used(self, make_deps, sample_images):
+        """The naming lookup failed, so the field was prefilled from the plant's own
+        location instead — which is a different place from where the photograph was taken,
+        and using the coordinates would silently move the plant."""
+        location, position = self._asked(
+            make_deps,
+            sample_images,
+            latitude=50.1,
+            longitude=8.7,
+            detected_place=None,
+            location_text="Hamburg",
+            answers={"location": "Hamburg"},
+        )
+
+        assert position is None
+        assert location == "Hamburg"

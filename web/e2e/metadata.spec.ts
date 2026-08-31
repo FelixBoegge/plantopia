@@ -93,3 +93,39 @@ test("an indoor plant can go on without one", async ({ page }) => {
     timeout: 60_000,
   });
 });
+
+test("a photograph old enough to mislead says so, and the run carries on anyway", async ({
+  page,
+}) => {
+  // The committed photograph was taken on 2026-08-10 and only gets older, so this is stale
+  // by any threshold the deployment might set and will stay stale.
+  await signUp(page, "stale");
+  await startedFrom(page, "Old basil");
+
+  const taken = page.getByLabel(/When was the photograph taken/);
+  await expect(taken).toBeVisible({ timeout: 60_000 });
+
+  const warning = page.getByText(/days old/);
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText(/less reliable/);
+  await expect(warning).toContainText(/upload one taken today/);
+
+  // Correcting the date corrects the verdict: the warning follows the field rather than the
+  // metadata, because somebody who knows the camera's clock is wrong has just said so.
+  const today = new Date().toISOString().slice(0, 10);
+  await taken.fill(today);
+  await expect(page.getByText(/days old/)).toHaveCount(0);
+
+  // And back again — it is not a one-way door somebody can dismiss by touching the field.
+  await taken.fill("2026-08-10");
+  await expect(page.getByText(/days old/)).toBeVisible();
+
+  // A caution, not a gate. Somebody whose plant died last week and who has only last week's
+  // photograph is exactly who needs an answer.
+  await page.getByLabel(/How often do you water/).fill("Twice a week");
+  await page.getByRole("button", { name: "Carry on" }).click();
+
+  await expect(page.getByRole("heading", { name: "What this looks like" })).toBeVisible({
+    timeout: 60_000,
+  });
+});

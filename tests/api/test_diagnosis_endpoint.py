@@ -58,3 +58,78 @@ def test_a_diagnosis_with_no_recorded_provenance_says_so(client, seeded):
 
     assert body["diagnosis"]["species_method"] is None
     assert body["diagnosis"]["species_confirmed"] is False
+
+
+class TestTheWeatherItWasReasonedAgainst:
+    """Storing a series nothing reads is what `M40` records as a mistake. This is the read."""
+
+    def _stored(self, db, owner, seeded):
+        from datetime import UTC, date, datetime, timedelta
+
+        from agent.schemas import WeatherDay
+        from data.repositories.diagnoses import DiagnosisRepository
+        from data.repositories.observations import ObservationRepository
+        from tools.weather import summarise
+
+        summary = summarise(
+            [
+                WeatherDay(
+                    on=date(2026, 8, 10) + timedelta(days=i),
+                    min_temp_c=-2.0,
+                    max_temp_c=14.0,
+                    precip_mm=0.0,
+                )
+                for i in range(3)
+            ]
+        )
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=seeded["plant_id"],
+            kind="recheck",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=datetime(2026, 8, 13, tzinfo=UTC),
+            weather=summary,
+        )
+        diagnosis_id = DiagnosisRepository(db).create(
+            owner,
+            observation_id=observation_id,
+            plant_id=seeded["plant_id"],
+            differential=_a_differential(db, owner, seeded),
+            contagion=None,
+            retrieved=[],
+            model="test-model",
+            now=datetime(2026, 8, 13, tzinfo=UTC),
+        )
+        db.commit()
+        return diagnosis_id
+
+    def test_the_series_comes_back_day_by_day(self, client, db, owner, seeded):
+        diagnosis_id = self._stored(db, owner, seeded)
+
+        weather = client.get(f"/api/v1/diagnoses/{diagnosis_id}").json()["diagnosis"]["weather"]
+
+        assert weather is not None
+        assert [day["on"] for day in weather["days"]] == [
+            "2026-08-10",
+            "2026-08-11",
+            "2026-08-12",
+        ]
+        assert weather["frost_days"] == 3
+
+    def test_a_diagnosis_with_no_recorded_weather_says_null(self, client, seeded):
+        """Not an empty window. An empty window would say the weather was looked up and
+        found to be nothing at all — which is a different thing from an indoor plant, a
+        failed lookup, or a diagnosis made before any of this was kept."""
+        body = client.get(f"/api/v1/diagnoses/{seeded['diagnosis_id']}").json()
+
+        assert body["diagnosis"]["weather"] is None
+
+
+def _a_differential(db, owner, seeded):
+    """The differential already on the seeded diagnosis, reused rather than rebuilt."""
+    from data.repositories.diagnoses import DiagnosisRepository
+
+    record = DiagnosisRepository(db).get(owner, seeded["diagnosis_id"])
+    assert record is not None
+    return record.differential
