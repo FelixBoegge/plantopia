@@ -1,7 +1,16 @@
 # species-care Specification
 
 ## Purpose
-TBD - created by archiving change add-species-care-profiles. Update Purpose after archive.
+What is known about a species baseline care needs, where that knowledge may come from, and
+which source wins when several have an answer. This is what grounds "is this normal for this
+plant?" — a fern dropping fronds in dry air is a different situation from a succulent doing
+the same thing, and without a baseline the differential reasons about a generic plant.
+
+A hand-written set cannot cover the long tail an identification service can name, so the
+knowledge behind this is partly researched rather than curated. That makes honesty the
+capability defining constraint: a guess in the shape of an answer must say which it is, and
+must be refused outright when the material it would be built from describes a different
+plant.
 
 ## Requirements
 
