@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
+# The days ahead. A different host from the archive and the same `daily` shape — verified
+# against the live service on 2026-08-31, which is why one parser serves both.
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+
+# A week. Long enough to matter to a treatment plan whose steps carry a day offset, short
+# enough that the far end is still worth reading.
+FORECAST_DAYS = 7
+
 FROST_THRESHOLD_C = 0.0
 HEAT_THRESHOLD_C = 32.0
 _TIMEOUT = httpx.Timeout(10.0)
@@ -56,7 +64,15 @@ def get_local_weather(
         coordinates = _geocode(client, location)
         if coordinates is None:
             return None
-        return _fetch_archive(client, *coordinates, days_back=days_back, as_of=as_of)
+
+        summary = _fetch_archive(client, *coordinates, days_back=days_back, as_of=as_of)
+        if summary is None:
+            return None
+
+        # **A second request, and a separately survivable failure.** History without a
+        # forecast is a worse plan; a forecast failure that lost the history would be a
+        # worse diagnosis, which is not a trade worth making for it.
+        return summary.model_copy(update={"forecast": _fetch_forecast(client, *coordinates)})
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         logger.warning("weather lookup failed for %r", location, exc_info=True)
         return None
@@ -145,6 +161,36 @@ def _days_from(daily: dict) -> list[WeatherDay]:
             continue
 
     return days
+
+
+def _fetch_forecast(client: httpx.Client, latitude: float, longitude: float) -> list[WeatherDay]:
+    """The coming week, from today.
+
+    **Anchored on now, not on the photograph.** These are two different questions: what
+    happened to the plant is asked about the days up to the picture, and what to do about it
+    is asked about the days that are actually next. Using one anchor for both is wrong in one
+    direction or the other.
+
+    Returns nothing on any failure. The history is already in hand by this point and is worth
+    more than the forecast; losing it to a second request that failed would be the wrong
+    trade.
+    """
+    try:
+        response = client.get(
+            FORECAST_URL,
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "daily": "temperature_2m_min,temperature_2m_max,precipitation_sum",
+                "forecast_days": FORECAST_DAYS,
+                "timezone": "UTC",
+            },
+        )
+        response.raise_for_status()
+        return _days_from(response.json().get("daily") or {})
+    except Exception as exc:  # noqa: BLE001 - a forecast is never worth the diagnosis
+        logger.warning("could not fetch the forecast: %s", exc)
+        return []
 
 
 def _at(values: list, index: int):

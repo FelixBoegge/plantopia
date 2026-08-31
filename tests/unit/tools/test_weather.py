@@ -250,3 +250,116 @@ class TestTheDaysThemselves:
         get_local_weather("Berlin")
 
         assert archive.call_count == 1
+
+
+class TestTheDaysAhead:
+    """The forecast, built from a response recorded from the live service on 2026-08-31.
+
+    A fixture written from documentation tests the documentation. What the recording
+    established, and what these rest on: the forecast endpoint answers with exactly the
+    `daily` shape the archive does — same field names, same parallel arrays — which is why
+    one parser serves both and why adding this cost no new parsing code.
+    """
+
+    @staticmethod
+    def recorded() -> dict:
+        import json
+        import pathlib
+
+        return json.loads(
+            pathlib.Path("tests/fixtures/open_meteo_forecast.json").read_text(encoding="utf-8")
+        )
+
+    @respx.mock
+    def test_the_week_ahead_comes_back(self):
+        from tools.weather import FORECAST_URL
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        respx.get(FORECAST_URL).mock(return_value=httpx.Response(200, json=self.recorded()))
+
+        summary = get_local_weather("Berlin")
+
+        assert len(summary.forecast) == 7
+        assert summary.forecast[0].on.isoformat() == "2026-08-31"
+
+    @respx.mock
+    def test_a_forecast_day_carries_its_figures(self):
+        from tools.weather import FORECAST_URL
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        respx.get(FORECAST_URL).mock(return_value=httpx.Response(200, json=self.recorded()))
+
+        summary = get_local_weather("Berlin")
+
+        first = summary.forecast[0]
+        assert first.min_temp_c == 15.2
+        assert first.max_temp_c == 21.4
+        assert first.precip_mm == 9.3
+
+    @respx.mock
+    def test_it_is_anchored_on_today_not_on_the_photograph(self):
+        """Two questions, two anchors. What happened to the plant is asked about the days up
+        to the picture; what to do about it is asked about the days that are actually next.
+        """
+        from datetime import date
+
+        from tools.weather import FORECAST_URL
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        forecast = respx.get(FORECAST_URL).mock(
+            return_value=httpx.Response(200, json=self.recorded())
+        )
+
+        get_local_weather("Berlin", 21, as_of=date(2026, 8, 10))
+
+        # The history moved with the photograph.
+        assert archive.calls[0].request.url.params["end_date"] == "2026-08-09"
+        # The forecast did not: it carries no date at all, only a count from now.
+        assert "start_date" not in forecast.calls[0].request.url.params
+        assert forecast.calls[0].request.url.params["forecast_days"] == "7"
+
+    @respx.mock
+    def test_a_failed_forecast_keeps_the_history(self):
+        """The history is already in hand by then and is worth more. Losing it to a second
+        request that failed would be the wrong trade."""
+        from tools.weather import FORECAST_URL
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        respx.get(FORECAST_URL).mock(return_value=httpx.Response(503))
+
+        summary = get_local_weather("Berlin")
+
+        assert summary is not None
+        assert summary.days, "the history survived"
+        assert summary.forecast == []
+
+    @respx.mock
+    def test_a_forecast_that_times_out_keeps_the_history(self):
+        from tools.weather import FORECAST_URL
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+        respx.get(FORECAST_URL).mock(side_effect=httpx.ReadTimeout("slow"))
+
+        summary = get_local_weather("Berlin")
+
+        assert summary.days
+        assert summary.forecast == []
+
+    @respx.mock
+    def test_no_forecast_is_fetched_when_the_history_failed(self):
+        """Nothing to attach it to, and a request for nothing is still a request."""
+        from tools.weather import FORECAST_URL
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(500))
+        forecast = respx.get(FORECAST_URL).mock(
+            return_value=httpx.Response(200, json=self.recorded())
+        )
+
+        assert get_local_weather("Berlin") is None
+        assert forecast.call_count == 0

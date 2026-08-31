@@ -13,11 +13,11 @@ caught `habit` and the 200-with-an-error-body.
 
 ## 2. The days ahead
 
-- [ ] 2.1 Make one manual call to Open-Meteo's forecast endpoint and save the raw response under `tests/fixtures/`; verify the file exists and covers at least seven days.
-- [ ] 2.2 Reconcile the request against the response — parameter names, the daily fields, how far ahead it reaches; verify by the call in 2.1 succeeding, and record any correction made.
-- [ ] 2.3 Add the forecast fetch, anchored on today rather than on the photograph; verify a test asserts the two windows have different anchors when the photograph is three days old.
-- [ ] 2.4 Build the forecast parsing tests from the recorded response; verify they fail if the fixture is replaced with an empty one.
-- [ ] 2.5 Survive a forecast that fails while the history succeeds; verify a test asserts the diagnosis proceeds with the history alone.
+- [x] 2.1 Make one manual call to Open-Meteo's forecast endpoint and save the raw response under `tests/fixtures/`; verify the file exists and covers at least seven days.
+- [x] 2.2 Reconcile the request against the response — parameter names, the daily fields, how far ahead it reaches; verify by the call in 2.1 succeeding, and record any correction made.
+- [x] 2.3 Add the forecast fetch, anchored on today rather than on the photograph; verify a test asserts the two windows have different anchors when the photograph is three days old.
+- [x] 2.4 Build the forecast parsing tests from the recorded response; verify they fail if the fixture is replaced with an empty one.
+- [x] 2.5 Survive a forecast that fails while the history succeeds; verify a test asserts the diagnosis proceeds with the history alone.
 
 ## 3. Where to look it up
 
