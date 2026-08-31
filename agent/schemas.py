@@ -5,6 +5,7 @@ are deliberately strict: a node test that asserts on structure is only meaningfu
 if the structure is actually enforced here.
 """
 
+from datetime import date
 from enum import IntEnum, StrEnum
 from typing import Literal, Self
 from uuid import UUID
@@ -290,13 +291,42 @@ class CareProfile(BaseModel):
     humidity: str
 
 
+class WeatherDay(BaseModel):
+    """One day of weather where a plant is.
+
+    The date is required and is the whole point. A plant responds to *when*: two frost days
+    in three weeks cannot say whether they were last night or a fortnight ago, and that is
+    the difference between frost damage and something else entirely.
+    """
+
+    on: date
+    min_temp_c: float
+    max_temp_c: float
+    precip_mm: float = Field(ge=0.0)
+
+
 class WeatherSummary(BaseModel):
+    """A window of weather, day by day, with the figures derived from it.
+
+    The aggregates below are kept because callers read them and because they are cheap; they
+    are computed from ``days`` rather than fetched separately, so the two cannot disagree
+    about the same window.
+    """
+
     min_temp_c: float
     max_temp_c: float
     total_precip_mm: float
     frost_days: int = Field(ge=0)
     heat_days: int = Field(ge=0)
     days_covered: int = Field(gt=0)
+
+    # Empty only for a summary built before this existed — a stored one, or a test fixture
+    # that predates it. A fetch always fills it.
+    days: list[WeatherDay] = Field(default_factory=list)
+
+    # What is coming, from today rather than from the photograph. Every diagnosis ends in a
+    # plan, and a plan that does not know a frost is due on Thursday has a hole in it.
+    forecast: list[WeatherDay] = Field(default_factory=list)
 
 
 class Candidate(BaseModel):

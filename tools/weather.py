@@ -12,7 +12,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
-from agent.schemas import WeatherSummary
+from agent.schemas import WeatherDay, WeatherSummary
 
 logger = logging.getLogger(__name__)
 
@@ -107,27 +107,69 @@ def _fetch_archive(
         },
     )
     response.raise_for_status()
-    daily = response.json().get("daily") or {}
+    days = _days_from(response.json().get("daily") or {})
+    return summarise(days)
 
+
+def _days_from(daily: dict) -> list[WeatherDay]:
+    """The service's parallel arrays, as days.
+
+    Open-Meteo answers with one array per measure and one for the dates, all the same
+    length. A day missing any of its figures is **skipped rather than zeroed**: a null
+    minimum recorded as 0 °C is a frost the plant never had, which is worse than a day the
+    window does not mention.
+    """
+    dates = daily.get("time") or []
     minima = daily.get("temperature_2m_min") or []
     maxima = daily.get("temperature_2m_max") or []
     precipitation = daily.get("precipitation_sum") or []
 
-    if not minima or not maxima:
+    days: list[WeatherDay] = []
+    for index, on in enumerate(dates):
+        low = _at(minima, index)
+        high = _at(maxima, index)
+        if low is None or high is None:
+            continue
+        try:
+            days.append(
+                WeatherDay(
+                    on=date.fromisoformat(on),
+                    min_temp_c=low,
+                    max_temp_c=high,
+                    # Precipitation is the one that may legitimately be absent while the
+                    # day is otherwise usable, and zero is its honest reading.
+                    precip_mm=_at(precipitation, index) or 0.0,
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+
+    return days
+
+
+def _at(values: list, index: int):
+    return values[index] if index < len(values) else None
+
+
+def summarise(days: list[WeatherDay]) -> WeatherSummary | None:
+    """The five figures callers already read, derived from the days.
+
+    Derived rather than fetched, so a summary and its series cannot describe different
+    windows. ``None`` for an empty window, which is what the caller already expects when
+    nothing usable came back.
+    """
+    if not days:
         return None
 
-    minima = [v for v in minima if v is not None]
-    maxima = [v for v in maxima if v is not None]
-    precipitation = [v for v in precipitation if v is not None]
-
-    if not minima or not maxima:
-        return None
+    minima = [day.min_temp_c for day in days]
+    maxima = [day.max_temp_c for day in days]
 
     return WeatherSummary(
         min_temp_c=min(minima),
         max_temp_c=max(maxima),
-        total_precip_mm=round(sum(precipitation), 2),
+        total_precip_mm=round(sum(day.precip_mm for day in days), 2),
         frost_days=sum(1 for v in minima if v <= FROST_THRESHOLD_C),
         heat_days=sum(1 for v in maxima if v >= HEAT_THRESHOLD_C),
-        days_covered=len(minima),
+        days_covered=len(days),
+        days=days,
     )

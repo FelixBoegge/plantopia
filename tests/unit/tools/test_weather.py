@@ -146,3 +146,107 @@ class TestTheWindowThisCovers:
         second = archive.calls[1].request.url.params["end_date"]
         assert first == "2026-08-09"
         assert second == "2026-08-12"
+
+
+class TestTheDaysThemselves:
+    """The window kept rather than collapsed.
+
+    The same request already returns these; they were parsed into five numbers and the
+    arrays dropped inside the function. What the five numbers cannot say is *when* — and a
+    frost last night and a frost a fortnight ago are different diagnoses.
+    """
+
+    @respx.mock
+    def test_every_day_comes_back_with_its_date(self):
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        summary = get_local_weather("Berlin")
+
+        assert [day.on.isoformat() for day in summary.days] == [
+            "2026-02-20",
+            "2026-02-21",
+            "2026-02-22",
+            "2026-02-23",
+        ]
+
+    @respx.mock
+    def test_a_day_carries_its_own_figures(self):
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        summary = get_local_weather("Berlin")
+
+        first = summary.days[0]
+        assert (first.min_temp_c, first.max_temp_c, first.precip_mm) == (-2.0, 4.0, 0.0)
+
+    @respx.mock
+    def test_the_summary_is_derived_from_them(self):
+        """Derived rather than fetched, so a summary and its series cannot describe
+        different windows."""
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        summary = get_local_weather("Berlin")
+
+        assert summary.days_covered == len(summary.days)
+        assert summary.min_temp_c == min(day.min_temp_c for day in summary.days)
+        assert summary.max_temp_c == max(day.max_temp_c for day in summary.days)
+
+    @respx.mock
+    def test_a_day_the_service_had_nothing_for_is_skipped(self):
+        """Not recorded as zero. A null minimum read as 0 °C is a frost the plant never
+        had, which is worse than a day the window does not mention."""
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "daily": {
+                        "time": ["2026-02-20", "2026-02-21", "2026-02-22"],
+                        "temperature_2m_min": [5.0, None, 7.0],
+                        "temperature_2m_max": [12.0, None, 14.0],
+                        "precipitation_sum": [0.0, None, 1.0],
+                    }
+                },
+            )
+        )
+
+        summary = get_local_weather("Berlin")
+
+        assert [day.on.isoformat() for day in summary.days] == ["2026-02-20", "2026-02-22"]
+        assert summary.frost_days == 0, "the missing day was not read as 0 °C"
+
+    @respx.mock
+    def test_a_day_missing_only_its_rain_is_kept(self):
+        """Precipitation is the one that can legitimately be absent while the day is
+        otherwise usable, and zero is its honest reading."""
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        respx.get(ARCHIVE_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "daily": {
+                        "time": ["2026-02-20"],
+                        "temperature_2m_min": [5.0],
+                        "temperature_2m_max": [12.0],
+                        "precipitation_sum": [None],
+                    }
+                },
+            )
+        )
+
+        summary = get_local_weather("Berlin")
+
+        assert len(summary.days) == 1
+        assert summary.days[0].precip_mm == 0.0
+
+    @respx.mock
+    def test_the_archive_is_asked_once(self):
+        """Keeping the days costs nothing at the network — it is the same response."""
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        get_local_weather("Berlin")
+
+        assert archive.call_count == 1

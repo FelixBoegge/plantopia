@@ -61,10 +61,25 @@ are not the same anchor and using one for both would be wrong in one direction o
 a plant photographed a week ago did not stand in this week's weather, and advice about what
 to do next is about the days that are actually next.
 
-That means a run on an old photograph gets a gap between the two — the days between the
-photograph and now, which are neither what the plant was standing in nor what it is about to
-face. Those days are fetched as part of the archive window where they fall inside it, and
-otherwise simply absent. Naming the gap in the prompt would cost more than it explains.
+That leaves a gap between the two — the days between the photograph and now, which are
+neither what the plant was standing in nor what it is about to face. **The gap is not an
+awkwardness to gloss over; it is the most important thing a stale photograph has to say.**
+
+A plant changes. A photograph three weeks old shows a plant that no longer exists, and a
+diagnosis of it is a diagnosis of the past presented as advice about the present — confident,
+detailed, and about something that has since got better or considerably worse. The weather in
+the gap is exactly what could have changed it.
+
+So beyond a threshold — seven days by default, configurable — the age is said out loud in two
+places. The pause, where somebody can still stop and photograph the plant again before paying
+for a diagnosis. And the diagnosis prompt, where the agent is told the photograph's age and
+instructed to say so and to suggest a fresher one, rather than reasoning about a fortnight-old
+plant as though it were standing there.
+
+Seven days because that is roughly the period over which the disorders in this corpus become
+visibly different — a week of overwatering shows, a week of nitrogen deficiency shows — and
+because it is a period a person can hold in their head. It is configuration rather than a
+constant so that a deployment with a slower corpus can move it.
 
 ### The position wins where it was accepted, the name where it was changed
 
@@ -117,6 +132,12 @@ function name and the person reading it did not write it.
   a few hundred bytes per observation. Bounded by the window, which is configuration.
 - **Two anchors are harder to explain than one** → they are, and the alternative is a wrong
   answer in one direction. The prompt block labels both.
+- **Telling somebody their photograph is too old is telling them their upload was wrong** →
+  which it partly was, and saying nothing is worse: they would get a confident diagnosis of a
+  plant that no longer looks like that. It is said as what it is — the answer will be less
+  reliable — rather than as a refusal, and the run continues either way. Refusing a stale
+  photograph outright would be worse still: somebody whose plant died last week and who has
+  only that photograph is exactly who needs an answer.
 
 ## Migration Plan
 
