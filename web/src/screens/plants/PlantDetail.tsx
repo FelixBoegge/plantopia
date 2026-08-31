@@ -10,12 +10,16 @@ import { Photo } from "@/components/Photo";
 import { Severity } from "@/components/Severity";
 import { Button } from "@/components/ui/button";
 import { Chat } from "@/screens/chat/Chat";
+import { useTranscript } from "@/api/hooks/useChat";
 import { Roadmap } from "@/screens/plants/Roadmap";
+import { Timeline } from "@/screens/plants/Timeline";
 
 /** One plant: what it is, what has been found, what to do, and what was said about it. */
 export function PlantDetail() {
   const { plantId = "" } = useParams();
   const { data, isPending, error } = usePlant(plantId);
+  // The same query <Chat> makes, so TanStack Query serves both from one request.
+  const { data: transcript } = useTranscript(plantId);
 
   if (isPending) return <p role="status">Loading…</p>;
   if (error)
@@ -26,7 +30,7 @@ export function PlantDetail() {
     );
   if (!data) return null;
 
-  const { plant, diagnoses, roadmap_steps } = data;
+  const { plant, observations, diagnoses, roadmap_steps } = data;
   const latest = diagnoses[0];
 
   return (
@@ -69,6 +73,19 @@ export function PlantDetail() {
           Start a check and Plantopia will tell you what it finds.
         </Notice>
       )}
+
+      {/*
+        After the current verdict, before the plan that follows from it — the order the page
+        already reads in. `transcript` is a second request that <Chat> below makes anyway,
+        so this costs no extra call; the timeline renders without it and gains escalation
+        events when it arrives.
+      */}
+      <Timeline
+        observations={observations}
+        diagnoses={diagnoses}
+        steps={roadmap_steps}
+        messages={transcript}
+      />
 
       <Roadmap plantId={plant.id} steps={roadmap_steps} />
 

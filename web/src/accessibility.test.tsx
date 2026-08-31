@@ -47,7 +47,36 @@ const DETAIL = {
     photo_ref: null,
     created_at: "2026-03-01T12:00:00Z",
   },
-  observations: [],
+  // Carrying a weather series deliberately. An empty list would render an empty timeline,
+  // and axe would pass over a plant page without ever seeing the chart, the table beside it
+  // or a single timeline event — which is the shape of pass that says nothing.
+  observations: [
+    {
+      id: "01a0-observation",
+      plant_id: PLANT,
+      kind: "initial" as const,
+      photo_refs: [],
+      user_notes: null,
+      created_at: "2026-08-20T09:00:00Z",
+      captured_at: "2026-08-19T10:50:00Z",
+      latitude: null,
+      longitude: null,
+      weather: {
+        min_temp_c: -2,
+        max_temp_c: 21,
+        total_precip_mm: 5,
+        frost_days: 1,
+        heat_days: 0,
+        days_covered: 3,
+        days: [
+          { on: "2026-08-17", min_temp_c: -2, max_temp_c: 12, precip_mm: 0 },
+          { on: "2026-08-18", min_temp_c: 9, max_temp_c: 19, precip_mm: 0 },
+          { on: "2026-08-19", min_temp_c: 11, max_temp_c: 21, precip_mm: 5 },
+        ],
+        forecast: [],
+      },
+    },
+  ],
   diagnoses: [
     {
       id: "01a0-diagnosis",

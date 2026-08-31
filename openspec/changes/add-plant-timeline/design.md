@@ -89,9 +89,17 @@ Each event carries one instant. For an observation that is its capture date wher
 and its upload otherwise — the same fallback the wizard's date field already uses, and the same
 reasoning: the two differ for anybody who does not upload immediately.
 
-Diagnoses and roadmap steps have no equivalent ambiguity; a diagnosis happened when it was
-made. A step is placed by its completion where it has one and by its due date otherwise, so a
-plan that has not been carried out reads as pending future work rather than as history.
+Diagnoses have no equivalent ambiguity; a diagnosis happened when it was made.
+
+**Amended during implementation.** This originally placed a *pending* step at its due date, so
+that a plan not yet carried out read as work ahead. Building it showed the obvious problem the
+moment both were on screen: every pending step appeared twice on the plant page, once here and
+once in `<Roadmap>` — and only the Roadmap copy could be ticked. A component test caught it as
+a duplicate-text failure, which is a better messenger than a person noticing later.
+
+So only a **settled** step reaches the timeline: done or skipped. Skipping counts, because it
+is a decision somebody made at a moment. Pending steps live in `<Roadmap>`, which is the
+actionable surface; this one is history.
 
 ### The weather chart is hand-drawn SVG
 

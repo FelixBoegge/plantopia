@@ -68,6 +68,22 @@ class ObservationOut(BaseModel):
     user_notes: str | None
     created_at: datetime
 
+    # When the photographs were taken, as distinct from `created_at`, which is when they
+    # were uploaded. A history ordered by upload puts events in an order the plant never
+    # experienced, so this is what a timeline dates an observation by.
+    captured_at: datetime | None = None
+
+    # Where, to about eleven kilometres. Exposed for completeness with the capture date and
+    # **deliberately not drawn anywhere**: a coarse pair of coordinates is not something to
+    # show somebody who already told you where their plant is. It is here because leaving
+    # one of three sibling fields behind is how the next person discovers it missing.
+    latitude: float | None = None
+    longitude: float | None = None
+
+    # The weather recorded against this observation. Reachable until now only through a
+    # diagnosis made from it, which fails for a re-check whose run was cancelled.
+    weather: WeatherSummary | None = None
+
 
 class RoadmapStepOut(BaseModel):
     id: UUID

@@ -71,7 +71,27 @@ export interface Observation {
   kind: "initial" | "recheck";
   photo_refs: string[];
   user_notes: string | null;
+  /** When the photographs were uploaded. */
   created_at: string;
+  /**
+   * When the photographs were *taken*, where the camera recorded it.
+   *
+   * Different from `created_at` for anybody who did not upload immediately, and this is
+   * what the timeline dates an observation by — a history ordered by upload puts events in
+   * an order the plant never experienced. `null` where no photograph declared one.
+   */
+  captured_at: string | null;
+  /**
+   * Where the photographs were taken, to about eleven kilometres.
+   *
+   * Deliberately not rendered anywhere: a coarse pair of coordinates is not something to
+   * show somebody who already told you where their plant is. Present so that the three
+   * fields a photograph carries stay together.
+   */
+  latitude: number | null;
+  longitude: number | null;
+  /** The weather recorded against this observation, or `null` where none was. */
+  weather: WeatherSummary | null;
 }
 
 export interface PlantDetail {

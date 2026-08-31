@@ -8,6 +8,7 @@ import { VerifyEmail } from "@/screens/auth/VerifyEmail";
 import { Account } from "@/screens/Account";
 import { Evaluation } from "@/screens/Evaluation";
 import { SignedIn } from "@/screens/SignedIn";
+import { DiagnosisPage } from "@/screens/plants/DiagnosisPage";
 import { PlantDetail } from "@/screens/plants/PlantDetail";
 import { Plants } from "@/screens/plants/Plants";
 import { Wizard } from "@/screens/wizard/Wizard";
@@ -32,6 +33,13 @@ export function AppRoutes() {
           <Route path="/" element={<Plants />} />
           <Route path="/plants/:plantId" element={<PlantDetail />} />
           <Route path="/plants/:plantId/diagnose" element={<Wizard />} />
+          {/*
+            Linked to from the plant page since the React frontend landed, and never
+            served — it fell through to the catch-all below and redirected to the plants
+            list. Found by the first test that clicked the link rather than checking its
+            href.
+          */}
+          <Route path="/diagnoses/:diagnosisId" element={<DiagnosisPage />} />
           <Route path="/diagnose" element={<Wizard />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin/evaluation" element={<Evaluation />} />

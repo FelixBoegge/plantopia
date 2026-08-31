@@ -31,6 +31,19 @@ class ObservationRecord:
     user_notes: str | None
     created_at: datetime
 
+    # When the photographs said they were taken, as distinct from `created_at` above, which
+    # is when they were uploaded. They differ for anybody who does not upload immediately,
+    # and a history ordered by upload puts events in an order the plant never experienced.
+    #
+    # `None` means no photograph declared one, which is true of every observation recorded
+    # before the metadata was read and of any upload stripped on the way in.
+    captured_at: datetime | None = None
+
+    # Where, to about eleven kilometres. Carried for completeness with the capture date
+    # rather than because anything draws it — see `api/schemas.py:ObservationOut`.
+    latitude: float | None = None
+    longitude: float | None = None
+
     # The weather this observation was made against, or `None` where none was recorded.
     #
     # `None` and an empty window are deliberately different. `None` is "nothing was looked
@@ -47,6 +60,9 @@ def _to_record(row: Observation) -> ObservationRecord:
         photo_refs=json.loads(row.photo_refs),
         user_notes=row.user_notes,
         created_at=row.created_at,
+        captured_at=row.captured_at,
+        latitude=row.latitude,
+        longitude=row.longitude,
         weather=(
             WeatherSummary.model_validate_json(row.weather_json) if row.weather_json else None
         ),

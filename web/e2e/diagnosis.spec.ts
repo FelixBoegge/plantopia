@@ -154,3 +154,75 @@ test("carries a typed species through to the choice", async ({ page }) => {
   await expect(page.getByRole("radio").first()).toBeChecked();
   await expect(page.getByText("Read from your photo")).toBeVisible();
 });
+
+test("a plant's history reads as one sequence", async ({ page }) => {
+  // Everything the timeline shows was already stored and already fetched by this page; what
+  // is worth driving a browser through is that it arrives in one order and that a diagnosis
+  // is reachable from the event that produced it.
+  await signUp(page, "history");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("button", { name: "Start the check" }).click();
+
+  await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
+  await page.getByLabel(/How often do you water/).fill("Every other day");
+  await page.getByRole("button", { name: "Carry on" }).click();
+  await page
+    .getByRole("heading", { name: "What this looks like" })
+    .waitFor({ timeout: 60_000 });
+
+  await page.getByRole("link", { name: "Plantopia" }).click();
+  await page.getByText("Basil").first().click();
+
+  const history = page.getByRole("region", { name: "What has happened" });
+  await expect(history).toBeVisible();
+
+  // The photograph carries a real capture date, so the observation is dated by when it was
+  // taken rather than by when it was uploaded — and says nothing about uploads.
+  //
+  // Asserted on the machine-readable attribute rather than the rendered text: the date is
+  // formatted in the viewer's locale, so the visible string is "August 10, 2026" in this
+  // browser and "10 August 2026" under the component tests. A test that pinned one of those
+  // would be pinning where it happened to run.
+  await expect(history.locator('time[datetime^="2026-08-10"]')).toBeVisible();
+  await expect(history.getByText(/date the photograph was uploaded/)).toHaveCount(0);
+
+  // The diagnosis is on the timeline and reachable from it. Named differently from the
+  // current-verdict link above so the two are not two identical links to one page.
+  await expect(history.getByRole("link", { name: "See this diagnosis" })).toBeVisible();
+  await history.getByRole("link", { name: "See this diagnosis" }).click();
+  await expect(page.getByRole("heading", { name: "What this looks like" })).toBeVisible();
+});
+
+test("an outdoor plant's weather is readable without seeing the chart", async ({ page }) => {
+  // The chart is decorative by construction; the table beside it is what carries the values.
+  // A browser is where that distinction is worth checking, because it is the one place the
+  // real DOM and the real styles are both present.
+  await signUp(page, "history-weather");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("radio", { name: "Outdoors" }).check();
+  await page.getByRole("button", { name: "Start the check" }).click();
+
+  await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
+  await page.getByLabel(/How often do you water/).fill("Every other day");
+  await page.getByLabel(/Which town or city/).fill("Berlin");
+  await page.getByRole("button", { name: "Carry on" }).click();
+  await page
+    .getByRole("heading", { name: "What this looks like" })
+    .waitFor({ timeout: 60_000 });
+
+  await page.getByRole("link", { name: "Plantopia" }).click();
+  await page.getByText("Basil").first().click();
+
+  const history = page.getByRole("region", { name: "What has happened" });
+  const table = history.getByRole("table");
+  await expect(table).toBeAttached();
+
+  // The scripted weather puts a frost on a known date. Read out of the table rather than
+  // off the chart, which is exactly the point.
+  await expect(table).toContainText("-2 °C");
+  await expect(history.getByText(/frost on/)).toBeVisible();
+});

@@ -257,6 +257,38 @@ somebody whose plant died last week and who has only last week's photograph is e
 needs an answer. The age is judged by the date left in the field, not the one the camera
 recorded, so correcting a wrong camera clock corrects the verdict.
 
+### A plant's history, in one sequence
+
+Each diagnosis is a verdict on one moment. The question you actually have after the second or
+third is the one no single verdict answers: **is this getting better?**
+
+The plant page carries a timeline for that — observations, diagnoses and treatment steps in
+one order, newest first, with the weather drawn underneath where it was recorded:
+
+- **What you saw** — each observation with its photographs, dated by when the photograph was
+  *taken* rather than when it was uploaded. Those differ for anybody who does not upload
+  immediately, and a history ordered by upload puts events in an order the plant never
+  experienced. Where a photograph carried no capture date, the timeline says it is showing
+  the upload date rather than quietly presenting one as the other.
+- **What it was judged to be** — each diagnosis and its leading candidate, with the full
+  differential one click away.
+- **What you did** — treatment steps that were completed or skipped. Steps you have not done
+  yet stay in the plan below, which is where you tick them; showing the same item in both
+  places, where only one of them can be acted on, would be worse than showing it once.
+- **What the agent flagged** — when a conversation described symptoms different enough to
+  warrant a fresh look, that is an event in the plant's history, with the reason it gave.
+- **What the weather was doing** — the recorded daily series for that observation, as a small
+  chart with a sentence naming the range and the notable days.
+
+The chart is drawn by hand rather than by a charting library, and it is **not** the content:
+the same series is also a table, present and read by a screen reader, because colour is never
+the only carrier of meaning here. If the drawing fails you still have the numbers.
+
+Nothing is invented. An observation from before capture dates and weather were recorded shows
+what it has and says nothing about what it does not — no zero temperature, no epoch date. The
+seven-day forecast stored alongside each series is deliberately not drawn: it was the week
+ahead of the run, which is the past by the time anybody reads a history.
+
 ### What "this plant wants" is based on
 
 A diagnosis needs a baseline to answer "is this normal for this plant?" — a fern dropping

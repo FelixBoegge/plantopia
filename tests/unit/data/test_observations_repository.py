@@ -245,3 +245,95 @@ class TestTheWeatherAnObservationWasMadeAgainst:
         )
 
         assert db.get(Observation, observation_id).weather_json is None
+
+
+class TestWhatAnObservationKnowsAboutItself:
+    """The capture date and the position reached the row two changes ago and stopped there.
+
+    Nothing read them, so nothing noticed. A timeline's spine is observations, which is what
+    makes the gap matter: an event dated by its upload is an event in an order the plant
+    never experienced.
+    """
+
+    def test_all_three_round_trip(self, db, owner, now, plant_id):
+        from datetime import UTC, datetime
+
+        taken = datetime(2026, 8, 10, 10, 50, 49, tzinfo=UTC)
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+            captured_at=taken,
+            latitude=50.1,
+            longitude=8.7,
+        )
+
+        read = ObservationRepository(db).get(owner, observation_id)
+
+        assert read is not None
+        assert read.captured_at == taken
+        assert (read.latitude, read.longitude) == (50.1, 8.7)
+
+    def test_an_observation_that_knows_none_of_it(self, db, owner, now, plant_id):
+        """Absent, not defaulted. Every observation recorded before those columns existed is
+        in exactly this position, and an epoch date would be a lie the timeline would draw."""
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+        )
+
+        read = ObservationRepository(db).get(owner, observation_id)
+
+        assert read is not None
+        assert read.captured_at is None
+        assert read.latitude is None
+        assert read.longitude is None
+        assert read.weather is None
+
+    def test_the_upload_and_the_capture_stay_different_facts(self, db, owner, now, plant_id):
+        from datetime import UTC, datetime
+
+        taken = datetime(2026, 8, 10, tzinfo=UTC)
+        observation_id = ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+            captured_at=taken,
+        )
+
+        read = ObservationRepository(db).get(owner, observation_id)
+
+        assert read is not None
+        assert read.captured_at != read.created_at
+
+    def test_they_survive_the_listing_too(self, db, owner, now, plant_id):
+        """`list_for_plant` is what a plant page calls; `get` is not."""
+        from datetime import UTC, datetime
+
+        taken = datetime(2026, 8, 10, tzinfo=UTC)
+        ObservationRepository(db).create(
+            owner,
+            plant_id=plant_id,
+            kind="initial",
+            photo_refs=["img-1"],
+            user_notes=None,
+            now=now(),
+            captured_at=taken,
+            latitude=50.1,
+            longitude=8.7,
+        )
+
+        listed = ObservationRepository(db).list_for_plant(owner, plant_id)
+
+        assert listed[-1].captured_at == taken
+        assert listed[-1].latitude == 50.1

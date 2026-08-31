@@ -88,9 +88,14 @@ function withPlants(summaries: unknown[]) {
   server.use(http.get("/api/v1/plants", () => HttpResponse.json(summaries)));
 }
 
-function withPlant(detail: Record<string, unknown>) {
+function withPlant(detail: Record<string, unknown>, messages: unknown[] = []) {
   server.use(
     http.get(`/api/v1/plants/${BASIL.id}`, () => HttpResponse.json(detail)),
+    // The page reads the transcript too — <Chat> always did, and the timeline now reads the
+    // escalations out of it. Declared here rather than defaulted in `server.ts`, which has
+    // no default handlers on purpose: a test that reaches an endpoint it did not declare
+    // should fail loudly rather than pass against a stub nobody remembers writing.
+    http.get(`/api/v1/plants/${BASIL.id}/messages`, () => HttpResponse.json(messages)),
   );
 }
 

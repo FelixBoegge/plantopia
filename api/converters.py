@@ -80,6 +80,14 @@ def observation(record: ObservationRecord) -> ObservationOut:
         photo_refs=list(record.photo_refs),
         user_notes=record.user_notes,
         created_at=record.created_at,
+        # What the observation knows about itself. All four were on the record or the row
+        # and none of them were readable: the weather was dropped here, and the capture date
+        # and position stopped one layer earlier. A timeline's spine is observations, so
+        # this is where they have to arrive.
+        captured_at=record.captured_at,
+        latitude=record.latitude,
+        longitude=record.longitude,
+        weather=record.weather,
     )
 
 
