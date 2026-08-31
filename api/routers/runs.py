@@ -26,9 +26,9 @@ def start_run(
     service: RunServiceDep,
     blobs: BlobStoreDep,
     settings: SettingsDep,
-    plant_name: Annotated[str, Form()],
     location_kind: Annotated[str, Form()],
     photographs: Annotated[list[UploadFile], File()],
+    plant_name: Annotated[str | None, Form()] = None,
     location_text: Annotated[str | None, Form()] = None,
     user_notes: Annotated[str | None, Form()] = None,
     stated_species: Annotated[str | None, Form()] = None,
@@ -58,7 +58,10 @@ def start_run(
     run = service.start(
         StartRequest(
             images=images,
-            plant_name=plant_name,
+            # Optional. Nobody is asked to name a plant they came here to identify —
+            # `persist` names it from the species, and it can be changed on the plant's own
+            # page once there is one to look at.
+            plant_name=(plant_name or "").strip() or None,
             location_kind=location_kind,
             location_text=location_text,
             user_notes=user_notes,

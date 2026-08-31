@@ -36,6 +36,27 @@ def _usage_from(config: RunnableConfig | None) -> UsageSnapshot | None:
     return collector.snapshot() if collector is not None else None
 
 
+# When nobody named the plant and nothing identified it either. Deliberately plain: it
+# appears in a list of somebody's plants, where "Unknown" reads as an error and this reads
+# as a fact.
+UNNAMED = "Unidentified plant"
+
+
+def _display_name(state: DiagnosisState) -> str:
+    """What this plant is called in somebody's list.
+
+    What they typed, then what it turned out to be, then a placeholder. The wizard does not
+    ask for a name — requiring one would mean naming a plant before finding out what it is,
+    which is the wrong way round for somebody who came here to ask. It can be changed on the
+    plant's own page afterwards, by which point they know what it is.
+    """
+    if state.plant_name and state.plant_name.strip():
+        return state.plant_name.strip()
+    if state.species and state.species.common_name:
+        return state.species.common_name
+    return UNNAMED
+
+
 def make_persist(deps: Deps) -> NodeFn:
     """Write the plant, observation, diagnosis and roadmap steps atomically."""
 
@@ -52,7 +73,7 @@ def make_persist(deps: Deps) -> NodeFn:
             if plant_id is None:
                 plant_id = deps.plants.create(
                     deps.user_id,
-                    name=state.plant_name,
+                    name=_display_name(state),
                     species=state.species_name,
                     species_confidence=state.species_confidence,
                     location_kind=state.location_kind,

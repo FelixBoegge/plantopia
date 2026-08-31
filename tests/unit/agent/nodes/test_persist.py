@@ -297,3 +297,47 @@ def test_persist_writes_null_usage_without_a_collector(owner, make_deps, sample_
     record = DiagnosisRepository(db).get(owner, result["diagnosis_id"])
     assert record.token_usage is None
     assert record.cost_usd is None
+
+
+class TestWhatThePlantEndsUpCalled:
+    """Nobody is asked to name a plant they came here to have identified.
+
+    The wizard used to require a name before the run started, which is the wrong way round:
+    somebody arriving with a sick plant and no idea what it is had to invent something for a
+    field, and "plant" is what they invented. It can be changed on the plant's own page
+    afterwards, by which point they know what it is.
+    """
+
+    def test_what_the_owner_called_it_wins(self, make_deps, sample_images, db):
+        deps = make_deps()
+
+        make_persist(deps)(_state(sample_images, plant_name="Kitchen basil"), {})
+
+        assert db.scalar(select(Plant.name)) == "Kitchen basil"
+
+    def test_it_falls_back_to_what_the_plant_turned_out_to_be(self, make_deps, sample_images, db):
+        deps = make_deps()
+
+        make_persist(deps)(_state(sample_images, plant_name=None), {})
+
+        assert db.scalar(select(Plant.name)) == "Basil"
+
+    def test_a_blank_name_is_no_name(self, make_deps, sample_images, db):
+        """A form sends an empty string for a field somebody left alone, and a plant called
+        "" is a blank row in somebody's list."""
+        deps = make_deps()
+
+        make_persist(deps)(_state(sample_images, plant_name="   "), {})
+
+        assert db.scalar(select(Plant.name)) == "Basil"
+
+    def test_neither_named_nor_identified(self, make_deps, sample_images, db):
+        """Deliberately plain: it appears in a list of somebody's plants, where "Unknown"
+        reads as an error and this reads as a fact."""
+        from agent.nodes.persist import UNNAMED
+
+        deps = make_deps()
+
+        make_persist(deps)(_state(sample_images, plant_name=None, species=None), {})
+
+        assert db.scalar(select(Plant.name)) == UNNAMED

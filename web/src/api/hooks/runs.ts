@@ -23,7 +23,8 @@ export function useDiagnosis(diagnosisId: string | null) {
 
 export interface StartRun {
   photographs: File[];
-  plantName: string;
+  /** What the owner calls it. Absent for a fresh diagnosis; the run names it. */
+  plantName?: string;
   locationKind: "indoor" | "outdoor";
   /** What the owner says the plant is, if they know. Never required. */
   statedSpecies?: string;
@@ -37,7 +38,7 @@ export function useStartRun() {
   return useMutation({
     mutationFn: (start: StartRun) => {
       const form = new FormData();
-      form.append("plant_name", start.plantName);
+      if (start.plantName) form.append("plant_name", start.plantName);
       form.append("location_kind", start.locationKind);
       if (start.statedSpecies) form.append("stated_species", start.statedSpecies);
       if (start.locationText) form.append("location_text", start.locationText);

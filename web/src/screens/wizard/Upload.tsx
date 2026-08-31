@@ -33,7 +33,6 @@ export function Upload({
   fixedPlant?: { id: string; name: string };
 }) {
   const [photographs, setPhotographs] = useState<File[]>([]);
-  const [plantName, setPlantName] = useState(fixedPlant?.name ?? "");
   const [locationKind, setLocationKind] = useState<"indoor" | "outdoor">(
     "indoor",
   );
@@ -51,7 +50,10 @@ export function Upload({
         event.preventDefault();
         onStart({
           photographs,
-          plantName,
+          // The plant this re-checks, where there is one. A fresh diagnosis names its
+          // plant from what the identification found — nobody is asked to name a plant
+          // they came here to have identified.
+          plantName: fixedPlant?.name,
           statedSpecies,
           locationKind,
           notes,
@@ -90,15 +92,6 @@ export function Upload({
           </ul>
         ) : null}
       </div>
-
-      <Field
-        label="What is it called?"
-        value={plantName}
-        onChange={(event) => setPlantName(event.target.value)}
-        required
-        readOnly={Boolean(fixedPlant)}
-        hint={fixedPlant ? "Checking this plant again." : undefined}
-      />
 
       <Field
         label="Do you know what it is?"

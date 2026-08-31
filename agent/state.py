@@ -45,7 +45,11 @@ class DiagnosisState(BaseModel):
     # carried anywhere that could write it down.
     latitude: float | None = None
     longitude: float | None = None
-    plant_name: str
+    # What the owner calls this plant, if they said. Optional, and asked nowhere in the
+    # wizard: somebody arriving with a sick plant is being asked to identify it, and
+    # requiring a name first asks them to name a thing they came here to have named.
+    # `persist` falls back to the species.
+    plant_name: str | None = None
 
     # What the owner says the plant is, if they said. A name is not a species: "Kitchen
     # basil" is what somebody calls their plant and "Ocimum basilicum" is what it is, and

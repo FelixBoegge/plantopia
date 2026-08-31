@@ -64,8 +64,8 @@ class StartRequest:
     """What starting a diagnosis needs."""
 
     images: list[ImageRef]
-    plant_name: str
     location_kind: str
+    plant_name: str | None = None
     stated_species: str | None = None
 
     # What the photographs said about themselves. Read on the way in, because the bytes

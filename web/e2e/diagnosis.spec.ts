@@ -22,7 +22,6 @@ test("runs a check through the questions to a differential", async ({ page }) =>
   // changed.
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill("Kitchen basil");
   await page.getByRole("button", { name: "Start the check" }).click();
 
   // More than one step, and each arriving on its own rather than all at the end — which is
@@ -73,7 +72,6 @@ test("shows the finished diagnosis on the plant it created", async ({ page }) =>
   // changed.
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill("Windowsill basil");
   await page.getByRole("button", { name: "Start the check" }).click();
 
   await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
@@ -87,10 +85,12 @@ test("shows the finished diagnosis on the plant it created", async ({ page }) =>
   });
 
   await page.getByRole("link", { name: "Plantopia" }).click();
-  await expect(page.getByText("Windowsill basil")).toBeVisible();
 
-  await page.getByText("Windowsill basil").click();
-  await expect(page.getByRole("heading", { name: "Windowsill basil" })).toBeVisible();
+  // Named by what it turned out to be, because nobody was asked to name it. The scripted
+  // vision model says "Basil"; the chosen candidate is what lands on the card.
+  await expect(page.getByText("Basil").first()).toBeVisible();
+
+  await page.getByText("Basil").first().click();
 
   // The detail screen summarises rather than repeating the differential: what the agent
   // concluded, how urgent it is, and the plan — with the ranking one link away.
@@ -110,7 +110,6 @@ test("asks which plant it is when the methods disagree, and takes the answer", a
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill("Disputed basil");
   await page.getByRole("button", { name: "Start the check" }).click();
 
   await expect(page.getByRole("heading", { name: "Which plant is this?" })).toBeVisible({
@@ -142,7 +141,6 @@ test("carries a typed species through to the choice", async ({ page }) => {
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill("My herb");
   await page.getByLabel("Do you know what it is?").fill("Ocimum tenuiflorum");
   await page.getByRole("button", { name: "Start the check" }).click();
 

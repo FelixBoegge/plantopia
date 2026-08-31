@@ -178,7 +178,7 @@ describe("starting a check", () => {
     ).toBeDisabled();
   });
 
-  it("sends the photographs and what was typed", async () => {
+  it("sends the photographs and where the plant lives", async () => {
     signedIn();
     let sent: FormData | null = null;
     server.use(
@@ -201,16 +201,14 @@ describe("starting a check", () => {
       await screen.findByLabelText("Photographs"),
       new File(["png"], "leaf.png", { type: "image/png" }),
     );
-    await userEvent.type(
-      screen.getByLabelText("What is it called?"),
-      "Kitchen basil",
-    );
     const submit = screen.getByRole("button", { name: "Start the check" });
     expect(submit).toBeEnabled(); // it was disabled until a photograph was chosen
     await userEvent.click(submit);
 
     await waitFor(() => expect(sent).not.toBeNull());
-    expect(sent!.get("plant_name")).toBe("Kitchen basil");
+    // No name is sent: nobody is asked to name a plant they came here to have identified,
+    // and the run names it from what the identification found.
+    expect(sent!.get("plant_name")).toBeNull();
     expect(sent!.get("location_kind")).toBe("indoor");
     expect(sent!.getAll("photographs")).toHaveLength(1);
   });
@@ -240,7 +238,6 @@ describe("starting a check", () => {
       await screen.findByLabelText("Photographs"),
       new File(["not really a png"], "leaf.png", { type: "image/png" }),
     );
-    await userEvent.type(screen.getByLabelText("What is it called?"), "Basil");
     await userEvent.click(
       screen.getByRole("button", { name: "Start the check" }),
     );
@@ -277,7 +274,6 @@ describe("starting a check", () => {
       await screen.findByLabelText("Photographs"),
       new File(["png"], "leaf.png", { type: "image/png" }),
     );
-    await userEvent.type(screen.getByLabelText("What is it called?"), "Basil");
     await userEvent.click(
       screen.getByRole("button", { name: "Start the check" }),
     );
@@ -742,7 +738,6 @@ describe("coming back to a run", () => {
       await screen.findByLabelText("Photographs"),
       new File(["png"], "leaf.png", { type: "image/png" }),
     );
-    await userEvent.type(screen.getByLabelText("What is it called?"), "Basil");
     await userEvent.click(
       screen.getByRole("button", { name: "Start the check" }),
     );

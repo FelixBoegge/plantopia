@@ -19,7 +19,6 @@ const PHOTOGRAPH = resolve(import.meta.dirname, "../../test_pics/20260810_105048
 async function aPlantWithADiagnosis(page: import("@playwright/test").Page, name: string) {
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill(name);
   await page.getByRole("button", { name: "Start the check" }).click();
 
   await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
@@ -30,8 +29,10 @@ async function aPlantWithADiagnosis(page: import("@playwright/test").Page, name:
     .waitFor({ timeout: 60_000 });
 
   await page.getByRole("link", { name: "Plantopia" }).click();
-  await page.getByText(name).click();
-  await page.getByRole("heading", { name }).waitFor();
+  // Named by the identification rather than by anybody: the scripted vision model says
+  // "Basil", and `name` is now only what this test calls the run.
+  await page.getByText("Basil").first().click();
+  await page.getByRole("heading", { name: "Basil" }).waitFor();
 }
 
 test("announces the lookup before the reply arrives", async ({ page }) => {

@@ -23,7 +23,6 @@ test("finishes a run whose stream was cut, without repeating a step", async ({ p
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill("Cut-off basil");
   await page.getByRole("button", { name: "Start the check" }).click();
 
   await expect(page.getByText("Checking the photographs")).toBeVisible();
@@ -65,7 +64,6 @@ test("recovers a run from a reload in the middle of it", async ({ page }) => {
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill("Reloaded basil");
   await page.getByRole("button", { name: "Start the check" }).click();
 
   await expect(page.getByText("Checking the photographs")).toBeVisible();

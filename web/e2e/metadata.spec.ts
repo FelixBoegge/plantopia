@@ -16,7 +16,6 @@ const PHOTOGRAPH = resolve(import.meta.dirname, "../../test_pics/20260810_105048
 async function startedFrom(page: import("@playwright/test").Page, name: string, outdoors = false) {
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
   await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByLabel("What is it called?").fill(name);
   if (outdoors) await page.getByRole("radio", { name: "Outdoors" }).check();
   await page.getByRole("button", { name: "Start the check" }).click();
 }
@@ -28,8 +27,9 @@ test("nobody is asked where the plant is before the run starts", async ({ page }
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
 
-  await expect(page.getByLabel("What is it called?")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start the check" })).toBeVisible();
   await expect(page.getByLabel(/Roughly where/)).toHaveCount(0);
+  await expect(page.getByLabel(/Which town or city/)).toHaveCount(0);
 });
 
 test("the date the camera recorded is in the field, and can be corrected", async ({ page }) => {

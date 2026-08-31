@@ -2,9 +2,9 @@
 
 ### Requirement: Starting a diagnosis is one deliberate step
 
-The wizard SHALL accept one or more photographs, a name for the plant, whether it lives
-indoors or outdoors, and optionally the species, and SHALL start a run only when a person
-asks it to. It SHALL NOT ask where the plant is before the run starts.
+The wizard SHALL accept one or more photographs, whether the plant lives indoors or
+outdoors, and optionally the species, and SHALL start a run only when a person asks it to.
+It SHALL NOT ask where the plant is, nor what it is called, before the run starts.
 
 A run costs real money and takes a minute and a half. Starting one as a side effect of
 choosing a file is a bill somebody did not agree to.
@@ -19,6 +19,11 @@ somebody to type what the file already says is asking them to do the machine's w
 the photograph does not know, the question is put at the pause the run already makes — one
 interruption rather than two, and by then it is one field among several rather than a
 question standing on its own.
+
+**Nor is the plant's name.** Somebody arriving with a sick plant is asking what it is;
+requiring a name first asks them to name the thing they came here to have named. The plant
+is named from what the identification found, and can be renamed on its own page afterwards —
+by which point they know what it is.
 
 #### Scenario: Starting
 
@@ -52,6 +57,18 @@ question standing on its own.
 - **WHEN** the upload step is shown
 - **THEN** it does not ask where the plant is
 - **AND** a run can be started without anybody saying
+
+#### Scenario: Nobody is asked to name the plant
+
+- **WHEN** the upload step is shown
+- **THEN** it does not ask what the plant is called
+- **AND** a run can be started without anybody saying
+
+#### Scenario: What an unnamed plant ends up called
+
+- **WHEN** a run creates a plant nobody named
+- **THEN** it is called what the identification found
+- **AND** it can be renamed afterwards
 
 ### Requirement: The questions are answered without leaving the run
 
