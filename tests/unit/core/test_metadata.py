@@ -186,3 +186,93 @@ class TestSeveralPhotographsOfOnePlant:
 
     def test_no_photographs(self):
         assert earliest([]) == NOTHING
+
+
+class TestTakingThePositionOutOfTheFile:
+    """The coarsening protects the column. This protects the file.
+
+    Rounding to eleven kilometres before writing `observations.latitude` does nothing about
+    the precise fix still sitting in the uploaded bytes — and those bytes are stored too. A
+    row saying "near Frankfurt" beside a photograph saying "this doorstep" is not a
+    coarsened position; it is a precise one with a coarsened label.
+    """
+
+    def test_a_photograph_that_carried_one_no_longer_does(self):
+        from core.metadata import without_position
+
+        with_position = photograph(
+            captured_at=TAKEN, latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE
+        )
+
+        assert read(without_position(with_position), now=NOW).position is None
+
+    def test_the_picture_itself_is_untouched(self):
+        """Byte for byte, not merely visually. This project promises the model sees what
+        the owner uploaded, and a privacy fix is not a licence to quietly resample it —
+        re-encoding through Pillow passes an eye test and fails this one.
+        """
+        import hashlib
+        from io import BytesIO
+
+        from PIL import Image
+
+        from core.metadata import without_position
+
+        original = photograph(
+            captured_at=TAKEN, latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE
+        )
+
+        def pixels(data: bytes) -> str:
+            with Image.open(BytesIO(data)) as opened:
+                return hashlib.sha256(opened.convert("RGB").tobytes()).hexdigest()
+
+        assert pixels(without_position(original)) == pixels(original)
+
+    def test_a_real_photograph_from_a_phone(self):
+        """The drawn fixtures are written and read by code that agrees with itself. This
+        one came out of a phone, with a real GPS block, and is the backup taken before
+        `test_pics/` was stripped."""
+        import hashlib
+        import pathlib
+        from io import BytesIO
+
+        from PIL import Image
+
+        from core.metadata import without_position
+
+        source = pathlib.Path("tests/fixtures/phone_with_position.jpg")
+        original = source.read_bytes()
+        assert read(original, now=NOW).position is not None, "the fixture lost its position"
+
+        stripped = without_position(original)
+
+        def pixels(data: bytes) -> str:
+            with Image.open(BytesIO(data)) as opened:
+                return hashlib.sha256(opened.convert("RGB").tobytes()).hexdigest()
+
+        assert read(stripped, now=NOW).position is None
+        assert pixels(stripped) == pixels(original)
+
+    def test_a_photograph_that_never_had_one_is_returned_untouched(self):
+        """Most uploads. Messaging apps strip metadata and browser capture rarely has any,
+        so the ordinary photograph keeps its exact original bytes and pays nothing."""
+        from core.metadata import without_position
+
+        plain = photograph(captured_at=TAKEN)
+
+        assert without_position(plain) is plain
+
+    def test_it_refuses_rather_than_storing_a_position_it_cannot_remove(self, monkeypatch):
+        """Every other failure here returns nothing and lets the diagnosis carry on, because
+        the cost is a missing hint. The cost of this one is an address on disk."""
+        import pytest
+
+        from core import metadata
+
+        monkeypatch.setattr(metadata, "_jpeg_without_metadata", lambda data: None)
+        monkeypatch.setattr(metadata, "_resaved_without_metadata", lambda data: None)
+
+        with_position = photograph(latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE)
+
+        with pytest.raises(metadata.PositionCannotBeRemovedError):
+            metadata.without_position(with_position)

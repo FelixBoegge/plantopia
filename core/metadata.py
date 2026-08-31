@@ -108,6 +108,143 @@ def read(data: bytes, *, now: datetime | None = None) -> PhotographMetadata:
     )
 
 
+def carries_a_position(data: bytes) -> bool:
+    """Whether these bytes still declare where they were taken."""
+    return read(data).position is not None
+
+
+def without_position(data: bytes) -> bytes:
+    """The same photograph, with no position left in the file.
+
+    **The coarsening protects the column; this protects the file.** Rounding a position to
+    eleven kilometres before writing it to `observations` does nothing about the precise
+    fix sitting in the uploaded bytes — and those bytes are stored too. A row saying "near
+    Frankfurt" beside a photograph saying "this doorstep" is not a coarsened position, it is
+    a precise one with a coarsened label.
+
+    **Costs nothing when there is nothing to remove**, which is most uploads: messaging apps
+    strip metadata, browser capture rarely has any. Only a photograph that actually carries
+    a position is re-encoded, so the ordinary upload keeps its exact original bytes and the
+    project's standing promise that nothing resamples what the model sees.
+
+    Returns the original bytes when they cannot be decoded at all — `validate_upload` is the
+    gate on what counts as an image, and something unopenable has no metadata to leak.
+    """
+    if not carries_a_position(data):
+        return data
+
+    # Cut the metadata segment out rather than re-encoding around it. Re-saving through
+    # Pillow works and costs something this project has decided not to spend: even at
+    # identical quantisation tables the picture is decoded and re-encoded, and the pixels
+    # that come out are not the pixels that went in. `store_upload` promises the model sees
+    # what the owner uploaded, and a privacy fix is not a licence to quietly resample it.
+    stripped = _jpeg_without_metadata(data)
+
+    if stripped is None:
+        # Not a JPEG, or one this cannot parse. Re-encoding is then the only tool left, and
+        # a slightly resampled photograph is a better outcome than a stored address.
+        stripped = _resaved_without_metadata(data)
+
+    if stripped is None or carries_a_position(stripped):
+        # Nothing worked. Say so loudly: storing the original would be storing somebody's
+        # doorstep, and doing that quietly is the failure this whole function exists to
+        # prevent.
+        logger.error("could not remove the position from an upload; refusing to store it")
+        raise PositionCannotBeRemovedError
+
+    return stripped
+
+
+class PositionCannotBeRemovedError(RuntimeError):
+    """An upload declares a position that could not be taken out of it.
+
+    Raised rather than swallowed. Every other failure in this module returns nothing and
+    lets the diagnosis carry on, because the cost of those is a missing hint. The cost of
+    this one is a precise home address on disk, which is not a degraded feature — it is the
+    thing the coarsening exists to prevent, arriving by another door.
+    """
+
+
+# JPEG markers whose payload is metadata rather than picture. `APP1` carries Exif — which
+# is where a position lives — and XMP, which can carry a copy of it. `APP13` carries IPTC,
+# which has location fields of its own.
+#
+# Deliberately not dropped: `APP2` (ICC colour profiles) and `APP14` (Adobe colour
+# transform). Both change how the picture is interpreted, and removing them to protect a
+# position would alter the photograph to fix its metadata.
+_METADATA_MARKERS = frozenset({0xE1, 0xED})
+
+_STANDALONE_MARKERS = frozenset({0x01, *range(0xD0, 0xD9)})
+
+
+def _jpeg_without_metadata(data: bytes) -> bytes | None:
+    """A JPEG with its metadata segments removed and its picture untouched.
+
+    Returns ``None`` when the bytes are not a JPEG or do not parse as one, so the caller can
+    fall back rather than guessing.
+
+    A JPEG is a sequence of marker segments followed by entropy-coded scan data. Copying
+    every segment except the metadata ones, verbatim, produces a file whose picture is bit
+    for bit what arrived — no decode, no re-encode, nothing to lose.
+    """
+    if not data.startswith(b"\xff\xd8"):
+        return None
+
+    out = bytearray(data[:2])
+    index = 2
+    end = len(data)
+
+    while index + 1 < end:
+        if data[index] != 0xFF:
+            return None  # Not where a marker should be; do not guess.
+
+        marker = data[index + 1]
+
+        if marker == 0xFF:  # Fill byte before the real marker.
+            index += 1
+            continue
+
+        if marker in _STANDALONE_MARKERS:
+            out += data[index : index + 2]
+            index += 2
+            continue
+
+        if marker == 0xDA:  # Start of scan: the picture itself, to the end of the file.
+            out += data[index:]
+            return bytes(out)
+
+        if index + 3 >= end:
+            return None
+
+        length = (data[index + 2] << 8) | data[index + 3]
+        if length < 2 or index + 2 + length > end:
+            return None
+
+        if marker not in _METADATA_MARKERS:
+            out += data[index : index + 2 + length]
+        index += 2 + length
+
+    return bytes(out)
+
+
+def _resaved_without_metadata(data: bytes) -> bytes | None:
+    """The fallback: decode and write it out again, with no metadata attached.
+
+    Loses a little of the picture to re-encoding, which is why it is the fallback rather
+    than the method.
+    """
+    try:
+        with Image.open(BytesIO(data)) as opened:
+            image_format = opened.format
+            opened.load()
+            saved = BytesIO()
+            opened.save(saved, format=image_format, exif=b"")
+            return saved.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not re-save an upload without its metadata: %s", exc)
+        return None
+
+
 def earliest(readings: list[PhotographMetadata]) -> PhotographMetadata:
     """Combine what several photographs of one plant declared.
 

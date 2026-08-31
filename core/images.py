@@ -1,4 +1,4 @@
-"""Upload handling: validate, read what the file declares, normalise, store.
+"""Upload handling: validate, read what the file declares, normalise, strip, store.
 
 **That order is a correctness constraint, not a preference.** ``upright_bytes`` re-saves the
 file to apply its declared orientation, which clears the orientation tag deliberately — so
@@ -22,7 +22,7 @@ from agent.state import ImageRef
 from core.blobs import BlobStore
 from core.config import Settings
 from core.guards import validate_upload
-from core.metadata import PhotographMetadata
+from core.metadata import PhotographMetadata, without_position
 from core.metadata import read as read_metadata
 
 _MEDIA_TYPES: dict[str, str] = {
@@ -109,6 +109,14 @@ def store_upload(
     # After validation, not before: the size limit governs what the owner submits,
     # and normalisation is our own transformation of an upload already accepted.
     data = upright_bytes(data)
+
+    # **And the position comes out of the file before the file is stored.** Coarsening the
+    # number written to `observations` protects the column and does nothing about the
+    # precise fix still sitting in the bytes — which are stored too, and which
+    # `upright_bytes` leaves untouched whenever a photograph needed no turning. A landscape
+    # photograph would otherwise land on disk with somebody's doorstep in it, beside a row
+    # that reads "near Frankfurt".
+    data = without_position(data)
 
     media_type = _MEDIA_TYPES[image_format]
     return StoredPhotograph(

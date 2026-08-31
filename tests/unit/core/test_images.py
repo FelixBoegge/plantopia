@@ -226,3 +226,67 @@ class TestWhatAnUploadDeclared:
 
         with pytest.raises(UploadRejected):
             store_upload(too_big, blobs=store, user_id=blob_owner, settings=settings)
+
+
+class TestWhatIsStoredCarriesNoPosition:
+    """The coarsening protects the column; this protects the file.
+
+    `upright_bytes` re-saves a photograph that needs turning, which incidentally drops its
+    metadata — but it returns an upright one untouched, and every landscape photograph out
+    of a phone is upright. Without this, those would land on disk with somebody's doorstep
+    inside them, beside a row that reads "near Frankfurt".
+    """
+
+    def test_a_stored_photograph_declares_no_position(self, pg_session, blob_owner):
+        from core.metadata import read
+        from tests.fakes.photographs import NOWHERE_LATITUDE, NOWHERE_LONGITUDE, photograph
+
+        store = PostgresBlobStore(pg_session)
+
+        stored = store_upload(
+            photograph(latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE),
+            blobs=store,
+            user_id=blob_owner,
+            settings=_settings(),
+        )
+
+        assert stored.metadata.position is not None, "it was read before it was removed"
+        assert read(store.get(blob_owner, stored.ref.ref)).position is None
+
+    def test_the_upright_case_too(self, pg_session, blob_owner):
+        """The one `upright_bytes` returns unchanged, which is where the hole was."""
+        from core.metadata import read
+        from tests.fakes.photographs import NOWHERE_LATITUDE, NOWHERE_LONGITUDE, photograph
+
+        store = PostgresBlobStore(pg_session)
+
+        stored = store_upload(
+            photograph(latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE, orientation=1),
+            blobs=store,
+            user_id=blob_owner,
+            settings=_settings(),
+        )
+
+        assert read(store.get(blob_owner, stored.ref.ref)).position is None
+
+    def test_a_turned_photograph_is_still_delivered_upright(self, pg_session, blob_owner):
+        """Both steps, in order. Stripping the metadata after the turn has been applied is
+        safe; stripping it before would take the tag that says which way to turn, and every
+        photograph out of a phone would reach the model lying on its side."""
+        from tests.fakes.photographs import NOWHERE_LATITUDE, NOWHERE_LONGITUDE, photograph
+
+        store = PostgresBlobStore(pg_session)
+
+        stored = store_upload(
+            photograph(
+                latitude=NOWHERE_LATITUDE,
+                longitude=NOWHERE_LONGITUDE,
+                orientation=6,
+                size=(24, 16),
+            ),
+            blobs=store,
+            user_id=blob_owner,
+            settings=_settings(),
+        )
+
+        assert _size(store.get(blob_owner, stored.ref.ref)) == (16, 24)

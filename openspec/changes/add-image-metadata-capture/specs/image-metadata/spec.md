@@ -85,6 +85,17 @@ leaking that is never to have it.
 - **WHEN** a recorded position is read
 - **THEN** it is no more precise than the coarsening allows
 
+#### Scenario: The stored photograph itself
+
+- **WHEN** a photograph declaring a position is stored
+- **THEN** the stored copy declares none
+- **AND** its picture is unchanged
+
+#### Scenario: A position that cannot be removed
+
+- **WHEN** a position cannot be taken out of an upload
+- **THEN** the upload is refused rather than stored
+
 ### Requirement: A coarse position is given a name a person recognises
 
 The system SHALL attempt to describe a coarsened position by the name of a nearby place, and
