@@ -166,3 +166,67 @@ def test_situation_with_no_answers_still_states_the_symptoms():
 
     assert "wilting despite moist soil" in situation
     assert "Additional details" not in situation
+
+
+def _case_with(**overrides):
+    """A golden case, varied only where a test cares."""
+    from eval.cases import GoldenCase
+
+    base = {
+        "id": "test-case",
+        "category": "watering",
+        "plant": {"name": "Kitchen basil", "species": "Basil"},
+        "species_confidence": 0.9,
+        "symptoms": {
+            "overall_vigor": "declining",
+            "soil_condition": "wet",
+            "symptoms": [
+                {
+                    "description": "yellowing lower leaves",
+                    "position": "lower_leaves",
+                    "severity": "act_this_week",
+                }
+            ],
+        },
+        "answers": {},
+        "ground_truth": "overwatering",
+    }
+    return GoldenCase.model_validate({**base, **overrides})
+
+
+class TestAnsweringWhatWasAlreadyFilledIn:
+    """The harness answers the way a person does: it leaves a filled field alone.
+
+    Four outdoor golden cases carry `location_text: "Berlin"`, which now reaches the run as
+    the location question's prefill rather than as state the enrich node reads directly.
+    Answering those with the case's fallback would geocode "not observed" and lose the
+    weather for the four cases where weather *is* the diagnosis.
+    """
+
+    def test_a_prefilled_answer_is_kept(self):
+        from agent.schemas import Question
+        from eval.harness import _answers_for
+
+        case = _case_with(answers={})
+        asked = [Question(key="location", text="Where is it?", kind="text", prefill="Berlin")]
+
+        assert _answers_for(case, asked)["location"] == "Berlin"
+
+    def test_the_case_still_wins_over_a_prefill(self):
+        """A golden case that states an answer is stating what this case is about."""
+        from agent.schemas import Question
+        from eval.harness import _answers_for
+
+        case = _case_with(answers={"location": "Reykjavik"})
+        asked = [Question(key="location", text="Where is it?", kind="text", prefill="Berlin")]
+
+        assert _answers_for(case, asked)["location"] == "Reykjavik"
+
+    def test_an_unfilled_question_still_falls_back(self):
+        from agent.schemas import Question
+        from eval.harness import _answers_for
+
+        case = _case_with(answers={})
+        asked = [Question(key="treatments_tried", text="What have you tried?", kind="text")]
+
+        assert _answers_for(case, asked)["treatments_tried"] == case.default_answer

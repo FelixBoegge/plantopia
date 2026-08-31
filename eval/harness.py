@@ -79,9 +79,23 @@ class CaseRun:
 
 
 def _answers_for(case: GoldenCase, questions: list[Question]) -> dict[str, str]:
-    """Answer every question asked, falling back for ones the case did not foresee."""
+    """Answer every question asked, the way a person would.
+
+    What the case says, then **whatever the question already holds**, then the case's
+    fallback. The middle step models the ordinary behaviour of somebody at the pause: a
+    field arrives filled in — a place read from the photograph, the date it was taken — and
+    they leave it alone unless they know better.
+
+    It also stops the harness answering a question worse than nobody would. Four outdoor
+    cases carry `location_text: "Berlin"`, which reaches the run as the location question's
+    prefill; without this the harness would overwrite it with "not observed" and geocode
+    that, losing the weather for the four cases where weather *is* the diagnosis — a heatwave,
+    powdery mildew, rust, magnesium deficiency. The same applies to the capture date, where
+    "not observed" is not a date at all.
+    """
     return {
-        question.key: case.answers.get(question.key, case.default_answer) for question in questions
+        question.key: case.answers.get(question.key, question.prefill or case.default_answer)
+        for question in questions
     }
 
 

@@ -55,9 +55,9 @@ change established as the way to avoid `U2`.
 
 ## 7. Proving it works, and closing
 
-- [ ] 7.1 Run a diagnosis end to end with a photograph carrying a real capture date and position; verify the detected values appear, the observation is dated by the photograph, and no precise position is anywhere in the database.
-- [ ] 7.2 Run the same diagnosis with a photograph carrying nothing; verify the location question is asked empty at the pause and the run cannot continue without it outdoors.
-- [ ] 7.3 Confirm the evaluation harness is unmoved; verify the harness-wiring and independence tests pass and that no golden case reaches this code.
+- [x] 7.1 Run a diagnosis end to end with a photograph carrying a real capture date and position; verify the detected values appear, the observation is dated by the photograph, and no precise position is anywhere in the database.
+- [x] 7.2 Run the same diagnosis with a photograph carrying nothing; verify the location question is asked empty at the pause and the run cannot continue without it outdoors.
+- [x] 7.3 Confirm the evaluation harness is unmoved; verify the harness-wiring and independence tests pass and that no golden case reaches this code.
 - [ ] 7.4 Update the README: what is read, what is discarded, the new settings, and the attribution obligation; verify every command runs as written on a clean clone.
 - [ ] 7.5 Record what this change leaves undone — anything detected that is still unused, and the privacy surface it opens; verify identifiers and dates against the file's conventions.
 - [ ] 7.6 Run `openspec validate add-image-metadata-capture --strict`, the Python suite, the frontend suite, Playwright and ruff; verify all five are clean.
