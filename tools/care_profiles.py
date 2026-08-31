@@ -2,7 +2,14 @@
 
 This grounds the question "is this normal for this plant?". A fern dropping fronds
 in dry air is a different situation from a succulent doing the same thing.
+
+Three tiers, in order: the hand-written table below, then profiles researched for species
+it does not cover, then researching one. The hand-written tier **always wins** — everything
+behind it is a guess a model made from search results, and a guess that can displace a known
+answer turns a reliable lookup into an unreliable one for the cases that used to work.
 """
+
+from collections.abc import Callable
 
 from agent.schemas import CareProfile
 
@@ -81,14 +88,57 @@ _ALIASES: dict[str, str] = {
 
 
 def lookup_plant_care_profile(species: str) -> CareProfile | None:
-    """Return baseline care requirements for a species, or None if unknown.
+    """Return the *hand-written* care requirements for a species, or None if unknown.
 
     Matching is case-insensitive and accepts common or scientific names. An unknown
     species is a normal outcome, not an error — the caller widens the differential
     and lowers confidence instead.
+
+    This is the trusted tier on its own. `make_care_profile_lookup` is what the graph gets;
+    it consults this first and never overrides it.
     """
     key = species.strip().lower()
     if not key:
         return None
     key = _ALIASES.get(key, key)
     return _PROFILES.get(key)
+
+
+def make_care_profile_lookup(
+    *,
+    stored: Callable[[str], CareProfile | None] | None = None,
+    research: Callable[[str], CareProfile | None] | None = None,
+) -> Callable[[str], CareProfile | None]:
+    """The lookup the graph is given: curated, then stored, then researched.
+
+    A factory rather than a function because the tiers behind the first need a database
+    session and a model, and `tools/` holds neither. The port's shape is unchanged — callers
+    still pass a species and get a profile or ``None``.
+
+    Both tiers are optional and default to absent, which yields exactly today's behaviour.
+    That is what lets the stored tier land before anything researches, and what lets the
+    evaluation harness leave the research tier off without a special case.
+
+    Every failure behind the curated tier degrades to ``None``, which is the outcome every
+    caller has always handled: an unknown species widens the differential and lowers
+    confidence rather than failing a run.
+    """
+
+    def lookup(species: str) -> CareProfile | None:
+        curated = lookup_plant_care_profile(species)
+        if curated is not None:
+            return curated
+
+        if not species.strip():
+            return None
+
+        for tier in (stored, research):
+            if tier is None:
+                continue
+            found = tier(species)
+            if found is not None:
+                return found
+
+        return None
+
+    return lookup

@@ -85,7 +85,7 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
     from data.repositories.plants import PlantRepository
     from data.repositories.roadmap import RoadmapRepository
     from eval.scripted import case_models
-    from tools.care_profiles import lookup_plant_care_profile
+    from tools.care_profiles import make_care_profile_lookup
     from tools.weather import get_local_weather
     from tools.web_search import web_search_plant_info
 
@@ -124,7 +124,13 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
         # No place names either. A golden case carries no photograph with a position, so
         # this would be a network call answering a question nothing here asks.
         place_name=lambda _latitude, _longitude: None,
-        care_profile=lookup_plant_care_profile,
+        # The curated tier only — no stored profiles and no research, on the same reasoning
+        # as the two lines above. Research is a web search plus a model call, which is a
+        # network call inside a measurement; and reading the stored cache would make a score
+        # depend on which species other runs happened to have researched first, which is
+        # worse for reproducibility than the network call is. A golden case whose species the
+        # curated set does not cover should score as a miss here, exactly as it did before.
+        care_profile=make_care_profile_lookup(),
         profile_facts=lambda: profile_block,
         now=lambda: datetime.now(tz=UTC),
     )

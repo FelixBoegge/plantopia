@@ -257,6 +257,48 @@ somebody whose plant died last week and who has only last week's photograph is e
 needs an answer. The age is judged by the date left in the field, not the one the camera
 recorded, so correcting a wrong camera clock corrects the verdict.
 
+### What "this plant wants" is based on
+
+A diagnosis needs a baseline to answer "is this normal for this plant?" — a fern dropping
+fronds in dry air is a different situation from a succulent doing the same thing. There are
+18 hand-written profiles, and Pl@ntNet can name upwards of 50,000 species, so sharper
+identification *widened* that gap rather than closing it: a run that identifies *Ocimum
+africanum* precisely and then has no idea what it wants is worse off than one that guessed
+"basil".
+
+So there are three tiers, in order:
+
+1. **Hand-written**, in `tools/care_profiles.py`. Always wins, and is never shadowed.
+2. **Already researched**, from a shared cache keyed by species.
+3. **Researched now** — one web search and one cheap extraction, the first time anybody's
+   plant is identified as that species. Every run afterwards reads the cache.
+
+The cache carries no owner, deliberately. What *Monstera deliciosa* wants is the same fact
+for everybody, and scoping it per account would mean researching the same plant again for
+every new person who photographs one. Nothing personal is stored there — a species name and
+public care guidance.
+
+**It refuses more readily than it answers.** Web search returns near misses confidently:
+asked about *Ocimum africanum* it comes back with four results, three about *Ocimum
+basilicum* and not one mentioning *africanum*. A profile written from that would describe the
+wrong plant with complete assurance. So the extraction reports which species the material was
+actually about, that is compared against the species asked for, and a mismatch produces
+nothing. No results, a failed call and an unreadable response all land the same way. A caller
+told nothing is known widens its differential and lowers its confidence; a caller told the
+wrong thing does neither, which is why refusing is the safe direction.
+
+**A researched profile says it was researched**, wherever you read it. Ask the chat agent
+about a plant's care and a generated baseline comes back with the sources it was built from
+and a note that it is a starting point rather than an authority. The diagnosis prompt is told
+the same thing in a clause, so the model weights it slightly less against an observation that
+contradicts it. A curated profile is never described that way. Same rule the differential
+already follows: a guess in the shape of an answer should say which it is.
+
+The evaluation harness uses the curated tier **only** — no cache, no research — for the same
+reason it stubs species identification: a network call inside a measurement, and a score that
+depended on which species previous runs happened to have researched, would both make the
+numbers mean less.
+
 ### What weather a diagnosis sees
 
 Two windows, because there are two questions.

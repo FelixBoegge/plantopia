@@ -405,6 +405,48 @@ class CorpusChunk(Base):
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
 
 
+class SpeciesCareProfile(Base):
+    """Baseline care requirements for one species, researched rather than hand-written.
+
+    Reference data, not a record — the same argument `CorpusChunk` makes. What *Monstera
+    deliciosa* wants is the same fact for everybody, so this table has **no owner and no
+    cascade**: scoping it per person would mean researching the same species again for every
+    account that photographs one, which is the cost the cache exists to avoid.
+
+    The consequence, stated rather than buried: one owner's run writes a row other owners'
+    runs read. Nothing personal crosses that boundary — a species name and public care
+    guidance — but a bad profile would be bad for everybody, which is why the refusal rule
+    and the untrusted fencing around what produced it are requirements rather than niceties.
+
+    Keyed by the normalised species name because that *is* the identity, in the same way
+    ``(doc_id, section)`` is `CorpusChunk`'s. Normalised on the way in so that "Monstera
+    Deliciosa", "monstera deliciosa" and " monstera deliciosa " are one row rather than three.
+
+    Only ever holds researched profiles. The hand-written tier lives in
+    ``tools/care_profiles.py`` and always wins, so a row here can never shadow one.
+    """
+
+    __tablename__ = "species_care_profiles"
+
+    species_key: Mapped[str] = mapped_column(Text, primary_key=True)
+
+    # The species as it should be shown, which is not the key: the key is lowercased for
+    # matching and nobody wants to read "ocimum africanum" in a care note.
+    species: Mapped[str] = mapped_column(Text)
+    light: Mapped[str] = mapped_column(Text)
+    water: Mapped[str] = mapped_column(Text)
+    temperature_min_c: Mapped[int] = mapped_column(Integer)
+    temperature_max_c: Mapped[int] = mapped_column(Integer)
+    humidity: Mapped[str] = mapped_column(Text)
+
+    # What it was built from, as JSON. Recorded because a profile a model assembled from
+    # four search results is a guess, and a guess whose provenance is gone cannot be checked
+    # afterwards by anybody.
+    sources_json: Mapped[str] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = _when()
+
+
 class Run(Base):
     """One execution of the agent, as a thing a client can address.
 

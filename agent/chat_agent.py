@@ -15,6 +15,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from agent.deps import Deps
 from agent.prompts.weather import render as render_weather
+from agent.schemas import CareOrigin
 from tools.knowledge import search_plant_knowledge
 
 logger = logging.getLogger(__name__)
@@ -215,9 +216,22 @@ def _make_tools(deps: Deps, plant_id: UUID) -> tuple[list, dict]:
                 "on this species."
             )
         low, high = profile.temperature_c
-        return (
+        baseline = (
             f"{profile.species}: light — {profile.light}; water — {profile.water}; "
             f"temperature — {low}-{high}C; humidity — {profile.humidity}."
+        )
+        if profile.origin is not CareOrigin.RESEARCHED:
+            return baseline
+
+        # Said here because this is where the content is actually read by a person. A
+        # curated baseline and one a model assembled from four search results ten seconds
+        # ago look identical on the screen, and they deserve different amounts of trust.
+        # The same honesty rule the differential already follows.
+        sources = ", ".join(profile.sources) or "sources not recorded"
+        return (
+            f"{baseline}\n\nThis profile was researched from the web rather than curated, "
+            f"so treat it as a good starting point rather than an authority. Tell the owner "
+            f"it was researched when you use it. Sources: {sources}."
         )
 
     # Named explicitly: the Python function needs a suffix to avoid shadowing the

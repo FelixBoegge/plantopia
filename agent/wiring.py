@@ -22,6 +22,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from agent.deps import Deps
+from agent.schemas import CareProfile
 from core.blobs import PostgresBlobStore
 from core.config import Settings, get_settings
 from core.embeddings import ImageEmbedder
@@ -33,6 +34,7 @@ from core.llm import (
 )
 from data.engine import build_engine, build_sessions, transaction
 from data.models import User
+from data.repositories.care_profiles import CareProfileRepository
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
@@ -42,7 +44,8 @@ from identity.passwords import UNUSABLE
 from knowledge.ingest import load_corpus
 from knowledge.retriever import ChromaRetriever, build_vectorstore
 from services.profile_service import ProfileService
-from tools.care_profiles import lookup_plant_care_profile
+from tools.care_profiles import make_care_profile_lookup
+from tools.care_research import make_care_research
 from tools.geocoding import place_name as reverse_geocode
 from tools.plantnet import identify_species as plantnet_identify
 from tools.weather import get_local_weather
@@ -180,10 +183,53 @@ def build_deps(
             base_url=settings.geocoding_url,
             user_agent=settings.geocoding_user_agent,
         ),
-        care_profile=lookup_plant_care_profile,
+        # Curated first, then whatever has already been researched for a species the
+        # curated set does not cover, then researching one. The first tier always wins;
+        # every failure behind it degrades to None, which is what an unknown species has
+        # always produced.
+        care_profile=make_care_profile_lookup(
+            stored=CareProfileRepository(session).get,
+            research=make_care_research(
+                search=lambda query: web_search_plant_info(query, api_key=settings.tavily_api_key),
+                # The cheap tier. This reads four search passages and reports what they
+                # say; the judgement that decides whether the result is kept is a string
+                # comparison in Python, not something the model is trusted with. Paying
+                # reasoning-tier prices for an extraction would be paying for nothing.
+                model=build_gate_model(),
+                store=_store_care_profile(session),
+                now=now_utc,
+            ),
+        ),
         profile_facts=profile_facts,
         now=now_utc,
     )
+
+
+def _store_care_profile(session: Session) -> Callable[[CareProfile, datetime], None]:
+    """Record a researched profile through the caller's own session, without committing.
+
+    The design for this change proposed a *separate* session, on the reasoning that a care
+    profile is reference data whose lifetime is independent of the run that discovered it.
+    Implementing it showed that to be wrong in two ways, so it is written down here rather
+    than left as a difference between the design and the code:
+
+    - Both callers already commit. ``agent/nodes/persist.py`` wraps the end of a diagnosis
+      and ``services/chat_service.py`` wraps each turn, so a write left pending on their
+      session lands at their boundary. The chat hole the separate session existed to close
+      was never open.
+    - A separate session **commits outside the caller's transaction**, which in tests means
+      writing real rows past a fixture's rollback and into whichever database the settings
+      happen to name. That is test pollution in exchange for a guarantee nothing needed.
+
+    What this costs: a diagnosis that fails after ``enrich`` discards the profile it
+    researched, and the next run for that species researches it again. One search, rarely.
+    That is a better trade than a second connection and a commit nobody asked for.
+    """
+
+    def store(profile: CareProfile, when: datetime) -> None:
+        CareProfileRepository(session).put(profile, now=when)
+
+    return store
 
 
 def _shared_retriever(settings: Settings) -> ChromaRetriever:

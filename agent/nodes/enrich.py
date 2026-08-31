@@ -10,7 +10,7 @@ import logging
 
 from agent.deps import Deps
 from agent.nodes.intake import NodeFn
-from agent.schemas import LoadedImage
+from agent.schemas import CareOrigin, LoadedImage
 from agent.state import DiagnosisState
 from tools.knowledge import build_symptom_queries, search_plant_knowledge
 from tools.web_search import should_escalate
@@ -175,10 +175,20 @@ def _care_baseline(deps: Deps, state: DiagnosisState, tools_used: list[str]) -> 
         return None
 
     low, high = profile.temperature_c
-    return (
+    baseline = (
         f"Typical requirements for {profile.species}: "
         f"light — {profile.light}; water — {profile.water}; "
         f"temperature — {low}–{high} °C; humidity — {profile.humidity}."
+    )
+    if profile.origin is not CareOrigin.RESEARCHED:
+        return baseline
+
+    # One clause, not a section. A model told the baseline was assembled from a web search
+    # rather than written by a person should weight it slightly less against an observation
+    # that contradicts it — which is the whole practical difference between the two tiers.
+    return (
+        f"{baseline} (This baseline was researched from web sources rather than curated, "
+        "so prefer the observed symptoms where the two disagree.)"
     )
 
 

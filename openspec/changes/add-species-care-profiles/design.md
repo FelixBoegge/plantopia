@@ -132,6 +132,28 @@ The failure mode to guard is latency, not spend: an unresponsive search must not
 diagnosis open. The existing tool already returns `[]` on any failure including timeout, so
 this inherits that behaviour rather than adding its own.
 
+### The write goes through the caller's session
+
+**Amended during implementation.** This section originally proposed a *separate* session for
+the cache write, reasoning that a care profile is reference data whose lifetime is independent
+of the run that discovered it, and that a chat turn has no write boundary of its own so a
+profile researched there would never be committed.
+
+Both halves turned out to be wrong, and the correction is worth recording rather than leaving
+as a silent difference between this document and the code:
+
+- **Both callers already commit.** agent/nodes/persist.py wraps the end of a diagnosis and
+  services/chat_service.py wraps each turn, so a write left pending on their session lands
+  at their boundary. The chat hole the separate session existed to close was never open.
+- **A separate session commits outside the caller's transaction**, which in tests means real
+  rows written past a fixture rollback into whichever database the settings happen to name.
+  That is test pollution bought with a guarantee nothing needed — and it is how the mistake
+  was found: two wiring tests failed against a database that had never seen the table.
+
+What it costs: a diagnosis that fails after enrich discards the profile it researched, and
+the next run for that species researches it again. One search, rarely, against a second
+connection and a commit nobody asked for.
+
 ### The chat tool says what it is; the diagnosis prompt says it differently
 
 The chat tool's returned text is read by the model and relayed to a person, so it carries the

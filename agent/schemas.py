@@ -283,12 +283,34 @@ class LoadedImage(BaseModel):
     media_type: Literal["image/png", "image/jpeg", "image/webp"]
 
 
+class CareOrigin(StrEnum):
+    """Where a care profile came from, and therefore how much to trust it.
+
+    A curated profile was written by a person. A researched one was assembled by a model
+    from web-search results, which is a guess in the same shape as an answer — and the two
+    deserve different amounts of trust from whoever reads them.
+    """
+
+    CURATED = "curated"  # Hand-written, in `tools/care_profiles.py`.
+    RESEARCHED = "researched"  # Assembled from a web search for a species nothing held.
+
+
 class CareProfile(BaseModel):
     species: str
     light: str
     water: str
     temperature_c: tuple[int, int]
     humidity: str
+
+    # Defaulting to curated so the hand-written table needs no edit. That is the wrong way
+    # round for safety — a profile that lost its origin would claim to be trustworthy — so
+    # the researched path sets this explicitly and a test asserts a stored profile reads
+    # back as researched rather than relying on any default.
+    origin: CareOrigin = CareOrigin.CURATED
+
+    # What a researched profile was built from. Empty for a curated one, which was built
+    # from a person.
+    sources: list[str] = Field(default_factory=list)
 
 
 class WeatherDay(BaseModel):

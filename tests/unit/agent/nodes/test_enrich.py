@@ -509,3 +509,56 @@ class TestWhichPlaceIsLookedUp:
 
         assert position is None
         assert location == "Hamburg"
+
+
+class TestTheCareBaselineSaysWhereItCameFrom:
+    """One clause, not a section.
+
+    A model told the baseline was assembled from a web search rather than written by a
+    person should weight it slightly less against an observation that contradicts it —
+    which is the whole practical difference between the two tiers.
+    """
+
+    def _profile(self, origin):
+        from agent.schemas import CareProfile
+
+        return CareProfile(
+            species="Calathea orbifolia",
+            light="Bright indirect light",
+            water="Keep evenly moist",
+            temperature_c=(18, 24),
+            humidity="Above 60 percent",
+            origin=origin,
+            sources=["web:rhs.org.uk"],
+        )
+
+    def _text(self, make_deps, sample_images, origin):
+        from agent.schemas import CareOrigin  # noqa: F401 — imported by the caller's param
+
+        deps = make_deps(care_profile=lambda _s: self._profile(origin))
+        state = _state(sample_images, species_name="Calathea orbifolia")
+        return make_enrich(deps)(state)["care_baseline_text"]
+
+    def test_a_researched_baseline_is_flagged(self, make_deps, sample_images):
+        from agent.schemas import CareOrigin
+
+        text = self._text(make_deps, sample_images, CareOrigin.RESEARCHED)
+
+        assert "researched from web sources" in text
+        assert "prefer the observed symptoms" in text
+
+    def test_a_curated_baseline_is_not(self, make_deps, sample_images):
+        from agent.schemas import CareOrigin
+
+        text = self._text(make_deps, sample_images, CareOrigin.CURATED)
+
+        assert "researched" not in text
+        assert "Typical requirements for Calathea orbifolia" in text
+
+    def test_a_researched_baseline_still_carries_the_requirements(self, make_deps, sample_images):
+        from agent.schemas import CareOrigin
+
+        text = self._text(make_deps, sample_images, CareOrigin.RESEARCHED)
+
+        assert "Bright indirect light" in text
+        assert "18–24 °C" in text

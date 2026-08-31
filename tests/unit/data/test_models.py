@@ -25,6 +25,7 @@ EXPECTED_TABLES = {
     "profile_cursors",
     "blobs",
     "corpus_chunks",
+    "species_care_profiles",
     "refresh_tokens",
     "email_tokens",
     "usage_events",
@@ -47,7 +48,11 @@ OWNED_DIRECTLY = {
 # no cascade, and a natural key — (doc_id, section) *is* its identity, and it is what
 # fetch-by-id looks a passage up by. The rules below about UUID keys and generated
 # identifiers exist to stop enumeration of a person's records; neither applies here.
-REFERENCE_TABLES = {"corpus_chunks"}
+# Tables holding facts about the world rather than records about a person. They carry no
+# owner, no cascade, and a natural key rather than a generated one — because the key *is* the
+# identity and there is nothing to enumerate. A corpus section and a species' care baseline
+# are the same for everybody who asks.
+REFERENCE_TABLES = {"corpus_chunks", "species_care_profiles"}
 
 
 def test_the_schema_holds_exactly_the_expected_tables():

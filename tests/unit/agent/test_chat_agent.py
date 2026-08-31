@@ -500,3 +500,92 @@ class TestTheWeatherWhereThisPlantIs:
         answer = self._tool(deps, plant_id).invoke({"days_back": 21})
 
         assert "2026-08-05" in answer
+
+
+class TestWhereACareProfileCameFrom:
+    """A curated baseline and one a model assembled from four search results ten seconds ago
+    look identical on the screen, and they deserve different amounts of trust.
+
+    This is the surface a person actually reads care advice on, so it is the surface the
+    label has to reach. Storing the origin and never showing it would be the same as not
+    recording it.
+    """
+
+    def _tool(self, deps, plant_id):
+        from agent.chat_agent import _make_tools
+
+        tools, _ = _make_tools(deps, plant_id)
+        return next(t for t in tools if t.name == "lookup_plant_care_profile")
+
+    def _profile(self, origin, sources=()):
+        from agent.schemas import CareProfile
+
+        return CareProfile(
+            species="Calathea orbifolia",
+            light="Bright indirect light",
+            water="Keep evenly moist",
+            temperature_c=(18, 24),
+            humidity="Above 60 percent",
+            origin=origin,
+            sources=list(sources),
+        )
+
+    def _plant(self, db, owner, now):
+        return PlantRepository(db).create(
+            owner,
+            name="Calathea",
+            species="Calathea orbifolia",
+            species_confidence=0.9,
+            location_kind="indoor",
+            location_text=None,
+            photo_ref=None,
+            now=now(),
+        )
+
+    def test_a_researched_profile_says_so(self, db, owner, now, make_deps):
+        from agent.schemas import CareOrigin
+
+        plant_id = self._plant(db, owner, now)
+        deps = make_deps(
+            care_profile=lambda _s: self._profile(
+                CareOrigin.RESEARCHED, ["web:rhs.org.uk", "web:gardenia.net"]
+            )
+        )
+
+        answer = self._tool(deps, plant_id).invoke({"species": "Calathea orbifolia"})
+
+        assert "researched" in answer.lower()
+        assert "web:rhs.org.uk" in answer
+        assert "web:gardenia.net" in answer
+
+    def test_a_curated_profile_is_not_called_researched(self, db, owner, now, make_deps):
+        from agent.schemas import CareOrigin
+
+        plant_id = self._plant(db, owner, now)
+        deps = make_deps(care_profile=lambda _s: self._profile(CareOrigin.CURATED))
+
+        answer = self._tool(deps, plant_id).invoke({"species": "Calathea orbifolia"})
+
+        assert "researched" not in answer.lower()
+        assert "Bright indirect light" in answer
+
+    def test_a_researched_profile_keeps_its_baseline(self, db, owner, now, make_deps):
+        from agent.schemas import CareOrigin
+
+        plant_id = self._plant(db, owner, now)
+        deps = make_deps(care_profile=lambda _s: self._profile(CareOrigin.RESEARCHED, ["web:x"]))
+
+        answer = self._tool(deps, plant_id).invoke({"species": "Calathea orbifolia"})
+
+        assert "Bright indirect light" in answer
+        assert "18-24C" in answer
+
+    def test_a_miss_still_names_the_next_step(self, db, owner, now, make_deps):
+        """The strawberry case: a bare "not known" reads to the model as the end of the
+        search, and it answers from memory instead."""
+        plant_id = self._plant(db, owner, now)
+        deps = make_deps(care_profile=lambda _s: None)
+
+        answer = self._tool(deps, plant_id).invoke({"species": "Fragaria"})
+
+        assert "web_search_plant_info" in answer
