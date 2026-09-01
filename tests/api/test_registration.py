@@ -25,8 +25,9 @@ ADDRESS = "ada@example.com"
 class RecordingMailer:
     """Collects what would have been sent."""
 
-    def __init__(self, *, delivers: bool = True) -> None:
+    def __init__(self, *, delivers: bool = True, reaches_inbox: bool = True) -> None:
         self.sent: list[Message] = []
+        self.reaches_inbox = reaches_inbox
         self._delivers = delivers
 
     def send(self, message: Message) -> bool:
@@ -74,6 +75,43 @@ def test_registering_sends_a_verification_message_to_that_address(client, mailer
     assert len(mailer.sent) == 1
     assert mailer.sent[0].to == ADDRESS
     assert "/verify-email?token=" in mailer.sent[0].body
+
+
+def test_the_response_says_when_a_provider_is_configured(client, mailer):
+    """The screen has to tell somebody where their link went, which it can only do if the
+    response tells it."""
+    mailer.reaches_inbox = True
+
+    assert _register(client).json()["email_configured"] is True
+
+
+def test_the_response_admits_when_no_provider_is_configured(client, mailer):
+    """Telling somebody to check an inbox when the link only reached a log file sends them
+    to the one place it cannot be."""
+    mailer.reaches_inbox = False
+
+    assert _register(client).json()["email_configured"] is False
+
+
+def test_a_missing_agreement_names_the_control_it_is_about(client, mailer):
+    """The screen puts the message under the checkbox, which it can only do if the refusal
+    says which control was at fault rather than only what was wrong."""
+    response = _register(client, accepted_privacy_notice=False)
+
+    assert response.json()["errors"] == [
+        {
+            "location": ["body", "accepted_privacy_notice"],
+            "message": "the privacy notice must be agreed to",
+        }
+    ]
+
+
+def test_a_short_password_names_the_field_it_is_about(client, api_settings, mailer):
+    response = _register(client, password="x" * (api_settings.minimum_password_length - 1))
+
+    [rejected] = response.json()["errors"]
+    assert rejected["location"] == ["body", "password"]
+    assert str(api_settings.minimum_password_length) in rejected["message"]
 
 
 def test_the_response_carries_neither_the_password_nor_its_hash(client, db, mailer):

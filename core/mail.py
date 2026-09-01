@@ -38,6 +38,16 @@ class Message:
 class Mailer(Protocol):
     """Somewhere to send a message."""
 
+    reaches_inbox: bool
+    """Whether a message sent here can arrive in somebody's inbox.
+
+    Not the same question as whether a send succeeded. This one is about the adapter, is
+    the same for every message, and is what lets a screen say where a link actually went
+    instead of telling everybody to check their email. It says nothing about any particular
+    address, which is what keeps it safe to return from an endpoint that must not reveal
+    whether an address is registered.
+    """
+
     def send(self, message: Message) -> bool:
         """Send it. Returns whether it was delivered.
 
@@ -55,6 +65,8 @@ class ConsoleMailer:
     including the link, because the developer clicking that link is the point.
     """
 
+    reaches_inbox = False
+
     def send(self, message: Message) -> bool:
         logger.info(
             "email not sent (no provider configured); to=%s subject=%s\n%s",
@@ -69,6 +81,7 @@ class ResendMailer:
     """Sends through Resend's HTTP API."""
 
     ENDPOINT = "https://api.resend.com/emails"
+    reaches_inbox = True
 
     def __init__(self, *, api_key: str, sender: str) -> None:
         self._api_key = api_key

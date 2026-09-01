@@ -98,12 +98,48 @@ discovered by its symptom.
 Registration is open and every account starts unverified; nothing owner-scoped is reachable
 until the address is proven.
 
+**No confirmation email will arrive, and nothing is wrong when it does not.** Which mailer
+runs is decided by whether a provider is configured rather than by a flag somebody has to
+remember, and none is configured by default — so `core/mail.py` falls back to a mailer that
+writes the message to the application log instead of sending it. A checkout that has never
+been given a key cannot mail a real person by accident. Registering with your own address
+is safe: nothing leaves the machine.
+
+To activate an account from the web client, register at `http://localhost:5173/register` as
+you normally would. The screen will tell you to check your inbox — ignore it, and look at
+the terminal running uvicorn, where the whole message is waiting:
+
+```
+INFO core.mail: email not sent (no provider configured); to=you@example.com subject=Confirm your Plantopia address
+Welcome to Plantopia.
+
+Confirm this address to finish setting up your account:
+
+http://localhost:5173/verify-email?token=Ilx0YWtlIHRoZSBvbmUgaW4geW91ciBvd24gbG9n
+```
+
+Open that link in the same browser. It proves the address, and the account can sign in
+immediately afterwards. The link is good for 24 hours; registering again issues a new one.
+
+Piping the server to a file on the way past makes the message easy to find once the terminal
+has scrolled:
+
+```bash
+uv run uvicorn api.main:create_app --factory --reload --port 8000 | tee api.log
+grep -A6 "Confirm your Plantopia address" api.log
+```
+
+Setting `PLANTOPIA_RESEND_API_KEY` switches to real delivery, with the caveat that Resend's
+default sender only reaches the address that owns the Resend account — mailing anyone else
+needs a verified domain. Password reset works the same way and lands in the same log.
+
+The same three steps over the API, for anyone working without the web client:
+
 ```bash
 curl -X POST localhost:8000/api/v1/auth/register   -H 'content-type: application/json'   -d '{"email":"you@example.com","password":"at-least-twelve-characters","accepted_privacy_notice":true}'
 ```
 
-With no mail provider configured — which is the default — the verification message is
-written to the application log rather than sent, link included. Copy the token out of it:
+The token to spend is the one at the end of the link in the log:
 
 ```bash
 curl -X POST localhost:8000/api/v1/auth/verify   -H 'content-type: application/json' -d '{"token":"<from the log>"}'

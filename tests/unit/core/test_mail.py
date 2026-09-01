@@ -43,6 +43,20 @@ def test_a_configured_provider_is_used():
     assert isinstance(mailer, ResendMailer)
 
 
+def test_the_console_adapter_does_not_claim_to_reach_an_inbox():
+    """What the registration and reset screens tell somebody rests on this. An adapter that
+    only writes to a log must say so, or the screen sends them to an inbox nothing arrives
+    in."""
+    assert ConsoleMailer().reaches_inbox is False
+
+
+def test_a_configured_provider_reaches_an_inbox():
+    assert (
+        ResendMailer(api_key="re_test_key", sender="Plantopia <hello@example.test>").reaches_inbox
+        is True
+    )
+
+
 def test_the_console_adapter_writes_the_whole_message_where_it_can_be_read(caplog):
     """Including the link — the developer following it is the point of the adapter."""
     with caplog.at_level(logging.INFO, logger="core.mail"):

@@ -64,6 +64,20 @@ def test_an_unregistered_address_answers_identically(client, account, mailer):
     assert registered.json() == unregistered.json()
 
 
+def test_the_response_admits_when_no_provider_is_configured(client, account, mailer):
+    """Same problem as registration, same screen, same fix: an inbox is the wrong place to
+    send somebody whose link was only written to a log."""
+    mailer.reaches_inbox = False
+
+    assert _request(client).json()["email_configured"] is False
+
+
+def test_the_response_says_when_a_provider_is_configured(client, account, mailer):
+    mailer.reaches_inbox = True
+
+    assert _request(client).json()["email_configured"] is True
+
+
 def test_nothing_is_sent_to_an_address_with_no_account(client, mailer):
     _request(client, "nobody@example.com")
 

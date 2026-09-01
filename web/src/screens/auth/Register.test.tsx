@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { PROBLEM } from "@/api/problems";
 import { Register } from "@/screens/auth/Register";
-import { render, screen } from "@/test/render";
+import { render, screen, waitFor } from "@/test/render";
 import { server } from "@/test/server";
 
 const ACCEPTED = {
@@ -105,6 +105,184 @@ describe("registering", () => {
     expect(screen.queryByText(/already/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/taken/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/exists/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("where the link actually went", () => {
+  it("sends somebody to their inbox when a provider is configured", async () => {
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          { ...ACCEPTED, email_configured: true },
+          { status: 202 },
+        ),
+      ),
+    );
+
+    render(<Register />);
+    await fillIn();
+
+    expect(
+      await screen.findByRole("heading", { name: "Check your email" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not claim a message was sent when nothing can send one", async () => {
+    // The default deployment has no provider and writes the link to the application log
+    // instead. "Check your email" then names the one place the link cannot be, which is
+    // how somebody ends up in their spam folder looking for a message that was never sent.
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          { ...ACCEPTED, email_configured: false },
+          { status: 202 },
+        ),
+      ),
+    );
+
+    render(<Register />);
+    await fillIn();
+
+    expect(
+      await screen.findByRole("heading", { name: "Check the server log" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/no email was sent/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Check your email" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still says the same thing for a taken address", async () => {
+    // The fallback copy is about this deployment, never about this address. Copy that
+    // varied with the address would undo what the identical response protects.
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          { ...ACCEPTED, email_configured: false },
+          { status: 202 },
+        ),
+      ),
+    );
+
+    render(<Register />);
+    await fillIn({ email: "already@example.com" });
+
+    await screen.findByRole("heading", { name: "Check the server log" });
+    expect(screen.queryByText(/already/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/taken/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("a refusal lands on the control that caused it", () => {
+  function refuses(field: string, message: string) {
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          {
+            type: PROBLEM.invalidRequest,
+            title: "Invalid request",
+            status: 400,
+            detail: message,
+            errors: [{ location: ["body", field], message }],
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+  }
+
+  it("puts a missing agreement under the checkbox it is about", async () => {
+    signedOut();
+    refuses("accepted_privacy_notice", "the privacy notice must be agreed to");
+
+    render(<Register />);
+    await fillIn({ consent: false });
+
+    const box = await screen.findByRole("checkbox");
+    await waitFor(() => expect(box).toHaveAttribute("aria-invalid", "true"));
+    const describedBy = box.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveTextContent(
+      /privacy notice/i,
+    );
+  });
+
+  it("puts a rejected password under the password field", async () => {
+    signedOut();
+    refuses("password", "a password must be at least 12 characters");
+
+    render(<Register />);
+    await fillIn({ password: "short" });
+
+    const field = await screen.findByLabelText("Password");
+    await waitFor(() => expect(field).toHaveAttribute("aria-invalid", "true"));
+    expect(field).toHaveAccessibleDescription(/at least 12 characters/);
+  });
+
+  it("does not repeat an attributed message at the top of the form", async () => {
+    // Saying it twice is how a form teaches somebody to stop reading the top of it.
+    signedOut();
+    refuses("accepted_privacy_notice", "the privacy notice must be agreed to");
+
+    render(<Register />);
+    await fillIn({ consent: false });
+
+    await screen.findByRole("alert");
+    expect(screen.getAllByText(/privacy notice must be agreed/i)).toHaveLength(
+      1,
+    );
+  });
+
+  it("still shows a refusal that names no field at the top", async () => {
+    // A rate limit belongs to the form, not to any one control.
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          {
+            type: PROBLEM.rateLimited,
+            title: "Too many attempts",
+            status: 429,
+            detail: "Wait a minute before trying again.",
+          },
+          { status: 429 },
+        ),
+      ),
+    );
+
+    render(<Register />);
+    await fillIn();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /wait a minute/i,
+    );
+  });
+
+  it("clears a field message once the next attempt succeeds", async () => {
+    signedOut();
+    refuses("accepted_privacy_notice", "the privacy notice must be agreed to");
+
+    render(<Register />);
+    const user = await fillIn({ consent: false });
+    await screen.findByRole("alert");
+
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          { ...ACCEPTED, email_configured: true },
+          { status: 202 },
+        ),
+      ),
+    );
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Check your email" }),
+    ).toBeInTheDocument();
   });
 });
 

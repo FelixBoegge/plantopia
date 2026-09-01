@@ -30,8 +30,14 @@ export interface Problem {
   title: string;
   status: number;
   detail?: string;
-  /** Present on a validation failure: which fields were rejected, and why. */
-  errors?: { location: string; message: string }[];
+  /**
+   * Present on a validation failure, and on a refusal that knows which part of the request
+   * was at fault: which fields were rejected, and why.
+   *
+   * `location` is the path the server used — `["body", "password"]` — so the field name is
+   * its last segment rather than the whole of it.
+   */
+  errors?: { location: (string | number)[]; message: string }[];
   /** Present on a quota refusal. */
   limit?: number;
   used?: number;
@@ -69,6 +75,26 @@ export function readable(error: unknown): string {
     return error.problem.detail ?? error.problem.title;
   }
   return "Something went wrong. Please try again.";
+}
+
+/**
+ * The messages a refusal attached to particular parts of the request, by field name.
+ *
+ * A form uses this to put each message on the control that caused it. Anything the server
+ * did not attribute is absent, and belongs at the top of the form instead — a rate limit is
+ * about the attempt, not about any one field.
+ */
+export function fieldMessages(error: unknown): Record<string, string> {
+  if (!(error instanceof ApiError)) return {};
+
+  const byField: Record<string, string> = {};
+  for (const { location, message } of error.problem.errors ?? []) {
+    const field = location.at(-1);
+    // First one wins: two messages in one place would replace each other on screen, and
+    // the first is the one the server considered worth leading with.
+    if (typeof field === "string" && !(field in byField)) byField[field] = message;
+  }
+  return byField;
 }
 
 /**

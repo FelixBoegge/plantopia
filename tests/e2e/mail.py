@@ -24,6 +24,10 @@ class FileMailer:
     """Writes every message to `SINK` instead of sending it."""
 
     path: Path = SINK
+    # The browser tests exercise the flow a deployment with a provider has, so this stands
+    # in for one. The fallback copy has its own tests; sending these down that path would
+    # cost the coverage of the ordinary one.
+    reaches_inbox: bool = True
 
     def send(self, message: Message) -> bool:
         with self.path.open("a", encoding="utf8") as handle:

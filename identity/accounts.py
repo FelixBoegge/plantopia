@@ -29,7 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 class RegistrationError(Exception):
-    """Registration was refused for a reason the caller can fix."""
+    """Registration was refused for a reason the caller can fix.
+
+    ``field`` names the part of the request at fault, so a client can put the message on the
+    control that caused it rather than at the top of a form, away from the thing to change.
+    """
+
+    field: str | None = None
 
 
 class WeakPasswordError(RegistrationError):
@@ -39,9 +45,13 @@ class WeakPasswordError(RegistrationError):
     `Password1!` and buys less than the same characters spent on length.
     """
 
+    field = "password"
+
 
 class ConsentRequiredError(RegistrationError):
     """The privacy notice was not agreed to."""
+
+    field = "accepted_privacy_notice"
 
 
 class AuthenticationError(Exception):

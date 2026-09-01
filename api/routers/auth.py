@@ -30,6 +30,11 @@ def register(
     202 rather than 201: whether anything was created is exactly what this response must
     not reveal. "Accepted, check your email" is true for both outcomes, and is also the
     only instruction the caller needs.
+
+    `email_configured` says whether a message can reach an inbox at all. It describes this
+    deployment rather than this address — identical for every caller, decided before
+    anything is looked up — so it cannot become a way to ask who is registered here. Without
+    it a client has no way to know that "check your email" is the wrong thing to say.
     """
     accounts.register(
         session,
@@ -39,7 +44,10 @@ def register(
         settings=settings,
         mailer=mailer,
     )
-    return {"detail": "If that address can be registered, a confirmation message is on its way."}
+    return {
+        "detail": "If that address can be registered, a confirmation message is on its way.",
+        "email_configured": mailer.reaches_inbox,
+    }
 
 
 @router.post("/verify", status_code=status.HTTP_204_NO_CONTENT)
@@ -117,9 +125,15 @@ def request_reset(
 
     202 and the same sentence whether or not the address has an account. Anything else is
     an endpoint that answers who is registered here.
+
+    `email_configured` carries the same meaning as it does on registration, and is safe here
+    for the same reason.
     """
     accounts.request_reset(session, email=body.email, settings=settings, mailer=mailer)
-    return {"detail": "If that address has an account, a reset link is on its way."}
+    return {
+        "detail": "If that address has an account, a reset link is on its way.",
+        "email_configured": mailer.reaches_inbox,
+    }
 
 
 @router.post("/reset/confirm", status_code=status.HTTP_204_NO_CONTENT)

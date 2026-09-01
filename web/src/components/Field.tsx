@@ -42,7 +42,7 @@ export function Field({
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="text-destructive text-sm">
+        <p id={errorId} role="alert" className="text-destructive text-sm">
           {error}
         </p>
       ) : null}

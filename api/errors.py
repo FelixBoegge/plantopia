@@ -286,12 +286,18 @@ def register(app: FastAPI) -> None:
 
         The detail is safe to return because neither refusal depends on whether the address
         is registered — they are decided before anything is looked up.
+
+        Where the refusal knows which part of the request was at fault, it is named in the
+        same `errors` shape a malformed body produces, so a client has one way to put a
+        message on a control rather than one per status code.
         """
+        named = [{"location": ["body", exc.field], "message": str(exc)}] if exc.field else None
         return problem(
             status_code=status.HTTP_400_BAD_REQUEST,
             type_=TYPE_INVALID_REQUEST,
             title="Invalid request",
             detail=str(exc),
+            **({"errors": named} if named else {}),
         )
 
     @app.exception_handler(ResetError)

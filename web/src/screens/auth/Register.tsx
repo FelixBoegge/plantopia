@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { request } from "@/api/client";
-import { readable } from "@/api/problems";
+import { fieldMessages, readable } from "@/api/problems";
+import type { Accepted } from "@/api/types";
 import { Field } from "@/components/Field";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
@@ -19,34 +20,62 @@ import { AuthShell } from "@/screens/auth/AuthShell";
  *
  * Nobody is signed in by registering. The address has to be proven first, and saying so
  * plainly is better than a redirect to a screen that refuses them.
+ *
+ * **Where the link went depends on the deployment, so the screen asks rather than assumes.**
+ * Without a provider configured the link is written to the application log, and telling
+ * somebody to check their email then names the one place it cannot be.
  */
 export function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [consented, setConsented] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [sent, setSent] = useState<Accepted | null>(null);
   const [busy, setBusy] = useState(false);
+  const consentErrorId = useId();
+  const consentError = fieldErrors.accepted_privacy_notice;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setFailure(null);
+    setFieldErrors({});
     setBusy(true);
     try {
-      await request("/auth/register", {
-        method: "POST",
-        body: { email, password, accepted_privacy_notice: consented },
-      });
-      setSent(true);
+      setSent(
+        await request<Accepted>("/auth/register", {
+          method: "POST",
+          body: { email, password, accepted_privacy_notice: consented },
+        }),
+      );
     } catch (error) {
-      setFailure(readable(error));
+      const named = fieldMessages(error);
+      setFieldErrors(named);
+      // Only what the server did not pin to a control. Repeating an attributed message up
+      // here would say the same thing twice, the second time away from the thing to change.
+      setFailure(Object.keys(named).length > 0 ? null : readable(error));
     } finally {
       setBusy(false);
     }
   }
 
   if (sent) {
-    return (
+    // Never varies with the address — only with how this deployment is configured. Copy
+    // that differed for a taken address would undo the identical answer the server gives.
+    return sent.email_configured === false ? (
+      <AuthShell title="Check the server log">
+        <Notice title="No email was sent">
+          This deployment has no email provider configured, so the confirmation
+          link was written to the application log instead of being sent
+          anywhere.
+        </Notice>
+        <p className="text-muted-foreground text-sm">
+          Look in the terminal running the API for a message with the subject
+          “Confirm your Plantopia address” and open the link in it. The link
+          works for the next 24 hours.
+        </p>
+      </AuthShell>
+    ) : (
       <AuthShell title="Check your email">
         <Notice title="Almost there">
           If that address can be registered, a confirmation message is on its
@@ -88,6 +117,7 @@ export function Register() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           hint="At least 12 characters. Length matters more than punctuation."
+          error={fieldErrors.password}
         />
 
         <div className="grid gap-3">
@@ -95,6 +125,8 @@ export function Register() {
             <Checkbox
               id="consent"
               checked={consented}
+              aria-invalid={consentError ? true : undefined}
+              aria-describedby={consentError ? consentErrorId : undefined}
               onCheckedChange={(value) => setConsented(value === true)}
             />
             <Label
@@ -104,6 +136,18 @@ export function Register() {
               I agree to the privacy notice below.
             </Label>
           </div>
+          {/* Under the box it is about, not at the top of the form: a message about a
+              control somebody has to scroll back to is a message they have to hold in their
+              head on the way there. */}
+          {consentError ? (
+            <p
+              id={consentErrorId}
+              role="alert"
+              className="text-destructive text-sm"
+            >
+              {consentError}
+            </p>
+          ) : null}
           <div className="text-muted-foreground grid gap-2 text-sm">
             <p>
               Plantopia stores the photographs you upload, what you write, and

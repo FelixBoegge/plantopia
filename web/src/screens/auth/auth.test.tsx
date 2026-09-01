@@ -261,6 +261,48 @@ describe("asking for a reset link", () => {
     expect(screen.queryByText(/no account/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/not registered/i)).not.toBeInTheDocument();
   });
+
+  async function askForALink() {
+    render(<AppRoutes />, { route: "/reset-password" });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Email"), "ada@example.com");
+    await user.click(screen.getByRole("button", { name: "Send the link" }));
+  }
+
+  it("does not claim a message was sent when nothing can send one", async () => {
+    // The same problem registration has, on the same default deployment, with the same
+    // consequence: somebody waiting on an inbox for a link that went to a log file.
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/reset/request", () =>
+        HttpResponse.json({ email_configured: false }, { status: 202 }),
+      ),
+    );
+
+    await askForALink();
+
+    expect(
+      await screen.findByRole("heading", { name: "Check the server log" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Check your email" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sends somebody to their inbox when a provider is configured", async () => {
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/reset/request", () =>
+        HttpResponse.json({ email_configured: true }, { status: 202 }),
+      ),
+    );
+
+    await askForALink();
+
+    expect(
+      await screen.findByRole("heading", { name: "Check your email" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("choosing a new password", () => {

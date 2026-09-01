@@ -29,6 +29,18 @@ export interface Run {
   error: string | null;
 }
 
+export interface Accepted {
+  detail: string;
+  /**
+   * Whether this deployment can put a message in somebody's inbox at all.
+   *
+   * Absent from an older server, and read as `true` when it is: claiming an email was sent
+   * is the safer of the two wrong answers, since the other one tells somebody to go read a
+   * log that may not contain anything.
+   */
+  email_configured?: boolean;
+}
+
 export interface Session {
   access_token: string;
   token_type: string;
