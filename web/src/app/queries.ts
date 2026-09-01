@@ -12,6 +12,7 @@ export const keys = {
   plant: (id: string) => ["plants", id] as const,
   messages: (plantId: string) => ["plants", plantId, "messages"] as const,
   diagnosis: (id: string) => ["diagnoses", id] as const,
+  diagnosisActivity: (id: string) => ["diagnoses", id, "activity"] as const,
   runs: ["runs"] as const,
   run: (id: string) => ["runs", id] as const,
   facts: ["profile", "facts"] as const,

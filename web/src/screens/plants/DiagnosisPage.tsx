@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 
-import { useDiagnosis } from "@/api/hooks/runs";
+import { useActivity, useDiagnosis } from "@/api/hooks/runs";
 import { readable } from "@/api/problems";
 import { Notice } from "@/components/Notice";
 import { Differential } from "@/screens/wizard/Differential";
@@ -20,6 +20,9 @@ import { Differential } from "@/screens/wizard/Differential";
 export function DiagnosisPage() {
   const { diagnosisId = "" } = useParams();
   const { data, isPending, error } = useDiagnosis(diagnosisId || null);
+  // Its own request, and its own failure. A panel describing how the result was reached is
+  // not worth losing the result over, so nothing here branches on its error.
+  const { data: activity } = useActivity(diagnosisId || null);
 
   if (isPending) return <p role="status">Loading…</p>;
 
@@ -36,6 +39,36 @@ export function DiagnosisPage() {
   return (
     <div className="grid gap-6">
       <Differential detail={data} />
+
+      {/* Only when there is something to show. Every diagnosis reached before any of this
+          was recorded has no activity, and a heading over an empty list reads as a failure
+          rather than as an absence. */}
+      {activity?.length ? (
+        <section aria-labelledby="how" className="grid gap-3">
+          <h2 id="how" className="text-lg font-medium">
+            How this was reached
+          </h2>
+          <ol className="grid gap-2">
+            {activity.map((step) => (
+              <li key={step.sequence} className="grid gap-0.5 text-sm">
+                <span>{step.description}</span>
+                {step.calls || step.duration_ms !== undefined ? (
+                  <span className="text-muted-foreground text-xs">
+                    {step.calls}
+                    {step.calls && step.duration_ms !== undefined
+                      ? " · "
+                      : null}
+                    {step.duration_ms !== undefined
+                      ? `took ${(step.duration_ms / 1000).toFixed(1)}s`
+                      : null}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
       <Link
         to={`/plants/${data.diagnosis.plant_id}`}
         className="text-sm underline underline-offset-4"

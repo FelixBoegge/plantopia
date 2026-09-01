@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { request } from "@/api/client";
 import { keys } from "@/app/queries";
+import type { Step } from "@/api/hooks/useRunStream";
 import type { DiagnosisDetail, Run, SpeciesCandidate } from "@/api/types";
 
 /** One run, for what it finally produced and for resuming after a reload. */
@@ -17,6 +18,20 @@ export function useDiagnosis(diagnosisId: string | null) {
   return useQuery({
     queryKey: keys.diagnosis(diagnosisId ?? "none"),
     queryFn: () => request<DiagnosisDetail>(`/diagnoses/${diagnosisId}`),
+    enabled: diagnosisId !== null,
+  });
+}
+
+/**
+ * What the run that produced a diagnosis did.
+ *
+ * Its own request rather than part of the diagnosis: this is a panel somebody opens, and
+ * folding it into `DiagnosisDetail` would make every screen showing a result carry it.
+ */
+export function useActivity(diagnosisId: string | null) {
+  return useQuery({
+    queryKey: keys.diagnosisActivity(diagnosisId ?? "none"),
+    queryFn: () => request<Step[]>(`/diagnoses/${diagnosisId}/activity`),
     enabled: diagnosisId !== null,
   });
 }
