@@ -225,6 +225,14 @@ class Settings(BaseSettings):
     # rather than a constant so that a deployment with a slower corpus can move it.
     stale_photograph_days: int = Field(default=7, ge=1, le=365)
     max_upload_bytes: int = Field(default=8 * 1024 * 1024, gt=0)
+
+    # How large a data export may grow before it is refused rather than built.
+    #
+    # The archive is assembled in memory, so this is a guard on the process rather than on
+    # the person: an account with hundreds of photographs would otherwise be a request that
+    # takes the server down instead of one that fails. 256 MB is roughly thirty full-size
+    # uploads, which is more than any account here holds and far less than the machine has.
+    max_export_bytes: int = Field(default=256 * 1024 * 1024, gt=0)
     max_images_per_observation: int = Field(default=4, ge=1, le=10)
 
     default_temperature: float = Field(default=0.2, ge=0.0, le=2.0)

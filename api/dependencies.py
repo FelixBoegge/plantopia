@@ -21,6 +21,7 @@ from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from agent import checkpoints
 from agent.wiring import build_deps, now_utc, open_session
 from api import rate_limit
 from core.blobs import BlobStore, PostgresBlobStore
@@ -136,7 +137,7 @@ def current_owner(
 OwnerDep = Annotated[UUID, Depends(current_owner)]
 
 
-def plant_service(session: SessionDep, owner: OwnerDep) -> PlantService:
+def plant_service(session: SessionDep, owner: OwnerDep, settings: SettingsDep) -> PlantService:
     return PlantService(
         user_id=owner,
         plants=PlantRepository(session),
@@ -146,6 +147,9 @@ def plant_service(session: SessionDep, owner: OwnerDep) -> PlantService:
         feedback=FeedbackRepository(session),
         blobs=PostgresBlobStore(session),
         now=now_utc,
+        forget_conversation=lambda thread_id: checkpoints.delete_thread(
+            checkpoints.checkpointer_url(settings), thread_id
+        ),
     )
 
 

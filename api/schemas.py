@@ -176,6 +176,22 @@ class ReadyOut(BaseModel):
     database: bool
 
 
+class DeleteAccountIn(BaseModel):
+    """What somebody must supply to erase their own account.
+
+    Both fields are checked on the server. A confirmation only the browser enforces is a
+    confirmation that a script does not have to type, and this is the one action in the
+    system with no undo.
+    """
+
+    password: str = Field(min_length=1)
+
+    # The literal word, typed out. Deliberately not a boolean: a checkbox is one click away
+    # from an accident, and `{"confirm": true}` is what a client sends when somebody has
+    # not read anything.
+    confirmation: str = Field(min_length=1)
+
+
 class RegisterIn(BaseModel):
     """What creating an account needs.
 

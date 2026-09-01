@@ -7,7 +7,7 @@ from core.ids import new_id
 from services.plant_service import PlantDetail, PlantService, PlantSummary
 
 
-def _service(owner, db, now) -> PlantService:
+def _service(owner, db, now, forget_conversation=None) -> PlantService:
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.feedback import FeedbackRepository
     from data.repositories.observations import ObservationRepository
@@ -23,6 +23,7 @@ def _service(owner, db, now) -> PlantService:
         feedback=FeedbackRepository(db),
         blobs=PostgresBlobStore(db),
         now=now,
+        forget_conversation=forget_conversation,
     )
 
 
@@ -357,3 +358,80 @@ def test_rename_plant_leaves_the_species_alone(owner, db, now, sample_plant):
     service.rename_plant(sample_plant, name="Kitchen basil")
 
     assert service.get_plant_detail(sample_plant).plant.species == species
+
+
+def _bare_plant(owner, db, now):
+    """A plant with no photographs.
+
+    Not `sample_plant`, whose observation carries `photo_refs=["img-1"]` — a placeholder
+    rather than a blob key, which `delete_plant` cannot parse as the UUID a real reference
+    always is. That is a property of the fixture, not of the code: every reference the
+    application writes comes from `blobs.put`.
+    """
+    from data.repositories.plants import PlantRepository
+
+    return PlantRepository(db).create(
+        owner,
+        name="Forgettable",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now(),
+    )
+
+
+class TestDeletingAPlantForgetsItsConversation:
+    """The chat history lives in LangGraph's own tables, keyed by a thread id and reachable
+    by nothing in this schema — so no cascade touches it.
+
+    That was a real leak: this path's spec says the plant "and everything hanging off it" is
+    removed, and the conversation was surviving invisibly, because nothing reads a checkpoint
+    whose plant is gone.
+    """
+
+    def test_the_conversation_thread_is_forgotten(self, owner, db, now):
+        from agent.threads import chat_thread
+
+        forgotten: list[str] = []
+        service = _service(owner, db, now, lambda thread: forgotten.append(thread) or 0)
+        plant_id = _bare_plant(owner, db, now)
+
+        service.delete_plant(plant_id)
+
+        assert forgotten == [chat_thread(owner, plant_id)]
+
+    def test_it_happens_before_the_rows_go(self, owner, db, now):
+        """Same ordering argument as account deletion. The checkpointer owns its own
+        connection, so this cannot join the transaction below it — and a plant that still
+        exists having lost its conversation is a failure somebody can see, where checkpoints
+        belonging to a plant that no longer exists is one nobody can.
+        """
+        from data.repositories.plants import PlantRepository
+
+        plant_id = _bare_plant(owner, db, now)
+        still_there: list[bool] = []
+        service = _service(
+            owner,
+            db,
+            now,
+            lambda thread: (
+                still_there.append(PlantRepository(db).get(owner, plant_id) is not None) or 0
+            ),
+        )
+
+        service.delete_plant(plant_id)
+
+        assert still_there == [True]
+
+    def test_a_service_without_one_still_deletes(self, owner, db, now):
+        """Optional, because most of this service has no business with checkpoints and a
+        test driving a rename should not need a checkpointer."""
+        from data.repositories.plants import PlantRepository
+
+        plant_id = _bare_plant(owner, db, now)
+
+        _service(owner, db, now).delete_plant(plant_id)
+
+        assert PlantRepository(db).get(owner, plant_id) is None

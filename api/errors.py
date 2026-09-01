@@ -29,6 +29,8 @@ from identity.accounts import (
 )
 from identity.sessions import SessionError
 from runs.executor import QueueFullError
+from services.erasure import ConfirmationError
+from services.export import ExportTooLargeError
 from services.limits import DailyCapReachedError, QuotaExceededError
 from services.run_service import MissingAnswerError, RunConflictError
 
@@ -230,6 +232,36 @@ def register(app: FastAPI) -> None:
             type_=TYPE_UNAUTHENTICATED,
             title="Not signed in",
             detail="Those credentials were not accepted.",
+        )
+
+    @app.exception_handler(ExportTooLargeError)
+    def _export_too_large(request: Request, exc: ExportTooLargeError) -> JSONResponse:
+        """An account holding more than can be built in one request.
+
+        A refusal rather than a truncated archive: half of somebody's data in a file
+        labelled as all of it is worse than being told to ask for help.
+        """
+        return problem(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            type_=TYPE_INVALID_REQUEST,
+            title="That is too much to export at once",
+            detail=str(exc),
+        )
+
+    @app.exception_handler(ConfirmationError)
+    def _refused_deletion(request: Request, exc: ConfirmationError) -> JSONResponse:
+        """A deletion that was not confirmed properly.
+
+        Says which of the two was wrong, unlike a sign-in. The caller is already
+        authenticated as this account, so telling them their password was mistyped reveals
+        nothing the session does not already establish — and being vague here would mean
+        somebody retrying a correct password against a mistyped confirmation forever.
+        """
+        return problem(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            type_=TYPE_INVALID_REQUEST,
+            title="That was not confirmed",
+            detail=str(exc),
         )
 
     @app.exception_handler(SessionError)

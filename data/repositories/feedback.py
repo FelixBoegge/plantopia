@@ -56,6 +56,24 @@ class FeedbackRepository:
         self._session.flush()
         return row.id
 
+    def list_for_user(self, user_id: UUID) -> list[Feedback]:
+        """Every answer this owner gave about a treatment, oldest first.
+
+        The comment at the top of this file said the answers were "for the owner to query
+        offline". This is that, and it is why the method exists now and did not before:
+        the data export is a caller, where the two speculative readers deleted in Phase 2
+        were not.
+        """
+        return list(
+            self.session.scalars(
+                select(Feedback)
+                .join(Diagnosis, Feedback.diagnosis_id == Diagnosis.id)
+                .join(Plant, Diagnosis.plant_id == Plant.id)
+                .where(Plant.user_id == user_id)
+                .order_by(Feedback.created_at.asc(), Feedback.id.asc())
+            ).all()
+        )
+
     def exists_for_diagnosis(self, user_id: UUID, diagnosis_id: UUID) -> bool:
         """Whether feedback has already been recorded for this diagnosis.
 

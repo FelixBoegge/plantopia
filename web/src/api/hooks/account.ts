@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { request } from "@/api/client";
+import { download, request } from "@/api/client";
 import { keys } from "@/app/queries";
 import type { Account, Evaluation, ProfileFact } from "@/api/types";
 
@@ -26,6 +26,45 @@ export function useForgetFact() {
     mutationFn: (fact: string) =>
       request("/profile/facts/forget", { method: "POST", body: { fact } }),
     onSuccess: () => queries.invalidateQueries({ queryKey: keys.facts }),
+  });
+}
+
+/**
+ * Fetch the export and hand it to the browser to save.
+ *
+ * The bytes come through the authenticated client and are handed over as an object URL: a
+ * plain link cannot carry the bearer token, which lives in memory rather than in a cookie.
+ * The URL is revoked immediately — the download has already been queued by then, and
+ * leaving it alive holds the whole archive in memory for as long as the tab is open.
+ */
+export function useExport() {
+  return useMutation({
+    mutationFn: async () => {
+      const { blob, filename } = await download("/me/export");
+      const url = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      return filename;
+    },
+  });
+}
+
+/**
+ * Delete the account. There is no undo and no confirmation dialog beyond the form itself.
+ *
+ * Takes no identifier: the endpoint acts on whoever the request is authenticated as, which
+ * is the only account it can act on.
+ */
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: (confirmation: { password: string; confirmation: string }) =>
+      request("/me", { method: "DELETE", body: confirmation }),
   });
 }
 

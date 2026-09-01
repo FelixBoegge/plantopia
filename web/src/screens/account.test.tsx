@@ -300,3 +300,192 @@ describe("before starting a check", () => {
     expect(screen.queryByText(/left this month/)).not.toBeInTheDocument();
   });
 });
+
+describe("taking your data out", () => {
+  it("offers a download", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(
+      await screen.findByRole("button", { name: /download my data/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("fetches it through the authenticated client rather than a bare link", async () => {
+    // The access token lives in memory, not a cookie, so an anchor pointing at the
+    // endpoint would arrive unauthenticated and download a 401 page named as an archive.
+    signedIn();
+    let authorised = false;
+    server.use(
+      http.get("/api/v1/me/export", ({ request }) => {
+        authorised = request.headers.get("authorization") !== null;
+        return new HttpResponse(new Blob(["zip-bytes"]), {
+          headers: {
+            "content-type": "application/zip",
+            "content-disposition": 'attachment; filename="plantopia-export-01a0.zip"',
+          },
+        });
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /download my data/i }),
+    );
+
+    await waitFor(() => expect(authorised).toBe(true));
+  });
+
+  it("says so when it cannot be built", async () => {
+    signedIn();
+    server.use(
+      http.get("/api/v1/me/export", () =>
+        HttpResponse.json(
+          {
+            type: PROBLEM.invalidRequest,
+            title: "That is too much to export at once",
+            status: 413,
+            detail: "this account holds more than can be exported in one request",
+          },
+          { status: 413 },
+        ),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /download my data/i }),
+    );
+
+    expect(await screen.findByText(/more than can be exported/i)).toBeInTheDocument();
+  });
+});
+
+describe("deleting your account", () => {
+  it("asks twice before it will do anything", async () => {
+    // The first click opens the form; nothing is sent until the form is completed. This is
+    // the only action in the application with no undo.
+    signedIn();
+    let called = false;
+    server.use(
+      http.delete("/api/v1/me", () => {
+        called = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete my account/i }),
+    );
+
+    expect(called).toBe(false);
+    expect(screen.getByLabelText(/your password/i)).toBeInTheDocument();
+  });
+
+  it("says what will be destroyed before it happens", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete my account/i }),
+    );
+
+    const warning = screen.getByRole("alert");
+    expect(warning).toHaveTextContent(/photographs/i);
+    expect(warning).toHaveTextContent(/diagnosis|diagnoses/i);
+    expect(warning).toHaveTextContent(/conversation/i);
+  });
+
+  it("can be backed out of", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete my account/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /keep my account/i }));
+
+    expect(screen.queryByLabelText(/your password/i)).not.toBeInTheDocument();
+  });
+
+  it("sends the password and the typed confirmation", async () => {
+    signedIn();
+    let sent: Record<string, string> | null = null;
+    server.use(
+      http.delete("/api/v1/me", async ({ request }) => {
+        sent = (await request.json()) as Record<string, string>;
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.post("/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete my account/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/your password/i), "hunter2000000");
+    await userEvent.type(screen.getByLabelText(/to confirm/i), "delete my account");
+    await userEvent.click(screen.getByRole("button", { name: /delete everything/i }));
+
+    await waitFor(() =>
+      expect(sent).toEqual({
+        password: "hunter2000000",
+        confirmation: "delete my account",
+      }),
+    );
+  });
+
+  it("reports a refused password without losing what was typed", async () => {
+    signedIn();
+    server.use(
+      http.delete("/api/v1/me", () =>
+        HttpResponse.json(
+          {
+            type: PROBLEM.invalidRequest,
+            title: "That was not confirmed",
+            status: 400,
+            detail: "that password is not correct",
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete my account/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/your password/i), "wrong-password");
+    await userEvent.type(screen.getByLabelText(/to confirm/i), "delete my account");
+    await userEvent.click(screen.getByRole("button", { name: /delete everything/i }));
+
+    expect(await screen.findByText(/password is not correct/i)).toBeInTheDocument();
+    // Still on the form, with the confirmation intact — retyping the phrase because the
+    // password was mistyped would be a punishment for a typo.
+    expect(screen.getByLabelText(/to confirm/i)).toHaveValue("delete my account");
+  });
+
+  it("signs out once the account is gone", async () => {
+    // The access token would otherwise keep parsing for up to fifteen minutes against an
+    // account that no longer exists, and every screen would render as merely empty.
+    signedIn();
+    server.use(
+      http.delete("/api/v1/me", () => new HttpResponse(null, { status: 204 })),
+      http.post("/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete my account/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/your password/i), "hunter2000000");
+    await userEvent.type(screen.getByLabelText(/to confirm/i), "delete my account");
+    await userEvent.click(screen.getByRole("button", { name: /delete everything/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
+  });
+});

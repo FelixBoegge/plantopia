@@ -12,7 +12,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 from typing_extensions import TypedDict
 
-from agent.checkpoints import build_checkpointer, checkpointer_url, delete_for_user
+from agent.checkpoints import (
+    build_checkpointer,
+    checkpointer_url,
+    delete_for_user,
+    delete_thread,
+)
 from agent.threads import diagnosis_thread
 from core.config import Settings
 from core.ids import new_id
@@ -139,3 +144,43 @@ def test_the_checkpointer_url_drops_the_sqlalchemy_driver():
     )
 
     assert checkpointer_url(settings) == "postgresql://u:p@host:5433/db"
+
+
+def test_removing_state_before_the_tables_exist_is_harmless(url, monkeypatch):
+    """LangGraph creates its tables in ``PostgresSaver.setup()``, which runs on the first
+    diagnosis. A deployment where nobody has run one has no checkpoint tables at all.
+
+    Deleting an account then used to raise ``UndefinedTable`` and answer 500 — found by a
+    browser test that signed up and immediately deleted, which is exactly the shape of the
+    person most likely to do it. Zero rows removed is the honest answer, and it is the same
+    answer as an account that ran nothing.
+
+    Tested by pointing the sweep at table names that do not exist rather than by dropping
+    the real ones: this suite shares one database, and a test that dropped them would break
+    every other test in the file rather than proving anything extra.
+    """
+    from agent import checkpoints
+
+    monkeypatch.setattr(
+        checkpoints, "_THREAD_KEYED_TABLES", ("checkpoints_that_were_never_created",)
+    )
+
+    assert delete_for_user(url, new_id()) == 0
+    assert delete_thread(url, "01a0:chat:01a0") == 0
+
+
+def test_one_missing_table_does_not_stop_the_others(url, monkeypatch):
+    """Each table gets its own transaction block. Without one, the failed statement would
+    poison the connection and every table after it would fail too — turning a partially
+    migrated database into no deletion at all."""
+    from agent import checkpoints
+
+    monkeypatch.setattr(
+        checkpoints,
+        "_THREAD_KEYED_TABLES",
+        ("checkpoints_that_were_never_created", "checkpoints"),
+    )
+
+    # Reaches the real `checkpoints` table despite the first name being absent, and so
+    # returns without raising.
+    assert delete_for_user(url, new_id()) == 0

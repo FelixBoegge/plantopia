@@ -1,9 +1,15 @@
+import { useState } from "react";
+
 import {
   allowance,
   useAccount,
+  useDeleteAccount,
+  useExport,
   useFacts,
   useForgetFact,
 } from "@/api/hooks/account";
+import { useAuth } from "@/auth/AuthProvider";
+import { Field } from "@/components/Field";
 import { readable } from "@/api/problems";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
@@ -54,7 +60,124 @@ export function Account() {
       ) : null}
 
       <LearnedFacts />
+
+      <YourData />
+
+      <DeleteAccount />
     </div>
+  );
+}
+
+/** The phrase somebody types to confirm. Must match `services/erasure.CONFIRMATION`. */
+const CONFIRMATION = "delete my account";
+
+function YourData() {
+  const take = useExport();
+
+  return (
+    <section aria-labelledby="your-data" className="border-t pt-6">
+      <h2 id="your-data" className="mb-3 text-lg font-medium">
+        Your data
+      </h2>
+      <p className="text-muted-foreground mb-3">
+        Everything Plantopia holds about you — your plants, what it diagnosed, what you
+        told it, and the photographs you uploaded — as one file you can keep.
+      </p>
+
+      {take.isError ? (
+        <Notice tone="failure">{readable(take.error)}</Notice>
+      ) : null}
+
+      <Button
+        variant="outline"
+        onClick={() => take.mutate()}
+        disabled={take.isPending}
+      >
+        {take.isPending ? "Preparing…" : "Download my data"}
+      </Button>
+    </section>
+  );
+}
+
+function DeleteAccount() {
+  const [confirming, setConfirming] = useState(false);
+  const [password, setPassword] = useState("");
+  const [typed, setTyped] = useState("");
+  const remove = useDeleteAccount();
+  const { signOut } = useAuth();
+
+  return (
+    <section aria-labelledby="delete-account" className="border-t pt-6">
+      <h2 id="delete-account" className="mb-3 text-lg font-medium">
+        Delete your account
+      </h2>
+
+      {!confirming ? (
+        <>
+          <p className="text-muted-foreground mb-3">
+            This removes everything, permanently.
+          </p>
+          <Button variant="outline" onClick={() => setConfirming(true)}>
+            Delete my account
+          </Button>
+        </>
+      ) : (
+        <form
+          className="grid max-w-md gap-4"
+          // The application says what is wrong in its own words. A native validation
+          // bubble is neither, and it silently swallows the submit event.
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            remove.mutate(
+              { password, confirmation: typed },
+              // Signed out on the way past: the access token would otherwise keep
+              // parsing for up to fifteen minutes against an account that no longer
+              // exists, and every screen would render as though it were merely empty.
+              { onSuccess: () => void signOut() },
+            );
+          }}
+        >
+          <Notice tone="failure" title="Delete your account?">
+            Your plants, their photographs, every diagnosis and every conversation go with
+            it. Plantopia will not be able to recover any of it, and neither will you.
+          </Notice>
+
+          {remove.isError ? (
+            <Notice tone="failure">{readable(remove.error)}</Notice>
+          ) : null}
+
+          <Field
+            label="Your password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+
+          <Field
+            label={`Type "${CONFIRMATION}" to confirm`}
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+            required
+          />
+
+          <div className="flex gap-2">
+            <Button type="submit" variant="destructive" disabled={remove.isPending}>
+              {remove.isPending ? "Deleting…" : "Delete everything"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirming(false)}
+            >
+              Keep my account
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 

@@ -52,6 +52,22 @@ class UsageRepository:
         self.session.flush()
         return event.id
 
+    def list_for_user(self, user_id: UUID) -> list[UsageEvent]:
+        """Every run this owner has been charged for, oldest first.
+
+        Written for the data export, which is its only caller. A repository here does not
+        get read methods on speculation — `feedback.py` records what happened the last time
+        one did — so this exists because somebody can now ask for their own usage history
+        and receive it.
+        """
+        return list(
+            self.session.scalars(
+                select(UsageEvent)
+                .where(UsageEvent.user_id == user_id)
+                .order_by(UsageEvent.occurred_at.asc(), UsageEvent.id.asc())
+            ).all()
+        )
+
     def count_runs(self, user_id: UUID, *, kind: str, since: datetime) -> int:
         """How many runs of one kind this owner has started since a moment.
 

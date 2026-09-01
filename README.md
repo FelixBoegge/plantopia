@@ -257,6 +257,35 @@ somebody whose plant died last week and who has only last week's photograph is e
 needs an answer. The age is judged by the date left in the field, not the one the camera
 recorded, so correcting a wrong camera clock corrects the verdict.
 
+### Your data, and getting rid of it
+
+Registration records what you agreed to. The account screen is where you can act on it.
+
+**Download everything.** One file — a ZIP holding a JSON document and every photograph you
+uploaded. The JSON opens in anything; records carry the *name* of what they point at as well
+as its identifier, so a diagnosis says which plant it was about rather than only
+`plant_id: 01a0…`. It contains your plants, observations, diagnoses, treatment plans and
+their outcomes, conversations, the facts Plantopia has inferred about you, and what your runs
+have cost. It contains no password hash and no token.
+
+**Delete the account.** Everything goes: every table that reaches you, the stored
+photographs, and the conversation checkpoints that live outside the application's own schema.
+It asks for your password and for the phrase `delete my account`, typed out — both checked on
+the server, because a confirmation only the browser enforces is one a script does not have to
+type. There is no undo.
+
+What "everything" means is **proven against the schema rather than asserted**: a test creates
+an account with a row in every owned table, deletes it, then walks `Base.metadata` and
+requires each table to be empty or explicitly classified as reference data. A table added
+later has to be classified before its own tests pass, so it cannot be quietly missed. The
+disorder corpus and the researched species care baselines survive — they describe plants, not
+people, and deleting your account should not degrade the system for everybody else.
+
+One honest limit: an access token already issued keeps parsing until it expires, up to
+fifteen minutes. Refresh tokens are revoked, so the session cannot be extended, and there is
+nothing of yours left for that token to read. Closing the window entirely would mean a
+database read on every request in the application; `U18` records the trade.
+
 ### A plant's history, in one sequence
 
 Each diagnosis is a verdict on one moment. The question you actually have after the second or

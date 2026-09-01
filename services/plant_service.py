@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from agent.threads import chat_thread
 from core.blobs import BlobStore
 from data.engine import transaction
 from data.repositories.diagnoses import DiagnosisRecord, DiagnosisRepository
@@ -53,6 +54,7 @@ class PlantService:
         feedback: FeedbackRepository,
         blobs: BlobStore,
         now: Callable[[], datetime],
+        forget_conversation: Callable[[str], int] | None = None,
     ) -> None:
         self._user_id = user_id
         self._plants = plants
@@ -62,6 +64,11 @@ class PlantService:
         self._feedback = feedback
         self._blobs = blobs
         self._now = now
+        # How to remove a conversation's checkpoints, which live in LangGraph's own tables
+        # on their own connection and are reachable by nothing else here. Optional because
+        # most of this service has no business with them, and a test driving a rename should
+        # not need a checkpointer.
+        self._forget_conversation = forget_conversation
 
     @property
     def user_id(self) -> UUID:
@@ -173,6 +180,11 @@ class PlantService:
         nothing relates the bytes back to the plant except the references its observations
         hold. Collected here and removed explicitly, because "delete my plant" that leaves
         the photographs behind is not what it says.
+
+        Neither do the conversation's checkpoints, for the same reason and one worse: they
+        are not in this schema at all. That was a real leak — the spec for this path says
+        the plant and everything hanging off it is removed, and the chat history was
+        surviving invisibly, since nothing reads a checkpoint whose plant is gone.
         """
         detail = self.get_plant_detail(plant_id)
         if detail is None:
@@ -181,6 +193,13 @@ class PlantService:
         keys = {ref for observation in detail.observations for ref in observation.photo_refs}
         if detail.plant.photo_ref:
             keys.add(detail.plant.photo_ref)
+
+        # Before the rows, and outside the transaction it cannot join — the checkpointer
+        # owns its own connection. Same ordering argument as account deletion: a plant that
+        # still exists having lost its conversation is a failure somebody can see, and
+        # checkpoints belonging to a plant that no longer exists are a failure nobody can.
+        if self._forget_conversation is not None:
+            self._forget_conversation(chat_thread(self._user_id, plant_id))
 
         with transaction(self._plants.session):
             for key in keys:

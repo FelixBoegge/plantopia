@@ -11,6 +11,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agent.chat_agent import make_chat_agent
 from agent.deps import Deps
+from agent.threads import chat_thread
 from data.engine import transaction
 from data.repositories.messages import MessageRecord, MessageRepository
 from data.repositories.plants import PlantRecord
@@ -103,11 +104,13 @@ class ChatService:
         """The ReAct loop's own scratch thread, distinct from any diagnosis thread
         for the same plant (design spec §5).
 
-        Prefixed with the owner. A thread id is a resumable handle to a conversation,
-        and one built from a plant id alone would be constructible by anyone who
-        learned that plant id.
+        Built through `agent.threads.chat_thread` rather than by hand. It used to be the
+        same f-string written out here, which was correct and was a second place the
+        owner-prefix invariant lived — and that invariant is now load-bearing for something
+        else entirely: account deletion sweeps checkpoints by `{user_id}:` prefix, so a
+        thread id built without one would be a conversation that survives its owner.
         """
-        return f"{self._deps.user_id}:chat:{plant_id}"
+        return chat_thread(self._deps.user_id, plant_id)
 
     def get_plant(self, plant_id: UUID) -> PlantRecord | None:
         """The plant's own record, or ``None`` if it no longer exists.
