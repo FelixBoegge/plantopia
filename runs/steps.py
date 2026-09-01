@@ -65,3 +65,46 @@ UNKNOWN = Step("working", "Working")
 def step_for(node: str) -> Step:
     """The step a node corresponds to."""
     return STEPS.get(node, UNKNOWN)
+
+
+# Settings attributes that name a model. Anything in CALLS that is not one of these is the
+# name of an outside service, written as somebody should read it.
+MODEL_ROLES = frozenset({"gate_model", "vision_model", "reasoning_model"})
+
+# What each node reaches for, in the order it reaches for it.
+#
+# Deliberately beside STEPS and keyed the same way: a node whose work changes needs both
+# entries updated, and having them adjacent is the only thing that makes that likely.
+#
+# Nodes that call neither a model nor a service are absent rather than present and empty —
+# `persist` writes rows and `compare_progress` reads them, and naming a service for either
+# would describe work that does not happen.
+CALLS: dict[str, tuple[str, ...]] = {
+    "guard_input": ("gate_model",),
+    "quality_check": ("gate_model",),
+    "identify_plant": ("vision_model", "Pl@ntNet"),
+    "assess_symptoms": ("vision_model",),
+    "select_questions": ("reasoning_model", "OpenStreetMap"),
+    "hypothesise": ("reasoning_model",),
+    "enrich": ("the disorder reference", "Open-Meteo"),
+    "diagnose": ("reasoning_model",),
+    "check_contagion": ("reasoning_model",),
+    "build_roadmap": ("reasoning_model",),
+    "revise_roadmap": ("reasoning_model",),
+}
+
+
+def calls_for(node: str, settings) -> str | None:
+    """What this node called, in words, or ``None`` where it called nothing outside.
+
+    A model is named from ``settings`` rather than written out here, so the sentence follows
+    the configuration instead of describing whichever model happened to be current when this
+    was typed.
+    """
+    parts = CALLS.get(node)
+    if not parts:
+        return None
+    return ", then ".join(
+        f"{getattr(settings, part)} via OpenRouter" if part in MODEL_ROLES else part
+        for part in parts
+    )
