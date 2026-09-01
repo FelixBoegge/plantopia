@@ -26,6 +26,16 @@ export interface Step {
   sequence: number;
   id: string;
   description: string;
+  /**
+   * The model or service this step reached for.
+   *
+   * Optional for good: steps recorded before it was carried are replayed on reconnect
+   * without it, and a step that called nothing outside the process omits it rather than
+   * sending an empty string.
+   */
+  calls?: string;
+  /** How long the step took. Node wall-time, so it includes the graph's own overhead. */
+  duration_ms?: number;
 }
 
 export interface Watched {
@@ -156,6 +166,15 @@ export function useRunStream(runId: string | null): Watched {
                 sequence,
                 id,
                 description: String(payload.description ?? ""),
+                // Absent on every step recorded before these were carried, and absent on a
+                // step that called nothing outside the process. Spread conditionally rather
+                // than set to undefined, so the two cases stay indistinguishable.
+                ...(typeof payload.calls === "string"
+                  ? { calls: payload.calls }
+                  : {}),
+                ...(typeof payload.duration_ms === "number"
+                  ? { duration_ms: payload.duration_ms }
+                  : {}),
               },
             ],
           };

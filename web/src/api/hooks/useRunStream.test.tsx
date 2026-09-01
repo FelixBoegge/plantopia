@@ -70,6 +70,41 @@ describe("watching a run", () => {
     ]);
   });
 
+  it("carries what a step called and how long it took", async () => {
+    setToken("fresh");
+    serve(() =>
+      frames(
+        `id: 1
+event: step
+data: {"step":"identifying","description":"Identifying the species","calls":"acme/see-1 via OpenRouter","duration_ms":4120}
+
+`,
+        completed(2),
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    const [carried] = result.current.steps;
+    expect(carried?.calls).toBe("acme/see-1 via OpenRouter");
+    expect(carried?.duration_ms).toBe(4120);
+  });
+
+  it("keeps a step that carries neither", async () => {
+    // Replayed history from a run that started before either was recorded.
+    setToken("fresh");
+    serve(() => frames(step(1, "identifying", "Identifying the species"), completed(2)));
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.ending).not.toBeNull());
+    const [bare] = result.current.steps;
+    expect(bare).toBeDefined();
+    expect(bare?.calls).toBeUndefined();
+    expect(bare?.duration_ms).toBeUndefined();
+  });
+
   it("sends the token as a header", async () => {
     setToken("fresh");
     let authorised: string | null = null;
