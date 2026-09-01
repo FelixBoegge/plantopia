@@ -5,4 +5,4 @@
 - [x] I want to display proper histories of each plant, with a timeline, images on different dates/times to track it more properly and have a better overall picture of its ongoing conditions
 - [x] I want to fetch image metdata to gain the timestamp of the image along with its rough location, so the user does not provide it manually
 - [x] the weather fetching should be more advanced. It should not just fetch the last 30 days and through the info in one bucket, but rather have a granular info set with weather per day. Also a weather forcast should be included with the same granularity, for the next 7 days.
-- [] chats are specific to a user and a plant. Those chat histories can become long over time. So the history should be condensed, when a certain threshold is crossed.
+- [x] chats are specific to a user and a plant. Those chat histories can become long over time. So the history should be condensed, when a certain threshold is crossed.
