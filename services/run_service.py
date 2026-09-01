@@ -179,6 +179,15 @@ class RunService:
         self.get(run_id)  # 404 for a stranger before any event is read
         return self._runs.events(self._user_id, run_id, after=after)
 
+    def activity(self, diagnosis_id: UUID) -> list[EventRecord]:
+        """What the run that produced this diagnosis did, for a screen showing the result.
+
+        Empty is a real answer, not a missing one: a diagnosis made before steps carried
+        anything worth showing, or one whose run has since been swept, has no activity and
+        the screen shows nothing rather than an empty heading.
+        """
+        return self._runs.steps_for_diagnosis(self._user_id, diagnosis_id)
+
     def answer(
         self,
         run_id: UUID,

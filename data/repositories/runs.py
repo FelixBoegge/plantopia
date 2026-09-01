@@ -274,5 +274,37 @@ class RunRepository:
             for row in rows
         ]
 
+    def steps_for_diagnosis(self, user_id: UUID, diagnosis_id: UUID) -> list[EventRecord]:
+        """The step events of the run that produced this diagnosis, in order.
+
+        Owner-scoped through the run for the same reason ``events`` is: the identifier is
+        the only thing a stranger would otherwise need.
+
+        Steps only. The rest of a run's history — what it paused to ask, how it ended —
+        belongs to the run, while a screen reading this is showing what a result was
+        reached by.
+        """
+        rows = self._session.scalars(
+            select(RunEvent)
+            .join(Run, Run.id == RunEvent.run_id)
+            .where(
+                Run.user_id == user_id,
+                Run.diagnosis_id == diagnosis_id,
+                # The literal rather than `runs.steps.STEP`: this package is imported by the
+                # worker that imports that one, and the constant is not worth the cycle.
+                RunEvent.kind == "step",
+            )
+            .order_by(RunEvent.sequence)
+        ).all()
+        return [
+            EventRecord(
+                sequence=row.sequence,
+                kind=row.kind,
+                payload=json.loads(row.payload_json),
+                occurred_at=row.occurred_at,
+            )
+            for row in rows
+        ]
+
     def _row(self, user_id: UUID, run_id: UUID) -> Run | None:
         return self._session.scalar(select(Run).where(Run.id == run_id, Run.user_id == user_id))

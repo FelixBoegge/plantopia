@@ -180,6 +180,10 @@ READS = [
     ("runs.thread_of", lambda s, u, r: RunRepository(s).thread_of(u, r["run_id"])),
     ("runs.events", lambda s, u, r: RunRepository(s).events(u, r["run_id"])),
     (
+        "runs.steps_for_diagnosis",
+        lambda s, u, r: RunRepository(s).steps_for_diagnosis(u, r["diagnosis_id"]),
+    ),
+    (
         "messages.list_for_plant_after",
         lambda s, u, r: MessageRepository(s).list_for_plant_after(u, r["plant_id"], after=None),
     ),
