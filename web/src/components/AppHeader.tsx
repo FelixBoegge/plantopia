@@ -21,15 +21,21 @@ export function AppHeader() {
         aria-label="Main"
         className="mx-auto flex max-w-5xl items-center gap-4 px-6 py-3"
       >
-        <Link to="/" className="font-semibold">
+        <Link to="/" className="font-semibold underline-offset-4 hover:underline">
           Plantopia
         </Link>
         <div className="flex-1" />
-        <Link to="/diagnose">Diagnose a plant</Link>
+        <Link to="/diagnose" className="underline-offset-4 hover:underline">
+          Diagnose a plant
+        </Link>
         {account?.role === "admin" ? (
-          <Link to="/admin/evaluation">Evaluation</Link>
+          <Link to="/admin/evaluation" className="underline-offset-4 hover:underline">
+            Evaluation
+          </Link>
         ) : null}
-        <Link to="/account">Account</Link>
+        <Link to="/account" className="underline-offset-4 hover:underline">
+          Account
+        </Link>
         <Button
           variant="ghost"
           size="sm"

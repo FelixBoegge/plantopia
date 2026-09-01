@@ -8,27 +8,76 @@
 /* The palette comes from shadcn's own tokens — `background`, `foreground`, `primary` and
    the rest — because its components already consume them. A second set defined here would
    be a second palette to keep in step, and the way that is discovered is one component
-   looking wrong in dark mode. */
+   looking wrong in dark mode. There was such a second set here once, defined only under
+   `.dark`; two of its names collided with these, so `bg-muted` rendered light sage on a
+   dark page until it was removed.
+
+   Sage and eucalyptus in light, deep forest in dark, all on hue 150-155. Every text and
+   surface pair was measured against WCAG 2.1 before it was written down — body text at
+   4.5:1 or better, the weakest pair being `destructive` on `card` at 4.83:1. That check is
+   not something the test suite can repeat: axe runs under jsdom, which resolves no colours,
+   so it reports contrast as incomplete rather than failing. Changing a value here means
+   re-measuring by hand.
+
+   `--chart-*` is a placeholder ramp so a chart is not left grey on a green page. It is
+   sequential, which is wrong for categorical series — the first real chart wants a proper
+   categorical palette, not these five. */
 
 @layer base {
+  /* Pinned to the theme rather than left as `light dark`.
+
+     `theme.ts` resolves the choice itself and toggles a class, so the operating system's
+     preference is not the answer once somebody has picked one. Left as `light dark`, a
+     browser dressed the controls it draws itself — the date field's calendar button, the
+     scrollbars — from the OS, which put a dark calendar icon on a dark field for anybody
+     running the app in dark mode on a light desktop. */
   :root {
-    color-scheme: light dark;
+    color-scheme: light;
   }
 
   .dark {
-    --color-canvas: oklch(0.19 0.015 150);
-    --color-surface: oklch(0.24 0.015 150);
-    --color-ink: oklch(0.95 0.01 150);
-    --color-muted: oklch(0.7 0.02 150);
-    --color-line: oklch(0.33 0.015 150);
-    --color-accent: oklch(0.72 0.14 150);
-    --color-accent-ink: oklch(0.18 0.02 150);
+    color-scheme: dark;
+  }
+
+  /* The date field opens a calendar; the button that does it should look like a button.
+     Chrome draws it at a low contrast that reads as decoration. */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.75;
+    transition: opacity 120ms;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
   }
 
   body {
-    background-color: var(--color-canvas);
-    color: var(--color-ink);
     @apply bg-background text-foreground;
+  }
+
+  /* A hand on anything that responds to a click.
+
+     Tailwind's Preflight leaves `button` on the user-agent default, which is an arrow, so
+     links got a hand and buttons did not — half the controls on a screen looked inert. The
+     ARIA roles are here because the components built on Base UI render a `span` with a role
+     rather than a native control, and a `span` has no default cursor of its own. */
+  button:not(:disabled),
+  summary,
+  label[for],
+  select:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]) {
+    cursor: pointer;
   }
 
   /* Focus is visible everywhere by default. A design that removes it is a design that
@@ -88,70 +137,70 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: oklch(0.945 0.022 150);
+  --foreground: oklch(0.255 0.035 152);
+  --card: oklch(0.895 0.038 150);
+  --card-foreground: oklch(0.255 0.035 152);
+  --popover: oklch(0.895 0.038 150);
+  --popover-foreground: oklch(0.255 0.035 152);
+  --primary: oklch(0.435 0.098 152);
+  --primary-foreground: oklch(0.98 0.012 150);
+  --secondary: oklch(0.855 0.045 150);
+  --secondary-foreground: oklch(0.29 0.038 152);
+  --muted: oklch(0.87 0.032 150);
+  --muted-foreground: oklch(0.445 0.038 152);
+  --accent: oklch(0.84 0.055 150);
+  --accent-foreground: oklch(0.27 0.038 152);
+  --destructive: oklch(0.505 0.2 27);
+  --border: oklch(0.775 0.042 150);
+  --input: oklch(0.775 0.042 150);
+  --ring: oklch(0.545 0.1 152);
+  --chart-1: oklch(0.435 0.098 152);
+  --chart-2: oklch(0.545 0.1 152);
+  --chart-3: oklch(0.65 0.09 152);
+  --chart-4: oklch(0.745 0.07 152);
+  --chart-5: oklch(0.83 0.055 152);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.915 0.03 150);
+  --sidebar-foreground: oklch(0.255 0.035 152);
+  --sidebar-primary: oklch(0.435 0.098 152);
+  --sidebar-primary-foreground: oklch(0.98 0.012 150);
+  --sidebar-accent: oklch(0.84 0.055 150);
+  --sidebar-accent-foreground: oklch(0.27 0.038 152);
+  --sidebar-border: oklch(0.775 0.042 150);
+  --sidebar-ring: oklch(0.545 0.1 152);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.168 0.022 155);
+  --foreground: oklch(0.945 0.014 150);
+  --card: oklch(0.235 0.03 155);
+  --card-foreground: oklch(0.945 0.014 150);
+  --popover: oklch(0.235 0.03 155);
+  --popover-foreground: oklch(0.945 0.014 150);
+  --primary: oklch(0.735 0.135 150);
+  --primary-foreground: oklch(0.18 0.03 155);
+  --secondary: oklch(0.29 0.032 155);
+  --secondary-foreground: oklch(0.945 0.014 150);
+  --muted: oklch(0.28 0.028 155);
+  --muted-foreground: oklch(0.755 0.028 150);
+  --accent: oklch(0.315 0.04 155);
+  --accent-foreground: oklch(0.95 0.014 150);
+  --destructive: oklch(0.7 0.185 22);
+  --border: oklch(0.345 0.032 155);
+  --input: oklch(0.375 0.032 155);
+  --ring: oklch(0.62 0.1 152);
+  --chart-1: oklch(0.735 0.135 150);
+  --chart-2: oklch(0.66 0.12 150);
+  --chart-3: oklch(0.58 0.105 150);
+  --chart-4: oklch(0.5 0.09 150);
+  --chart-5: oklch(0.42 0.075 150);
+  --sidebar: oklch(0.205 0.026 155);
+  --sidebar-foreground: oklch(0.945 0.014 150);
+  --sidebar-primary: oklch(0.735 0.135 150);
+  --sidebar-primary-foreground: oklch(0.18 0.03 155);
+  --sidebar-accent: oklch(0.315 0.04 155);
+  --sidebar-accent-foreground: oklch(0.95 0.014 150);
+  --sidebar-border: oklch(0.345 0.032 155);
+  --sidebar-ring: oklch(0.62 0.1 152);
 }

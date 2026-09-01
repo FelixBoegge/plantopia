@@ -52,7 +52,7 @@ export function Plants() {
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {plants.map(({ plant, latest_diagnosis, pending_step_count }) => (
             <li key={plant.id}>
-              <Card className="h-full overflow-hidden pt-0">
+              <Card className="hover:border-primary/60 h-full overflow-hidden pt-0 transition-colors">
                 <Link to={`/plants/${plant.id}`} className="block">
                   <Photo
                     photoKey={plant.photo_ref}
