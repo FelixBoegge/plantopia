@@ -323,6 +323,34 @@ describe("starting a diagnosis", () => {
 });
 
 describe("watching it work", () => {
+  it("puts the activity beside the run rather than above it", async () => {
+    // jsdom lays nothing out, so what is assertable is the structure: the activity and the
+    // run body are siblings of a two-column grid rather than stacked blocks.
+    signedIn();
+    watching([STEP]);
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    const activity = await screen.findByRole("region", {
+      name: "What Plantopia is doing",
+    });
+
+    expect(activity.parentElement).toHaveClass("lg:grid-cols-[18rem_1fr]");
+  });
+
+  it("puts the activity first, so it leads when the columns stack", async () => {
+    // On a phone during a ninety-second run, the progress is the screen.
+    signedIn();
+    watching([STEP]);
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    const activity = await screen.findByRole("region", {
+      name: "What Plantopia is doing",
+    });
+
+    expect(activity.parentElement?.firstElementChild).toBe(activity);
+  });
+
+
   it("shows each step as it arrives", async () => {
     signedIn();
     watching([STEP]);

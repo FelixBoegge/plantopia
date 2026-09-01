@@ -163,62 +163,74 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
         ) : null}
       </div>
 
-      <Reasoning
-        steps={watched.steps}
-        working={!over && watched.questions === null}
-        connected={watched.connected}
-      />
-
-      {watched.questions && !over ? (
-        <Questions
-          questions={watched.questions}
-          identification={watched.identification}
-          staleAfterDays={watched.staleAfterDays}
-          busy={answer.isPending}
-          failure={answer.error}
-          onAnswer={(answers, species) => answer.mutate({ answers, species })}
+      {/*
+        The activity sits beside the run, not above it, and comes first in the DOM so that
+        it leads when the columns collapse — on a phone, during a ninety-second run, the
+        progress is the screen.
+      */}
+      <div className="grid gap-8 lg:grid-cols-[18rem_1fr] lg:items-start">
+        <Reasoning
+          steps={watched.steps}
+          working={!over && watched.questions === null}
+          connected={watched.connected}
         />
-      ) : null}
 
-      {ending?.kind === "cancelled" || run?.status === "cancelled" ? (
-        <Notice title="Stopped">
-          This diagnosis was stopped. You can start another whenever you like.
-        </Notice>
-      ) : null}
-
-      {ending?.kind === "failed" || run?.status === "failed" ? (
-        <Notice tone="failure" title="This diagnosis could not be finished">
-          {ending?.detail ??
-            run?.error ??
-            "Something went wrong. Please try again."}
-        </Notice>
-      ) : null}
-
-      {ending?.rejected ? (
-        <Notice title="Nothing to diagnose">
-          {/* Not a failure. Nothing broke — the photograph could not be used, and saying so
-              plainly is better than an error somebody reads as a bug. */}
-          {ending.reason}
-        </Notice>
-      ) : null}
-
-      {detail ? <Differential detail={detail} /> : null}
-
-      {over ? (
-        <div className="flex gap-2">
-          {(ending?.plantId ?? run?.plant_id) ? (
-            <LinkButton to={`/plants/${ending?.plantId ?? run?.plant_id}`}>
-              Open this plant
-            </LinkButton>
+        <div className="grid gap-8">
+          {watched.questions && !over ? (
+            <Questions
+              questions={watched.questions}
+              identification={watched.identification}
+              staleAfterDays={watched.staleAfterDays}
+              busy={answer.isPending}
+              failure={answer.error}
+              onAnswer={(answers, species) =>
+                answer.mutate({ answers, species })
+              }
+            />
           ) : null}
-          <Button
-            variant="outline"
-            onClick={() => navigate("/diagnose", { replace: true })}
-          >
-            Diagnose another
-          </Button>
+
+          {ending?.kind === "cancelled" || run?.status === "cancelled" ? (
+            <Notice title="Stopped">
+              This diagnosis was stopped. You can start another whenever you
+              like.
+            </Notice>
+          ) : null}
+
+          {ending?.kind === "failed" || run?.status === "failed" ? (
+            <Notice tone="failure" title="This diagnosis could not be finished">
+              {ending?.detail ??
+                run?.error ??
+                "Something went wrong. Please try again."}
+            </Notice>
+          ) : null}
+
+          {ending?.rejected ? (
+            <Notice title="Nothing to diagnose">
+              {/* Not a failure. Nothing broke — the photograph could not be used, and saying so
+              plainly is better than an error somebody reads as a bug. */}
+              {ending.reason}
+            </Notice>
+          ) : null}
+
+          {detail ? <Differential detail={detail} /> : null}
+
+          {over ? (
+            <div className="flex gap-2">
+              {(ending?.plantId ?? run?.plant_id) ? (
+                <LinkButton to={`/plants/${ending?.plantId ?? run?.plant_id}`}>
+                  Open this plant
+                </LinkButton>
+              ) : null}
+              <Button
+                variant="outline"
+                onClick={() => navigate("/diagnose", { replace: true })}
+              >
+                Diagnose another
+              </Button>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
