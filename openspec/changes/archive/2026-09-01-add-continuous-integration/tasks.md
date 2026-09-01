@@ -35,7 +35,7 @@ proven last. Nothing in the application changes.
 ## 5. Proving it, and closing
 
 - [x] 5.1 Run the whole workflow locally where possible — the commands, in order, as the workflow will — and record what passed and how long it took.
-- [ ] 5.2 Push it and watch a real run; verify every job passes and record the total time.
+- [x] 5.2 Push it and watch a real run; verify every job passes and record the total time.
 - [x] 5.3 Deliberately break one thing per job — a format error, a failing test, a type error — and verify each job fails for the reason it should.
 - [x] 5.4 Update the README: that CI runs the gates, and stop saying a contributor has to remember two suites; verify every command still runs as written on a clean clone.
 - [x] 5.5 Correct the README's stale claim of "Single user, no authentication"; verify nothing else in that section contradicts what the system now does.
