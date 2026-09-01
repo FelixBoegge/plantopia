@@ -249,14 +249,14 @@ describe("one plant", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers checking it again", async () => {
+  it("offers diagnosing it again", async () => {
     signedIn();
     withPlant(DETAIL);
 
     render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
 
     expect(
-      await screen.findByRole("link", { name: "Check again" }),
+      await screen.findByRole("link", { name: "Diagnose again" }),
     ).toHaveAttribute("href", `/plants/${BASIL.id}/diagnose`);
   });
 });
