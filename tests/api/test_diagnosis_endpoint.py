@@ -5,6 +5,19 @@ client has been handed a receipt rather than a result.
 """
 
 from core.ids import new_id
+from data.repositories.runs import RunRepository
+from runs import steps
+from tests.accounts import NOW
+from tests.runs import make_run
+
+
+def _with_activity(db, owner, seeded, payload):
+    """A finished run that produced the seeded diagnosis, with one step recorded."""
+    run = make_run(db, owner, plant_id=seeded["plant_id"], diagnosis_id=seeded["diagnosis_id"])
+    db.flush()
+    RunRepository(db).append_event(run.id, kind=steps.STEP, payload=payload, now=NOW)
+    db.commit()
+    return run
 
 
 def test_a_diagnosis_can_be_fetched_by_its_identifier(client, seeded):
@@ -133,3 +146,51 @@ def _a_differential(db, owner, seeded):
     record = DiagnosisRepository(db).get(owner, seeded["diagnosis_id"])
     assert record is not None
     return record.differential
+
+
+def test_the_activity_of_a_diagnosis_is_its_steps(client, db, owner, seeded):
+    _with_activity(
+        db,
+        owner,
+        seeded,
+        {
+            "step": "identifying",
+            "description": "Identifying the species",
+            "calls": "acme/see-1 via OpenRouter, then Pl@ntNet",
+            "duration_ms": 4120,
+        },
+    )
+
+    response = client.get(f"/api/v1/diagnoses/{seeded['diagnosis_id']}/activity")
+
+    assert response.status_code == 200
+    [first] = response.json()
+    assert first["step"] == "identifying"
+    assert first["calls"] == "acme/see-1 via OpenRouter, then Pl@ntNet"
+    assert first["duration_ms"] == 4120
+
+
+def test_a_step_recorded_before_this_existed_still_reads(client, db, owner, seeded):
+    """Events already in the database carry neither key. They are replayed on reconnect and
+    read here, so both have to stay optional for good."""
+    _with_activity(
+        db, owner, seeded, {"step": "identifying", "description": "Identifying the species"}
+    )
+
+    response = client.get(f"/api/v1/diagnoses/{seeded['diagnosis_id']}/activity")
+
+    assert response.status_code == 200
+    assert response.json()[0]["calls"] is None
+    assert response.json()[0]["duration_ms"] is None
+
+
+def test_a_diagnosis_with_no_recorded_activity_is_an_empty_list(client, seeded):
+    """Not a 404. The diagnosis is there; nothing was recorded about how it was reached."""
+    response = client.get(f"/api/v1/diagnoses/{seeded['diagnosis_id']}/activity")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_the_activity_of_an_unknown_diagnosis_is_absent(client):
+    assert client.get(f"/api/v1/diagnoses/{new_id()}/activity").status_code == 404

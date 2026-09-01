@@ -47,6 +47,7 @@ ROUTES = [
     ("runs.cancel", "DELETE", "/api/v1/runs/{run_id}", None),
     ("runs.events", "GET", "/api/v1/runs/{run_id}/events", None),
     ("diagnoses.get", "GET", "/api/v1/diagnoses/{diagnosis_id}", None),
+    ("diagnoses.activity", "GET", "/api/v1/diagnoses/{diagnosis_id}/activity", None),
 ]
 
 

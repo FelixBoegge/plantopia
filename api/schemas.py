@@ -325,6 +325,22 @@ class EvaluationOut(BaseModel):
     results: dict | None
 
 
+class ActivityStepOut(BaseModel):
+    """One thing the run that produced a diagnosis did.
+
+    ``calls`` and ``duration_ms`` are optional and stay optional: steps recorded before they
+    existed are read back through this same shape, and a client that required them would
+    break on every run that started earlier.
+    """
+
+    sequence: int
+    step: str
+    description: str
+    calls: str | None = None
+    duration_ms: int | None = None
+    occurred_at: datetime
+
+
 class DiagnosisDetailOut(BaseModel):
     """One diagnosis with the plan it produced.
 
