@@ -18,8 +18,8 @@ const PHOTOGRAPH = resolve(import.meta.dirname, "../../test_pics/20260810_105048
 /** A plant to talk about. Chat is per-plant, so one has to exist first. */
 async function aPlantWithADiagnosis(page: import("@playwright/test").Page, name: string) {
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
   await page.getByLabel(/How often do you water/).fill("Twice a week");
@@ -80,9 +80,9 @@ test("announces the weather lookup, and answers from what the diagnosis saw", as
   await signUp(page, "chat-weather");
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("radio", { name: "Outdoors" }).check();
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
   await page.getByLabel(/How often do you water/).fill("Twice a week");

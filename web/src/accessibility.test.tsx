@@ -147,7 +147,7 @@ const OPEN_SCREENS: [string, string, string][] = [
 const SIGNED_IN_SCREENS: [string, string][] = [
   ["/", "Your plants"],
   [`/plants/${PLANT}`, "Kitchen basil"],
-  ["/diagnose", "Check a plant"],
+  ["/diagnose", "Diagnose a plant"],
   ["/account", "Your account"],
 ];
 

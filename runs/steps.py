@@ -53,7 +53,7 @@ STEPS: dict[str, Step] = {
     "check_contagion": Step("checking_spread", "Checking whether it spreads"),
     "build_roadmap": Step("planning", "Putting together a plan"),
     "persist": Step("saving", "Saving the result"),
-    "compare_progress": Step("comparing", "Comparing against the last check"),
+    "compare_progress": Step("comparing", "Comparing against the last diagnosis"),
     "revise_roadmap": Step("revising", "Updating the plan"),
 }
 

@@ -39,7 +39,7 @@ export function Timeline({
 
       {events.length === 0 ? (
         <p className="text-muted-foreground">
-          Nothing has happened to this plant yet. Once you run a check, what you saw and what
+          Nothing has happened to this plant yet. Once you run a diagnosis, what you saw and what
           Plantopia made of it will appear here.
         </p>
       ) : (

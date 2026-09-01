@@ -75,7 +75,7 @@ describe("the account", () => {
     render(<AppRoutes />, { route: "/account" });
 
     expect(
-      await screen.findByText(/2 of 20 checks used this month/),
+      await screen.findByText(/2 of 20 diagnoses used this month/),
     ).toBeInTheDocument();
   });
 
@@ -85,7 +85,7 @@ describe("the account", () => {
     render(<AppRoutes />, { route: "/account" });
 
     expect(
-      await screen.findByText("No checks left this month"),
+      await screen.findByText("No diagnoses left this month"),
     ).toBeInTheDocument();
   });
 });
@@ -259,14 +259,14 @@ describe("the evaluation screen", () => {
   });
 });
 
-describe("before starting a check", () => {
+describe("before starting a diagnosis", () => {
   it("warns when the allowance is nearly gone", async () => {
     signedIn(account({ runs_used: 18 }));
 
     render(<AppRoutes />, { route: "/diagnose" });
 
     expect(
-      await screen.findByText("2 checks left this month"),
+      await screen.findByText("2 diagnoses left this month"),
     ).toBeInTheDocument();
   });
 
@@ -277,17 +277,17 @@ describe("before starting a check", () => {
     render(<AppRoutes />, { route: "/diagnose" });
 
     expect(
-      await screen.findByText("No checks left this month"),
+      await screen.findByText("No diagnoses left this month"),
     ).toBeInTheDocument();
   });
 
-  it("does not let a check be started that would be refused", async () => {
+  it("does not let a diagnosis be started that would be refused", async () => {
     signedIn(account({ runs_used: 20 }));
 
     render(<AppRoutes />, { route: "/diagnose" });
 
     expect(
-      await screen.findByRole("button", { name: "Start the check" }),
+      await screen.findByRole("button", { name: "Start the diagnosis" }),
     ).toBeDisabled();
   });
 
@@ -296,7 +296,7 @@ describe("before starting a check", () => {
 
     render(<AppRoutes />, { route: "/diagnose" });
 
-    await screen.findByRole("button", { name: "Start the check" });
+    await screen.findByRole("button", { name: "Start the diagnosis" });
     expect(screen.queryByText(/left this month/)).not.toBeInTheDocument();
   });
 });

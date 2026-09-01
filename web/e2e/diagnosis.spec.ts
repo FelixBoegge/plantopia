@@ -14,15 +14,15 @@ import { signUp } from "./people";
 
 const PHOTOGRAPH = resolve(import.meta.dirname, "../../test_pics/20260810_105048.jpg");
 
-test("runs a check through the questions to a differential", async ({ page }) => {
+test("runs a diagnosis through the questions to a differential", async ({ page }) => {
   await signUp(page, "diagnosis");
 
   // Scoped to the header: the empty plants screen offers the same link, and a test that
   // clicked "whichever" would silently stop covering the header the day the empty state
   // changed.
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   // More than one step, and each arriving on its own rather than all at the end — which is
   // the difference between a stream and a page that waited.
@@ -71,8 +71,8 @@ test("shows the finished diagnosis on the plant it created", async ({ page }) =>
   // clicked "whichever" would silently stop covering the header the day the empty state
   // changed.
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
   await page.getByLabel(/How often do you water/).fill("Every other day");
@@ -109,8 +109,8 @@ test("asks which plant it is when the methods disagree, and takes the answer", a
   await signUp(page, "chooses");
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   await expect(page.getByRole("heading", { name: "Which plant is this?" })).toBeVisible({
     timeout: 60_000,
@@ -140,9 +140,9 @@ test("carries a typed species through to the choice", async ({ page }) => {
   await signUp(page, "typed");
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByLabel("Do you know what it is?").fill("Ocimum tenuiflorum");
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   await expect(page.getByRole("heading", { name: "Which plant is this?" })).toBeVisible({
     timeout: 60_000,
@@ -162,8 +162,8 @@ test("a plant's history reads as one sequence", async ({ page }) => {
   await signUp(page, "history");
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
   await page.getByLabel(/How often do you water/).fill("Every other day");
@@ -202,9 +202,9 @@ test("an outdoor plant's weather is readable without seeing the chart", async ({
   await signUp(page, "history-weather");
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
-  await page.getByLabel("Photographs").setInputFiles(PHOTOGRAPH);
+  await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("radio", { name: "Outdoors" }).check();
-  await page.getByRole("button", { name: "Start the check" }).click();
+  await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
   await page.getByLabel(/How often do you water/).waitFor({ timeout: 60_000 });
   await page.getByLabel(/How often do you water/).fill("Every other day");

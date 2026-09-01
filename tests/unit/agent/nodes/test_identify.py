@@ -211,6 +211,43 @@ class TestWhatTheTwoMethodsProduce:
             SpeciesMethod.PLANTNET,
         ]
 
+    def test_only_the_specialists_leading_answer_is_offered(self, make_deps, sample_images):
+        """One vote per method. The service returns a ranked list, and offering all of it
+        put three rows in front of somebody — two of them the same sentence, because the
+        wording describes the method rather than the answer. Its second and third guesses
+        are weak evidence and asking somebody to arbitrate between them is asking them to do
+        the identification themselves."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [
+                _candidate("Mint", "Mentha spicata", 0.7),
+                _candidate("Oregano", "Origanum vulgare", 0.2),
+                _candidate("Thyme", "Thymus vulgaris", 0.1),
+            ],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert [c.common_name for c in result["candidates"]] == ["Basil", "Mint"]
+
+    def test_agreement_with_the_leading_answer_leaves_nothing_to_ask(
+        self, make_deps, sample_images
+    ):
+        """The runners-up used to survive the merge, so a run whose two methods agreed still
+        interrupted to offer a choice between that agreement and two guesses nobody made."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [
+                _candidate("Sweet basil", "Ocimum basilicum", 0.91),
+                _candidate("Oregano", "Origanum vulgare", 0.2),
+            ],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert len(result["candidates"]) == 1
+        assert result["candidates"][0].method is SpeciesMethod.AGREED
+
     def test_collapses_agreement_into_one_candidate_that_says_so(self, make_deps, sample_images):
         """Showing it twice would present the strongest signal available as two things to
         choose between rather than one thing twice confirmed."""
@@ -423,8 +460,8 @@ class TestWhatLeadsWithNothingTyped:
         deps = make_deps(
             vision_model=ScriptedStructuredModel([_seen()]),
             identify_species=lambda _: [
-                _candidate("Mint", "Mentha spicata", 0.99),
                 _candidate("Sweet basil", "Ocimum basilicum", 0.30),
+                _candidate("Mint", "Mentha spicata", 0.99),
             ],
         )
 
@@ -432,6 +469,33 @@ class TestWhatLeadsWithNothingTyped:
 
         assert result["candidates"][0].method is SpeciesMethod.AGREED
         assert result["species"].common_name == "Sweet basil"
+
+    def test_a_match_below_the_specialists_leading_answer_is_not_agreement(
+        self, make_deps, sample_images
+    ):
+        """The cost of offering one answer per method, written down so it is a decision
+        rather than a surprise.
+
+        The service leads with Mint and puts the plant the vision model named second. That
+        used to count as two methods agreeing and led the diagnosis; now only the leading
+        answer is compared, so it reads as the disagreement it looks like from outside — and
+        the owner is asked, which is the right outcome when the two methods' best answers
+        genuinely differ."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen()]),
+            identify_species=lambda _: [
+                _candidate("Mint", "Mentha spicata", 0.99),
+                _candidate("Sweet basil", "Ocimum basilicum", 0.30),
+            ],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert [c.method for c in result["candidates"]] == [
+            SpeciesMethod.VISION,
+            SpeciesMethod.PLANTNET,
+        ]
+        assert result["species"].common_name == "Basil"
 
     def test_the_vision_model_leads_when_nothing_agrees(self, make_deps, sample_images):
         """And specifically not the higher number: 0.99 from one method and 0.85 from

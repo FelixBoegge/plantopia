@@ -87,8 +87,19 @@ def test_the_models_questions_are_capped_at_the_configured_maximum(make_deps, sa
 
     keys = [q.key for q in select_questions(deps, _state(sample_images))]
 
-    assert keys[:4] == ["watering", "drainage", "location", "captured_at"]
+    assert keys[:4] == ["location", "captured_at", "watering", "drainage"]
     assert keys[4:] == ["a", "b"]
+
+
+def test_where_and_when_are_asked_before_anything_else(make_deps, sample_images):
+    """They sit directly under the species chooser on screen, and the three of them are one
+    thought: what this plant is, where it is, and when it was photographed. Watering and
+    drainage are a different subject, and follow."""
+    deps = make_deps(chat_model=_model_questions("a"))
+
+    keys = [q.key for q in select_questions(deps, _state(sample_images))]
+
+    assert keys[:2] == ["location", "captured_at"]
 
 
 def test_the_fixed_fields_survive_a_cap_of_one(make_deps, sample_images):
@@ -99,7 +110,7 @@ def test_the_fixed_fields_survive_a_cap_of_one(make_deps, sample_images):
 
     keys = [q.key for q in select_questions(deps, _state(sample_images))]
 
-    assert keys == ["watering", "drainage", "location", "captured_at", "a"]
+    assert keys == ["location", "captured_at", "watering", "drainage", "a"]
 
 
 def test_at_least_one_question_is_always_returned(make_deps, sample_images):
@@ -449,7 +460,7 @@ class TestWhatTheAgentIsAskedToAskAbout:
 
         keys = [q.key for q in select_questions(deps, _state(sample_images))]
 
-        assert keys[:4] == ["watering", "drainage", "location", "captured_at"]
+        assert keys[:4] == ["location", "captured_at", "watering", "drainage"]
 
     def test_it_asks_for_three_or_four(self, make_deps, sample_images):
         """Fewer than three rarely covers a plant's recent history — repotted, fed, moved

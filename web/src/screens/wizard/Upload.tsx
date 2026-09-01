@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { Image as ImageIcon, ImagePlus } from "lucide-react";
 
 import { readable } from "@/api/problems";
 import { Field } from "@/components/Field";
 import { Notice } from "@/components/Notice";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { StartRun } from "@/api/hooks/runs";
 
 /**
@@ -66,8 +68,19 @@ export function Upload({
         </Notice>
       ) : null}
 
-      <div className="grid gap-2">
-        <Label htmlFor="photographs">Photographs</Label>
+      <div className="grid gap-3">
+        {/*
+          The input is the control; the label is what it looks like.
+
+          A browser's own file button is a small grey rectangle wearing a word the browser
+          chose, and it did not read as the first thing to do on a screen whose whole
+          purpose is to take a photograph. Hiding it and dressing the label as a button
+          changes the appearance and nothing else: it is still one native input, so the
+          picker, the keyboard, and `setInputFiles` all still work. `sr-only` rather than
+          `display: none`, because a hidden input is not focusable and this one must be —
+          the ring is drawn on the label through `peer-focus-visible`, since the thing
+          taking focus is invisible.
+        */}
         <input
           id="photographs"
           type="file"
@@ -77,19 +90,48 @@ export function Upload({
           onChange={(event) =>
             setPhotographs(Array.from(event.target.files ?? []))
           }
-          className="text-sm"
+          className="peer sr-only"
         />
+        <Label
+          htmlFor="photographs"
+          className={cn(
+            buttonVariants({ variant: "outline", size: "lg" }),
+            "peer-focus-visible:border-ring peer-focus-visible:ring-ring/50 w-fit peer-focus-visible:ring-3",
+          )}
+        >
+          <ImagePlus />
+          Upload images
+        </Label>
+
         <p className="text-muted-foreground text-sm">
           A clear shot of the whole plant and a close-up of the problem work
           best.
         </p>
+
         {/* Shown back, so somebody can see what they picked before paying for it. */}
         {photographs.length ? (
-          <ul className="text-muted-foreground text-sm">
-            {photographs.map((file) => (
-              <li key={file.name}>{file.name}</li>
-            ))}
-          </ul>
+          <>
+            <p role="status" className="text-sm font-medium">
+              {photographs.length} image{photographs.length === 1 ? "" : "s"}{" "}
+              ready
+            </p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {photographs.map((file, index) => (
+                // Two files can carry the same name — one from each of two folders — so the
+                // name alone is not a key.
+                <li
+                  key={`${file.name}-${file.size}-${index}`}
+                  className="bg-card flex items-center gap-3 rounded-lg border p-3 text-sm"
+                >
+                  <ImageIcon className="text-muted-foreground size-4 shrink-0" />
+                  <span className="truncate font-medium">{file.name}</span>
+                  <span className="text-muted-foreground ml-auto text-xs whitespace-nowrap">
+                    {Math.max(1, Math.round(file.size / 1024))} kB
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
       </div>
 
@@ -136,7 +178,7 @@ export function Upload({
           type="submit"
           disabled={busy || blocked || photographs.length === 0}
         >
-          {busy ? "Starting…" : "Start the check"}
+          {busy ? "Starting…" : "Start the diagnosis"}
         </Button>
       </div>
     </form>

@@ -47,7 +47,7 @@ class MissingAnswerError(Exception):
     def __init__(self, keys: list[str]) -> None:
         self.keys = keys
         super().__init__(
-            "these questions have to be answered before the check can go on: " + ", ".join(keys)
+            "these questions have to be answered before the diagnosis can go on: " + ", ".join(keys)
         )
 
 

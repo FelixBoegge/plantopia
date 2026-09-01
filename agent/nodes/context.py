@@ -157,10 +157,13 @@ def select_questions(deps: Deps, state: DiagnosisState, place: str | None = None
     outside it, and what "at most four clarifying questions" limits is how many *the agent
     thinks of* — which is what somebody setting it is trying to bound.
     """
+    # Where and when lead, because on screen they sit directly under the species chooser and
+    # the three of them are one thought: what this plant is, where it is, and when it was
+    # photographed. Watering and drainage are a different subject and follow.
     fixed: list[Question] = [
-        *ALWAYS_ASK,
         location_question(state, place if place is not None else _place(deps, state)),
         capture_question(state, deps.now().date()),
+        *ALWAYS_ASK,
     ]
 
     asked = {question.key for question in fixed}

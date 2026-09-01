@@ -42,9 +42,9 @@ def test_the_questions_asked_are_recorded(make_deps, pipeline_models, golden_cas
     # outdoor plant had no location, because nobody is asked before the run starts any
     # more. Whether it is *required* is what varies, and that is not this list.
     assert run.questions_asked == [
-        *(q.key for q in ALWAYS_ASK),
         LOCATION_KEY,
         CAPTURE_KEY,
+        *(q.key for q in ALWAYS_ASK),
         "light_hours",
     ]
 

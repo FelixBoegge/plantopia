@@ -152,7 +152,17 @@ def _with_second_opinion(
         # does the same thing either way, and the adapter has already logged which.
         return [vision], []
 
-    return _merged(vision, found), []
+    # **One vote per method.** The service answers with a ranked list, and every entry after
+    # the first is a guess it already ranked below another guess. Carrying them put three
+    # rows in front of the owner — two of them word-for-word identical, because the wording
+    # names the method rather than the answer — and made a run whose two methods agreed
+    # interrupt anyway to offer that agreement against two also-rans.
+    #
+    # The cost is real and worth naming: agreement is now only ever found against the
+    # leading answer, so a vision result matching the service's second choice reads as a
+    # disagreement rather than as confirmation. That is the more honest reading of it. The
+    # owner still settles it, and both answers are still on screen.
+    return _merged(vision, found[:1]), []
 
 
 # How sure a typed species is. Not a probability and not comparable with the two methods'

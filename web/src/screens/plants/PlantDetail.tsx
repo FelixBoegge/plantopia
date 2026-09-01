@@ -49,7 +49,7 @@ export function PlantDetail() {
         </div>
         <div className="ml-auto flex gap-2">
           <LinkButton to={`/plants/${plant.id}/diagnose`} variant="outline">
-            Check again
+            Diagnose again
           </LinkButton>
         </div>
       </header>
@@ -70,7 +70,7 @@ export function PlantDetail() {
         </section>
       ) : (
         <Notice title="Nothing has been diagnosed yet">
-          Start a check and Plantopia will tell you what it finds.
+          Start a diagnosis and Plantopia will tell you what it finds.
         </Notice>
       )}
 

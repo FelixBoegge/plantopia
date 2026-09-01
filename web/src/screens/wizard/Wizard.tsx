@@ -44,19 +44,19 @@ export function Wizard() {
     <Watching runId={runId} finished={hasFinished(run?.status)} />
   ) : (
     <>
-      <h1 className="mb-6 text-2xl font-semibold">Check a plant</h1>
+      <h1 className="mb-6 text-2xl font-semibold">Diagnose a plant</h1>
 
-      {/* Said before, not after. Being told "you have used your twenty checks" by a failed
+      {/* Said before, not after. Being told "you have used your twenty diagnoses" by a failed
           diagnosis is being told too late — and the number comes from the same computation
           the server refuses with, so the two cannot disagree. */}
       {left?.exhausted ? (
-        <Notice tone="failure" title="No checks left this month">
+        <Notice tone="failure" title="No diagnoses left this month">
           You have used all {left.limit}. You can start another after{" "}
           {left.resetsAt.toLocaleDateString()}.
         </Notice>
       ) : left && left.remaining <= 3 ? (
         <Notice
-          title={`${left.remaining} check${left.remaining === 1 ? "" : "s"} left this month`}
+          title={`${left.remaining} diagnos${left.remaining === 1 ? "is" : "es"} left this month`}
         >
           Your allowance resets on {left.resetsAt.toLocaleDateString()}.
         </Notice>
@@ -120,7 +120,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
   return (
     <div className="grid gap-8">
       <div className="flex items-start justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Checking your plant</h1>
+        <h1 className="text-2xl font-semibold">Diagnosing your plant</h1>
         {!over ? (
           <div className="grid gap-2 text-right">
             {confirmingCancel ? (
@@ -128,7 +128,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
                 <p className="text-muted-foreground max-w-xs text-sm">
                   {/* Said plainly. "Cancel" reads as "undo", and this is not one — the step
                       already running finishes, and it has already been paid for. */}
-                  Stopping ends the check. What it has already done is not
+                  Stopping ends the diagnosis. What it has already done is not
                   undone, and the work so far still counts towards your monthly
                   allowance.
                 </p>
@@ -156,7 +156,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
                 size="sm"
                 onClick={() => setConfirmingCancel(true)}
               >
-                Stop this check
+                Stop this diagnosis
               </Button>
             )}
           </div>
@@ -182,12 +182,12 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
 
       {ending?.kind === "cancelled" || run?.status === "cancelled" ? (
         <Notice title="Stopped">
-          This check was stopped. You can start another whenever you like.
+          This diagnosis was stopped. You can start another whenever you like.
         </Notice>
       ) : null}
 
       {ending?.kind === "failed" || run?.status === "failed" ? (
-        <Notice tone="failure" title="This check could not be finished">
+        <Notice tone="failure" title="This diagnosis could not be finished">
           {ending?.detail ??
             run?.error ??
             "Something went wrong. Please try again."}
@@ -215,7 +215,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
             variant="outline"
             onClick={() => navigate("/diagnose", { replace: true })}
           >
-            Check another
+            Diagnose another
           </Button>
         </div>
       ) : null}

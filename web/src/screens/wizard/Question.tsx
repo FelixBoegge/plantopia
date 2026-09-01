@@ -22,6 +22,31 @@ import { Label } from "@/components/ui/label";
  * mouth, and the graph cannot tell a considered "no" from a shrug. Only keys with a value
  * are sent, and only `required` questions refuse to be left alone.
  */
+/**
+ * Open the month view rather than putting a caret in the date segments.
+ *
+ * A date input's default click behaviour is to select whichever of day, month or year was
+ * clicked, so changing a prefilled date meant typing over it. The calendar was always there
+ * — with the current value already selected — behind an icon narrow enough that most people
+ * never find it. This makes the whole field that icon.
+ *
+ * Typing still works: this opens the picker, it does not take the keyboard away.
+ *
+ * Guarded twice over. `showPicker` does not exist in older browsers or in jsdom, and where
+ * it does exist it throws if the browser decides the call was not provoked by a person. A
+ * date somebody cannot type because opening a calendar failed would be a worse field than
+ * the one this replaces.
+ */
+function openTheCalendar(event: React.MouseEvent<HTMLInputElement>): void {
+  const field = event.currentTarget;
+  if (typeof field.showPicker !== "function") return;
+  try {
+    field.showPicker();
+  } catch {
+    // Left to the caret and the keyboard, which is where it was before.
+  }
+}
+
 export function Question({
   question,
   value,
@@ -67,6 +92,9 @@ export function Question({
           aria-invalid={invalid || undefined}
           aria-describedby={described}
           onChange={(event) => onChange(event.target.value)}
+          onClick={
+            question.kind === "date" ? openTheCalendar : undefined
+          }
         />
       ) : (
         <select
@@ -98,7 +126,7 @@ export function Question({
 
       {invalid ? (
         <p id={errorId} role="alert" className="text-destructive text-sm">
-          This one is needed before the check can go on.
+          This one is needed before the diagnosis can go on.
         </p>
       ) : null}
     </div>

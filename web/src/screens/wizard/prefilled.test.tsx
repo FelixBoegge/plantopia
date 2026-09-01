@@ -9,7 +9,7 @@
 
 import { HttpResponse, http } from "msw";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "@/routes/routes";
 import { render, screen, waitFor } from "@/test/render";
@@ -284,6 +284,56 @@ describe("when the photograph was taken", () => {
 
     const field = await screen.findByLabelText(/When was the photograph taken/);
     expect(field).toHaveAttribute("type", "date");
+    expect(field).toHaveValue("2026-08-10");
+  });
+
+  it("opens the calendar when the field is clicked", async () => {
+    // Clicking a date input lands the caret in its day/month/year segments, so changing the
+    // date meant typing it. The month view is already there — with the prefilled date
+    // selected — behind a small icon most people never press.
+    pausedAsking(
+      question({
+        key: "captured_at",
+        text: "When was the photograph taken?",
+        kind: "date",
+        prefill: "2026-08-10",
+      }),
+    );
+
+    open();
+    const field = (await screen.findByLabelText(
+      /When was the photograph taken/,
+    )) as HTMLInputElement;
+    // jsdom implements no picker at all, so the call is what is observable here.
+    const opened = vi.fn();
+    field.showPicker = opened;
+    await userEvent.click(field);
+
+    expect(opened).toHaveBeenCalled();
+  });
+
+  it("still opens nothing worse than nothing where there is no picker", async () => {
+    // Firefox before 101 and any browser that refuses the call outside a gesture throw from
+    // `showPicker`. An exception here would break typing a date, which is the fallback.
+    pausedAsking(
+      question({
+        key: "captured_at",
+        text: "When was the photograph taken?",
+        kind: "date",
+        prefill: "2026-08-10",
+      }),
+    );
+
+    open();
+    const field = (await screen.findByLabelText(
+      /When was the photograph taken/,
+    )) as HTMLInputElement;
+    field.showPicker = () => {
+      throw new Error("NotAllowedError");
+    };
+
+    await userEvent.click(field);
+
     expect(field).toHaveValue("2026-08-10");
   });
 

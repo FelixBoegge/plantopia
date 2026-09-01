@@ -44,7 +44,7 @@ export function Account() {
             </p>
             {left ? (
               <p>
-                {left.used} of {left.limit} checks used this month. It resets on{" "}
+                {left.used} of {left.limit} diagnoses used this month. It resets on{" "}
                 {left.resetsAt.toLocaleDateString()}.
               </p>
             ) : null}
@@ -53,7 +53,7 @@ export function Account() {
       ) : null}
 
       {left?.exhausted ? (
-        <Notice title="No checks left this month">
+        <Notice title="No diagnoses left this month">
           You have used all {left.limit}. You can start another after{" "}
           {left.resetsAt.toLocaleDateString()}.
         </Notice>

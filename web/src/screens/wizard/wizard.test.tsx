@@ -132,7 +132,47 @@ const QUESTIONS =
   'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often do you water it?","kind":"text","options":[]},{"key":"drainage","text":"Does the pot have drainage holes?","kind":"choice","options":["Drainage holes, no saucer","No drainage holes"]}]}\n\n';
 const COMPLETED = `id: 3\nevent: completed\ndata: {"diagnosis_id":"${DIAGNOSIS}","plant_id":"${PLANT}","rejected":false,"reason":null}\n\n`;
 
-describe("starting a check", () => {
+describe("starting a diagnosis", () => {
+  it("is headed by the same words as every link that leads here", async () => {
+    // The nav and the plants list both offer "Diagnose a plant". Landing on a screen headed
+    // something else reads as having arrived somewhere other than where you clicked.
+    signedIn();
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByRole("heading", { name: "Diagnose a plant" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a labelled button rather than a bare file input", async () => {
+    // A browser's own file control is a small grey rectangle whose label is set by the
+    // browser, not by us. It does not read as the first thing to do on the screen.
+    signedIn();
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByLabelText("Upload images"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a card naming each image once it has been chosen", async () => {
+    // Confirmation that the right files were picked, before a run that costs money starts
+    // on the wrong ones.
+    signedIn();
+
+    render(<AppRoutes />, { route: "/diagnose" });
+    await userEvent.upload(await screen.findByLabelText("Upload images"), [
+      new File(["png"], "whole-plant.png", { type: "image/png" }),
+      new File(["png"], "close-up.png", { type: "image/png" }),
+    ]);
+
+    expect(await screen.findByText("whole-plant.png")).toBeInTheDocument();
+    expect(screen.getByText("close-up.png")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent(/2 images/i);
+  });
+
   it("does not start one until it is asked to", async () => {
     // A run costs real money and takes a minute and a half. Starting one as a side effect
     // of choosing a file is a bill nobody agreed to.
@@ -146,7 +186,7 @@ describe("starting a check", () => {
     );
 
     render(<AppRoutes />, { route: "/diagnose" });
-    const picker = await screen.findByLabelText("Photographs");
+    const picker = await screen.findByLabelText("Upload images");
     await userEvent.upload(
       picker,
       new File(["png"], "leaf.png", { type: "image/png" }),
@@ -159,7 +199,7 @@ describe("starting a check", () => {
     signedIn();
 
     render(<AppRoutes />, { route: "/diagnose" });
-    const picker = await screen.findByLabelText("Photographs");
+    const picker = await screen.findByLabelText("Upload images");
     await userEvent.upload(
       picker,
       new File(["png"], "leaf.png", { type: "image/png" }),
@@ -174,7 +214,7 @@ describe("starting a check", () => {
     render(<AppRoutes />, { route: "/diagnose" });
 
     expect(
-      await screen.findByRole("button", { name: "Start the check" }),
+      await screen.findByRole("button", { name: "Start the diagnosis" }),
     ).toBeDisabled();
   });
 
@@ -198,10 +238,10 @@ describe("starting a check", () => {
 
     render(<AppRoutes />, { route: "/diagnose" });
     await userEvent.upload(
-      await screen.findByLabelText("Photographs"),
+      await screen.findByLabelText("Upload images"),
       new File(["png"], "leaf.png", { type: "image/png" }),
     );
-    const submit = screen.getByRole("button", { name: "Start the check" });
+    const submit = screen.getByRole("button", { name: "Start the diagnosis" });
     expect(submit).toBeEnabled(); // it was disabled until a photograph was chosen
     await userEvent.click(submit);
 
@@ -235,18 +275,18 @@ describe("starting a check", () => {
     // which is a different and lesser case.
     render(<AppRoutes />, { route: "/diagnose" });
     await userEvent.upload(
-      await screen.findByLabelText("Photographs"),
+      await screen.findByLabelText("Upload images"),
       new File(["not really a png"], "leaf.png", { type: "image/png" }),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Start the check" }),
+      screen.getByRole("button", { name: "Start the diagnosis" }),
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /Unsupported image format/,
     );
     expect(
-      screen.getByRole("button", { name: "Start the check" }),
+      screen.getByRole("button", { name: "Start the diagnosis" }),
     ).toBeInTheDocument();
   });
 
@@ -271,11 +311,11 @@ describe("starting a check", () => {
 
     render(<AppRoutes />, { route: "/diagnose" });
     await userEvent.upload(
-      await screen.findByLabelText("Photographs"),
+      await screen.findByLabelText("Upload images"),
       new File(["png"], "leaf.png", { type: "image/png" }),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Start the check" }),
+      screen.getByRole("button", { name: "Start the diagnosis" }),
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/used its runs/);
@@ -593,7 +633,7 @@ describe("a run that failed", () => {
       await screen.findByText(/could not be finished/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Check another" }),
+      screen.getByRole("button", { name: "Diagnose another" }),
     ).toBeInTheDocument();
   });
 });
@@ -612,7 +652,7 @@ describe("stopping a run", () => {
 
     render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
     await userEvent.click(
-      await screen.findByRole("button", { name: "Stop this check" }),
+      await screen.findByRole("button", { name: "Stop this diagnosis" }),
     );
 
     expect(stopped).toBe(false);
@@ -626,7 +666,7 @@ describe("stopping a run", () => {
 
     render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
     await userEvent.click(
-      await screen.findByRole("button", { name: "Stop this check" }),
+      await screen.findByRole("button", { name: "Stop this diagnosis" }),
     );
 
     expect(screen.getByText(/is not undone/)).toBeInTheDocument();
@@ -648,7 +688,7 @@ describe("stopping a run", () => {
 
     render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
     await userEvent.click(
-      await screen.findByRole("button", { name: "Stop this check" }),
+      await screen.findByRole("button", { name: "Stop this diagnosis" }),
     );
     await userEvent.click(screen.getByRole("button", { name: "Stop it" }));
 
@@ -665,7 +705,7 @@ describe("stopping a run", () => {
     render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
 
     expect(
-      await screen.findByText(/This check was stopped/),
+      await screen.findByText(/This diagnosis was stopped/),
     ).toBeInTheDocument();
   });
 });
@@ -715,7 +755,7 @@ describe("coming back to a run", () => {
       await screen.findByText("Checking the photographs"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Stop this check" }),
+      screen.getByRole("button", { name: "Stop this diagnosis" }),
     ).toBeInTheDocument();
   });
 
@@ -735,11 +775,11 @@ describe("coming back to a run", () => {
 
     render(<AppRoutes />, { route: "/diagnose" });
     await userEvent.upload(
-      await screen.findByLabelText("Photographs"),
+      await screen.findByLabelText("Upload images"),
       new File(["png"], "leaf.png", { type: "image/png" }),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Start the check" }),
+      screen.getByRole("button", { name: "Start the diagnosis" }),
     );
 
     expect(
