@@ -17,6 +17,7 @@ one somebody can exhaust by failing.
 
 import logging
 from datetime import UTC, datetime
+from time import monotonic
 from uuid import UUID
 
 from langgraph.types import Command
@@ -149,6 +150,10 @@ def _drive(
     payload = Command(resume=resume) if resume is not None else initial_state
 
     interrupted = False
+    # Wall-time between publishes, which includes the graph's own overhead between nodes.
+    # That is why the client says "took 4.1s" rather than presenting it as model latency:
+    # it is how long the step took, not how long the model thought.
+    mark = monotonic()
     for update in graph.stream(payload, config, stream_mode="updates"):
         if runs.cancel_requested(run_id):
             raise RunCancelledError
@@ -158,7 +163,17 @@ def _drive(
                 interrupted = True
                 _pause(runs, session, bus, run_id, value)
                 break
-            _publish_step(runs, session, bus, run_id, node)
+            now = monotonic()
+            _publish_step(
+                runs,
+                session,
+                bus,
+                run_id,
+                node,
+                settings=settings,
+                duration_ms=int((now - mark) * 1000),
+            )
+            mark = now
 
         if interrupted:
             return
@@ -184,15 +199,24 @@ def _real_graph(*, session, user_id: UUID, settings: Settings):
     return build_diagnosis_graph(deps, build_checkpointer(checkpointer_url(settings)))
 
 
-def _publish_step(runs, session, bus, run_id, node: str) -> None:
+def _publish_step(
+    runs, session, bus, run_id, node: str, *, settings: Settings, duration_ms: int
+) -> None:
     """Record one node's completion, then tell whoever is watching.
 
     Persisted first, always. Publishing first would mean a client receiving an event the
     database does not have, and a reconnect replaying a shorter history than the one
     already on screen.
+
+    `calls` is omitted where the node reached for nothing outside the process, rather than
+    sent empty: a client renders the key when it is present, and an empty one would draw a
+    blank line where a sentence belongs.
     """
     step = steps.step_for(node)
-    payload = {"step": step.id, "description": step.description}
+    payload = {"step": step.id, "description": step.description, "duration_ms": duration_ms}
+    calls = steps.calls_for(node, settings)
+    if calls is not None:
+        payload["calls"] = calls
     with transaction(session):
         sequence = runs.append_event(run_id, kind=steps.STEP, payload=payload, now=_now())
     bus.publish(Event(run_id=run_id, sequence=sequence, kind=steps.STEP, payload=payload))

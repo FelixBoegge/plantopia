@@ -184,6 +184,50 @@ def test_every_step_becomes_an_event(db, owner, sample_images, settings, bus, sc
     assert events[-1].kind == steps.COMPLETED
 
 
+def _steps_of(db, owner, run):
+    return [
+        event.payload
+        for event in RunRepository(db).events(owner, run.id)
+        if event.kind == steps.STEP
+    ]
+
+
+def test_a_step_says_what_it_called(db, owner, sample_images, settings, bus, scripted_graph):
+    """The screen names the model. It can only do that if the event does."""
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    identifying = [p for p in _steps_of(db, owner, run) if p["step"] == "identifying"]
+
+    assert identifying, "the run never reached the identification step"
+    assert "via OpenRouter" in identifying[0]["calls"]
+
+
+def test_a_step_that_calls_nothing_carries_no_calls_key(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """Absent, not empty. A client renders the key when it is there, and an empty string
+    would draw a blank line where a sentence goes."""
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=scripted_graph, db=db, resume=ANSWERS)
+
+    saving = [p for p in _steps_of(db, owner, run) if p["step"] == "saving"]
+
+    assert saving, "the run never reached the saving step"
+    assert "calls" not in saving[0]
+
+
+def test_every_step_says_how_long_it_took(db, owner, sample_images, settings, bus, scripted_graph):
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    published = _steps_of(db, owner, run)
+
+    assert published
+    assert all(isinstance(p["duration_ms"], int) and p["duration_ms"] >= 0 for p in published)
+
+
 def test_the_sequence_continues_across_the_pause(
     db, owner, sample_images, settings, bus, scripted_graph
 ):
