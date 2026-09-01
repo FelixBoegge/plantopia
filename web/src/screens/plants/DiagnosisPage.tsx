@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useActivity, useDiagnosis } from "@/api/hooks/runs";
 import { readable } from "@/api/problems";
 import { Notice } from "@/components/Notice";
+import { StepLine } from "@/components/StepLine";
 import { Differential } from "@/screens/wizard/Differential";
 
 /**
@@ -51,18 +52,7 @@ export function DiagnosisPage() {
           <ol className="grid gap-2">
             {activity.map((step) => (
               <li key={step.sequence} className="grid gap-0.5 text-sm">
-                <span>{step.description}</span>
-                {step.calls || step.duration_ms !== undefined ? (
-                  <span className="text-muted-foreground text-xs">
-                    {step.calls}
-                    {step.calls && step.duration_ms !== undefined
-                      ? " · "
-                      : null}
-                    {step.duration_ms !== undefined
-                      ? `took ${(step.duration_ms / 1000).toFixed(1)}s`
-                      : null}
-                  </span>
-                ) : null}
+                <StepLine step={step} />
               </li>
             ))}
           </ol>

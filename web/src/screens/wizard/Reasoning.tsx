@@ -1,4 +1,5 @@
 import type { Step } from "@/api/hooks/useRunStream";
+import { StepLine } from "@/components/StepLine";
 
 /**
  * The agent working, step by step.
@@ -27,18 +28,7 @@ export function Reasoning({
       <ol aria-live="polite" className="grid gap-2">
         {steps.map((step) => (
           <li key={step.sequence} className="grid gap-0.5 text-sm">
-            <span>{step.description}</span>
-            {step.calls || step.duration_ms !== undefined ? (
-              <span className="text-muted-foreground text-xs">
-                {step.calls}
-                {step.calls && step.duration_ms !== undefined ? " · " : null}
-                {/* "took", not "in": this is the step's wall time with the graph's overhead
-                    in it, and it must not read as the model's own latency. */}
-                {step.duration_ms !== undefined
-                  ? `took ${(step.duration_ms / 1000).toFixed(1)}s`
-                  : null}
-              </span>
-            ) : null}
+            <StepLine step={step} />
           </li>
         ))}
         {working ? (

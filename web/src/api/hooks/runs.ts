@@ -31,9 +31,34 @@ export function useDiagnosis(diagnosisId: string | null) {
 export function useActivity(diagnosisId: string | null) {
   return useQuery({
     queryKey: keys.diagnosisActivity(diagnosisId ?? "none"),
-    queryFn: () => request<Step[]>(`/diagnoses/${diagnosisId}/activity`),
+    queryFn: () => request<ActivityStep[]>(`/diagnoses/${diagnosisId}/activity`),
     enabled: diagnosisId !== null,
+    select: asSteps,
   });
+}
+
+/** What the endpoint sends. `step` where the client says `id`, as the event payload does. */
+interface ActivityStep extends Omit<Step, "id"> {
+  step: string;
+  occurred_at: string;
+}
+
+/**
+ * The recorded steps, as the live stream would have shown them.
+ *
+ * Two jobs, both about the record agreeing with what somebody watched. It renames `step` to
+ * `id`, which is what the stream calls it. And it collapses consecutive repeats the way the
+ * stream does: several nodes deliberately share one sentence — `guard_input` and
+ * `quality_check` are both "Checking the photographs" — so without this the same run reads
+ * as one length while it happens and a longer one afterwards.
+ */
+function asSteps(recorded: ActivityStep[]): Step[] {
+  const shown: Step[] = [];
+  for (const { step, occurred_at: _at, ...rest } of recorded) {
+    if (shown.at(-1)?.id === step) continue;
+    shown.push({ ...rest, id: step });
+  }
+  return shown;
 }
 
 export interface StartRun {

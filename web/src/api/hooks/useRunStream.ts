@@ -33,9 +33,14 @@ export interface Step {
    * without it, and a step that called nothing outside the process omits it rather than
    * sending an empty string.
    */
-  calls?: string;
-  /** How long the step took. Node wall-time, so it includes the graph's own overhead. */
-  duration_ms?: number;
+  calls?: string | null;
+  /**
+   * How long the step took. Node wall-time, so it includes the graph's own overhead.
+   *
+   * Nullable as well as optional: the stream omits it, and the endpoint sends an absent
+   * optional as `null`. Both mean the same thing and both have to be handled.
+   */
+  duration_ms?: number | null;
 }
 
 export interface Watched {

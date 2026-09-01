@@ -90,6 +90,70 @@ describe("how a finished diagnosis was reached", () => {
     expect(screen.getByText(/took 4\.1s/)).toBeInTheDocument();
   });
 
+  it("says nothing about a step the endpoint reports as null", async () => {
+    // The stream omits both fields on an older step; the endpoint sends them as null, since
+    // that is what an absent optional serialises to. A check for `undefined` alone passes
+    // the first and fails the second, and the failure is silent: `null / 1000` is 0, so
+    // every step on every older diagnosis claimed to have taken 0.0s.
+    signedIn();
+    server.use(
+      http.get(`/api/v1/diagnoses/${DIAGNOSIS}/activity`, () =>
+        HttpResponse.json([
+          {
+            sequence: 1,
+            step: "identifying",
+            description: "Identifying the species",
+            calls: null,
+            duration_ms: null,
+            occurred_at: "2026-03-01T12:00:00Z",
+          },
+        ]),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnoses/${DIAGNOSIS}` });
+    await screen.findByText("Identifying the species");
+
+    expect(screen.queryByText(/took/)).not.toBeInTheDocument();
+  });
+
+  it("shows one line where two nodes share a sentence", async () => {
+    // `guard_input` and `quality_check` are both "Checking the photographs", because the
+    // distinction is internal. The live stream already collapses consecutive repeats; the
+    // record has to agree, or the same run reads as twelve steps while it runs and thirteen
+    // afterwards.
+    signedIn();
+    server.use(
+      http.get(`/api/v1/diagnoses/${DIAGNOSIS}/activity`, () =>
+        HttpResponse.json([
+          {
+            sequence: 1,
+            step: "checking",
+            description: "Checking the photographs",
+            occurred_at: "2026-03-01T12:00:00Z",
+          },
+          {
+            sequence: 2,
+            step: "checking",
+            description: "Checking the photographs",
+            occurred_at: "2026-03-01T12:00:01Z",
+          },
+          {
+            sequence: 3,
+            step: "identifying",
+            description: "Identifying the species",
+            occurred_at: "2026-03-01T12:00:02Z",
+          },
+        ]),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnoses/${DIAGNOSIS}` });
+    await screen.findByText("Identifying the species");
+
+    expect(screen.getAllByText("Checking the photographs")).toHaveLength(1);
+  });
+
   it("says nothing at all when nothing was recorded", async () => {
     signedIn();
     server.use(
