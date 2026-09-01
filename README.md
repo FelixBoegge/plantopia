@@ -605,6 +605,17 @@ paused diagnosis that has already been paid for, so it is checked before use.
   a lookup — a grounded answer should be distinguishable from an ungrounded one at a
   glance. An empty lookup points it at web search rather than back at its memory
 
+## Capstone showcase
+
+The capstone brief requires this README to link to the project's entry on
+[showcase.turingcollege.com](https://showcase.turingcollege.com/), and requires that entry to
+reflect the project's current state. **That link is not here yet, and belongs here:**
+
+> Showcase: _(add the link once the project is uploaded)_
+
+Uploading is something only the project's owner can do, so it is recorded here rather than
+done. The review does not pass without it.
+
 ## Development
 
 ```bash
@@ -617,9 +628,19 @@ uv run ruff check . && uv run ruff format .
 
 ```bash
 cd web
+npm run build                    # the typecheck and the production build, in one command
 npm test                         # components and hooks against a mocked API, ~20 seconds
-npx playwright test              # the browser tests, against the real stack, ~40 seconds
+npx playwright test              # the browser tests, against the real stack, ~1½ minutes
 ```
+
+**All of it runs on every push.** `.github/workflows/ci.yml` runs ruff, the Python suite
+against a PostgreSQL service container, the frontend typecheck and unit suite, a production
+build, and the browser tests — the same commands as above, not a parallel set that can drift
+from them. The coverage floor is enforced by `pyproject.toml`, so moving it moves CI too.
+
+No step reads a secret, because no test needs one, so a pull request from a fork is verified
+exactly as a branch is. The evaluation harness is never run there: it makes real model calls
+and costs about $1.50 a time.
 
 `npx playwright install chromium` once, first. The browser tests start their own API and
 their own Vite server on ports of their own, so they cannot collide with anything you have
@@ -764,7 +785,7 @@ the shipped app never imports them.
   most worth buying next
 - The corpus covers common houseplant and small-garden disorders. Unusual species fall
   back to web search and generic physiology, with lower confidence
-- Single user, no authentication — the schema is multi-tenant and every query is scoped to an owner, but there is one seeded owner and no way to become a different one yet
+- Registration is open to anybody who can receive email. There is no invitation, no approval step, and no way to close it short of taking the deployment down — which matters more now that a run costs money
 - Photographs cannot show root condition, so root disorders always depend on the
   confirming test rather than the image
 - **Chat context grows without bound.** Every turn replays the whole conversation to the

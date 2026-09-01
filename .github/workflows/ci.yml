@@ -1,0 +1,179 @@
+# Every gate this project has, on every push.
+#
+# `M33` recorded what their absence cost: `uv run pytest` is green whatever the state of
+# `web/`, and the React work landed with three defects the Python suite could not have seen —
+# a startup that revoked its own session, every clarifying question rendered as an unlabelled
+# text box, and a plant created by a run that never appeared on the grid.
+#
+# **Every job runs the commands the README documents, unchanged.** No extra flags and no
+# thresholds restated here: the coverage floor lives in `pyproject.toml`'s `addopts`, so
+# `uv run pytest` enforces it and moving it moves CI too. Two definitions of "the tests pass"
+# drift, and the way anybody finds out is a change that satisfied one of them.
+#
+# **No step reads a secret.** The suites make no model calls — `tests/conftest.py` sets a fake
+# key autouse, models come from `tests/fakes/`, HTTP is mocked with `respx`, and
+# `tests/e2e/server.py` patches every outbound service and blanks the Pl@ntNet and Tavily keys
+# explicitly. So a pull request from a fork is verified exactly as a branch is, and this file
+# is worth nothing to anybody who reads it.
+#
+# The evaluation harness is never run. It makes real model calls against real keys and costs
+# about $1.50 a time.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Reads `.python-version`, so the version is stated once in the repository rather than
+      # again here.
+      - name: Install the toolchain
+        run: uv sync --frozen
+
+      - run: uv run ruff check .
+
+      # `--check` rather than `ruff format`: a machine that silently reformatted and then
+      # passed would be reporting on code nobody wrote.
+      - run: uv run ruff format --check .
+
+  python:
+    name: Python suite
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        # The same image `docker-compose.yml` uses. `tests/postgres.py` creates and drops
+        # `plantopia_test` and runs `CREATE EXTENSION vector`, so the role needs CREATEDB and
+        # superuser rights — which this image's `plantopia` user has.
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: plantopia
+          POSTGRES_PASSWORD: plantopia
+          POSTGRES_DB: plantopia
+        ports:
+          # 5433, matching `docker-compose.yml` and the default in `core/config.py`. CI could
+          # set `PLANTOPIA_DATABASE_URL` instead and deliberately does not: using the same
+          # port and credentials means the environment CI provides is the one the README
+          # describes, which is one fewer way for local and CI to differ.
+          - 5433:5432
+        # Without this the suite races the database and fails on a refused connection.
+        options: >-
+          --health-cmd "pg_isready -U plantopia -d plantopia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      # The whole repository, including `web/src` — `test_client_types.py`,
+      # `test_source_names_agree.py` and `test_question_shape_agrees.py` read TypeScript
+      # source, so a Python job without the frontend checked out would fail three tests for
+      # a reason that looks nothing like the cause.
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the toolchain
+        run: uv sync --frozen
+
+      # Unchanged. The coverage floor is `--cov-fail-under=85` in `pyproject.toml`.
+      - run: uv run pytest
+
+  browser:
+    name: Frontend and browser
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: plantopia
+          POSTGRES_PASSWORD: plantopia
+          POSTGRES_DB: plantopia
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U plantopia -d plantopia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Both toolchains, because `web/playwright.config.ts` starts the API itself:
+      # `uv run python -m tests.e2e.server` on 8100 and Vite on 5273. The browser tests
+      # cannot be split from Python.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the toolchain
+        run: uv sync --frozen
+
+      # Stated here because nothing in the repository pins it — no `engines`, no `.nvmrc`.
+      # That is the one thing CI knows and the repository does not; `design.md` records it as
+      # accepted drift rather than an oversight.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install the frontend
+        working-directory: web
+        run: npm ci
+
+      # `npm run build` is `tsc -b && vite build` — the typecheck and the production build in
+      # one command. This is what "we typecheck in CI" means in this project.
+      - name: Typecheck and build
+        working-directory: web
+        run: npm run build
+
+      # Before the browser tests, so those never run against a frontend whose own unit tests
+      # are failing.
+      - name: Component and hook tests
+        working-directory: web
+        run: npm test
+
+      - name: Install Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        working-directory: web
+        run: npx playwright test
+
+      # Only on failure. Playwright already writes a trace and a screenshot when a test
+      # fails, and on a machine nobody can attach a debugger to they are the difference
+      # between "the browser test failed" and knowing why. Nobody reads the trace of a
+      # passing test.
+      - name: Keep the evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failures
+          path: |
+            web/test-results/
+            web/playwright-report/
+          retention-days: 7
