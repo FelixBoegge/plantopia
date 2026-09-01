@@ -17,6 +17,7 @@ said. A varying answer would only make a flake harder to read.
 """
 
 from datetime import date, timedelta
+from time import sleep
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -183,6 +184,10 @@ REPLY = (
 # A question about the weather reaches for a different tool, so the browser can watch that
 # announcement too. Chosen from the question rather than from a counter, for the same reason
 # the reply is: a counter is wrong the moment the agent retries, and wrong silently.
+# Long enough that the browser paints the in-flight state, short enough to be invisible
+# against a suite that takes over a minute.
+_REPLY_LATENCY_SECONDS = 0.4
+
 WEATHER_LOOKUP = "get_plant_weather"
 WEATHER_REPLY = (
     "There was a frost in the three weeks before your photograph, which is the most "
@@ -234,6 +239,21 @@ class ScriptedGraphModel(BaseChatModel):
 
         if not self._bound_tools:
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content="scripted"))])
+
+        # A deliberate pause before the reply, and the only sleep in this file.
+        #
+        # `Chat.tsx` renders "Consulting the disorder reference…" *while* the turn is in
+        # flight, and removes it when the reply lands. A real model takes seconds, so that
+        # state is plainly visible. This double answers instantly, and the tool call and the
+        # reply can then arrive inside one React batch — `sending` flips true and back to
+        # false without the announcement ever reaching the DOM, so a test waiting for it
+        # times out against behaviour that was never wrong.
+        #
+        # Two browser tests assert on that announcement, because it is the half of the
+        # feature somebody using a screen reader depends on. They passed on one machine and
+        # failed on CI's first run. Widening the window here makes them deterministic rather
+        # than lucky; the cost is a quarter-second on the two turns that reach this line.
+        sleep(_REPLY_LATENCY_SECONDS)
 
         content = WEATHER_REPLY if about_weather else REPLY
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
