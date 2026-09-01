@@ -233,6 +233,33 @@ class Settings(BaseSettings):
     # takes the server down instead of one that fails. 256 MB is roughly thirty full-size
     # uploads, which is more than any account here holds and far less than the machine has.
     max_export_bytes: int = Field(default=256 * 1024 * 1024, gt=0)
+
+    # When a chat conversation stops replaying its old tool output to the model.
+    #
+    # Measured on this repository's own data: a web-search result is about 1,315 tokens, a
+    # weather block about 250, a knowledge lookup about 295 — against roughly 200 for
+    # everything a person and the agent actually said in the same turn. Tool output is the
+    # bulk by six to one, and a search from twenty turns ago is not what the current
+    # question is about.
+    #
+    # Well below any model's context window, deliberately. Waiting until the window was
+    # nearly full would mean paying for every one of those tokens on every turn until it
+    # fired, and the point is to avoid the bill rather than to avoid an error.
+    chat_clear_tools_after_tokens: int = Field(default=8_000, gt=0)
+
+    # How many recent tool results survive that clearing. Small, because the value is
+    # concentrated in the latest: the agent is answering the question in front of it.
+    chat_keep_recent_tool_results: int = Field(default=3, ge=1, le=20)
+
+    # When the conversation *itself* is condensed — the backstop, not the working part.
+    # At roughly 200 tokens a turn this takes hundreds of exchanges, and by then clearing
+    # tool output has long since done the useful work. It exists because without it there
+    # is still no bound, and unboundedness is the thing being fixed.
+    chat_summarise_after_tokens: int = Field(default=32_000, gt=0)
+
+    # How many recent exchanges stay word for word when that happens. An agent that
+    # summarised what was just said would be answering a paraphrase of the question.
+    chat_keep_recent_messages: int = Field(default=20, ge=2, le=100)
     max_images_per_observation: int = Field(default=4, ge=1, le=10)
 
     default_temperature: float = Field(default=0.2, ge=0.0, le=2.0)

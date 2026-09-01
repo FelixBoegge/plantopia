@@ -417,3 +417,116 @@ def test_a_failing_profile_service_does_not_break_the_chat_reply(owner, make_dep
 
     assert turn.reply
     assert service.history(plant_id)[-1].role == "assistant"
+
+
+class TestALongConversationEndToEnd:
+    """The real agent, the real middleware, many turns.
+
+    The change's own unit tests assert the middleware bounds what reaches the model, and a
+    separate file asserts the stored transcript is untouched. Neither drives a *conversation*
+    — this does, through `ChatService` and the real `create_agent`, because the two
+    properties have to hold at the same time and for the same conversation.
+
+    Written here rather than as a browser flow, which is the one deviation from this change's
+    task list. A browser adds nothing a service test cannot see: condensation is server-side
+    and invisible to the interface, and the useful assertion — what the model was handed on
+    the last turn — is not observable from a page at all.
+    """
+
+    def _run(self, owner, make_deps, db, now, *, turns: int, threshold: int):
+        from core.config import Settings
+        from tests.secrets import TEST_JWT_SECRET
+
+        plant_id = _plant_id(owner, db, now)
+        # Two scripted responses per turn: one calling a tool, one answering.
+        responses = []
+        for turn in range(turns):
+            responses.append(
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "search_plant_knowledge",
+                            "args": {"query": f"question {turn}"},
+                            "id": f"call-{turn}",
+                        }
+                    ],
+                )
+            )
+            responses.append(AIMessage(content=f"Answer {turn}."))
+
+        model = ScriptedToolCallingModel(responses)
+        deps = make_deps(
+            chat_model=model,
+            retriever=_a_bulky_retriever(),
+            settings=Settings(
+                jwt_secret=TEST_JWT_SECRET,
+                openrouter_api_key="sk-test",
+                _env_file=None,
+                chat_clear_tools_after_tokens=threshold,
+            ),
+        )
+        service = ChatService(
+            deps=deps, messages=MessageRepository(db), checkpointer=MemorySaver(), now=now
+        )
+
+        for turn in range(turns):
+            service.send(plant_id, f"Question {turn}: what is wrong with it?")
+
+        return service, plant_id, model
+
+    def test_the_transcript_is_complete_however_much_was_condensed(self, owner, make_deps, db, now):
+        """Both properties, one conversation: the model saw less and the person sees all."""
+        service, plant_id, _ = self._run(owner, make_deps, db, now, turns=8, threshold=500)
+
+        history = service.history(plant_id)
+
+        assert len(history) == 16
+        assert history[0].content.startswith("Question 0")
+        assert history[-1].content == "Answer 7."
+
+    def test_the_model_stops_being_sent_the_oldest_tool_output(self, owner, make_deps, db, now):
+        _, _, model = self._run(owner, make_deps, db, now, turns=8, threshold=500)
+
+        last_turn = model.prompts[-1]
+        bulky = [m for m in last_turn if BULK in str(getattr(m, "content", ""))]
+
+        assert bulky, "the recent lookups should still be whole"
+        assert len(bulky) <= 3
+
+    def test_a_short_conversation_is_left_alone(self, owner, make_deps, db, now):
+        _, _, model = self._run(owner, make_deps, db, now, turns=2, threshold=1_000_000)
+
+        assert all(BULK in str(m.content) for m in model.prompts[-1] if _is_tool_result(m))
+
+    def test_a_later_reply_still_arrives(self, owner, make_deps, db, now):
+        """The point of keeping a conversation rather than truncating it."""
+        service, plant_id, _ = self._run(owner, make_deps, db, now, turns=8, threshold=500)
+
+        assert service.history(plant_id)[-1].content == "Answer 7."
+
+
+BULK = "a long passage about overwatering that costs real tokens " * 30
+
+
+def _a_bulky_retriever():
+    """A retriever whose passages are the size a real web search returns."""
+
+    def _passage() -> Passage:
+        return Passage(doc_id="overwatering", section="symptoms", text=BULK, score=0.9)
+
+    class _Bulky:
+        def search(self, queries, k: int = 4, *, sections=None):
+            return [_passage()]
+
+        def sections_for(self, doc_ids, sections):
+            return [_passage()]
+
+        def known_doc_ids(self):
+            return ("overwatering",)
+
+    return _Bulky()
+
+
+def _is_tool_result(message) -> bool:
+    return type(message).__name__ == "ToolMessage"

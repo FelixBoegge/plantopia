@@ -605,6 +605,44 @@ paused diagnosis that has already been paid for, so it is checked before use.
   a lookup — a grounded answer should be distinguishable from an ungrounded one at a
   glance. An empty lookup points it at web search rather than back at its memory
 
+### How much of a conversation the model sees
+
+Every turn resends what came before, so an unbounded history is a cost that compounds: turn
+*N* pays for turns 1..*N*. Measuring where that weight actually sits was the surprise —
+
+| What one turn adds | Tokens |
+|---|---|
+| A web-search result | **~1,315** |
+| A knowledge-base lookup | ~295 |
+| A weather block | ~250 |
+| Everything a person and the agent *said* | ~200 |
+
+— tool output is the bulk by roughly six to one, and web search is the common path rather
+than the rare one.
+
+So two things happen, cheapest first. Past `PLANTOPIA_CHAT_CLEAR_TOOLS_AFTER_TOKENS` the
+**older tool results stop being replayed**, keeping the most recent three whole; that costs
+no model call and loses nothing anybody chose to say. Past a much higher
+`PLANTOPIA_CHAT_SUMMARISE_AFTER_TOKENS` the **conversation itself is condensed** into a
+summary, keeping recent exchanges verbatim — a backstop that takes hundreds of turns to
+reach, and exists because without it there is still no bound.
+
+Measured across a scripted conversation:
+
+| Turns | Sent without limits | Sent with them | Billed across the whole conversation |
+|---|---|---|---|
+| 5 | 6,738 | 6,738 (untouched) | 20,216 → 20,216 |
+| 10 | 13,477 | 4,277 | 74,126 → 41,270 |
+| 20 | 26,962 | 4,618 | 283,068 → 85,924 |
+| 40 | 53,932 | 5,298 | 1,105,503 → 185,434 |
+
+The middle column stops growing, which is the point. A short conversation is sent exactly as
+it happened.
+
+**The stored transcript is never altered.** Only what reaches the model changes: every
+message stays readable on the page, in an export, and behind the timeline's events. That is
+held in place by its own tests rather than by care.
+
 ## Capstone showcase
 
 The capstone brief requires this README to link to the project's entry on
@@ -788,8 +826,8 @@ the shipped app never imports them.
 - Registration is open to anybody who can receive email. There is no invitation, no approval step, and no way to close it short of taking the deployment down — which matters more now that a run costs money
 - Photographs cannot show root condition, so root disorders always depend on the
   confirming test rather than the image
-- **Chat context grows without bound.** Every turn replays the whole conversation to the
-  model, and checkpoints are never pruned. Chat token usage is not tracked at all
+- Chat token usage and cost are not tracked at all, so the saving from bounding the context
+  is measurable in a test and invisible in production (`M17`)
 - Uploads are not downscaled before they reach the vision model. Storage is no longer the
   reason to care — photographs live in the database once rather than in every checkpoint —
   but a full-size image is still sent to the vision tier on every diagnosis, and that is

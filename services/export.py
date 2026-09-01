@@ -253,7 +253,18 @@ def _archive(
         archive.writestr(MANIFEST, json.dumps(document, indent=2, ensure_ascii=False))
 
         for key in keys:
-            data = blobs.get(user_id, UUID(key))
+            try:
+                reference = UUID(key)
+            except ValueError:
+                # A reference that is not a key at all. Skipped for the same reason a
+                # missing blob is: this path already decided that one bad photograph must
+                # not cost somebody their whole export, and crashing on an unparseable
+                # reference while tolerating an absent one was an inconsistency rather than
+                # a decision.
+                logger.warning("an observation holds a photograph reference that is not a key")
+                continue
+
+            data = blobs.get(user_id, reference)
             if data is None:
                 # A reference with no bytes behind it. Recorded rather than raised: an
                 # export that fails because one photograph went missing is an export

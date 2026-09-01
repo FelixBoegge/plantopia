@@ -9,6 +9,11 @@ from datetime import datetime
 from uuid import UUID
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import (
+    ClearToolUsesEdit,
+    ContextEditingMiddleware,
+    SummarizationMiddleware,
+)
 from langchain_core.tools import tool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
@@ -16,6 +21,8 @@ from langgraph.graph.state import CompiledStateGraph
 from agent.deps import Deps
 from agent.prompts.weather import render as render_weather
 from agent.schemas import CareOrigin
+from core.config import Settings
+from core.llm import build_gate_model
 from tools.knowledge import search_plant_knowledge
 
 logger = logging.getLogger(__name__)
@@ -122,9 +129,57 @@ def make_chat_agent(
         deps.chat_model,
         tools=tools,
         system_prompt=system_prompt,
+        middleware=_context_limits(deps.settings),
         checkpointer=checkpointer,
     )
     return agent, escalation
+
+
+def _context_limits(settings: Settings) -> list:
+    """Keep a long conversation from replaying itself in full on every turn.
+
+    Every turn resends what came before, so an unbounded history is a cost that compounds:
+    turn *N* pays for turns 1..*N*. Forty turns is roughly 1.2 million prompt tokens across
+    the conversation, for one plant.
+
+    **Two mechanisms, cheapest first**, because measuring said where the weight is and it is
+    not where a reader would guess. Against this repository's own data, one turn adds about
+    1,315 tokens of web-search result, 295 of knowledge lookup or 250 of weather — against
+    roughly 200 for everything a person and the agent actually said. Tool output is the bulk
+    by six to one, and it is also the most disposable: a search made twenty turns ago is not
+    what the current question is about.
+
+    So stale tool output goes first and costs nothing. Summarising costs a model call and can
+    lose nuance, so it fires much later and only if the conversation itself has grown large —
+    which at ~200 tokens a turn takes hundreds of exchanges. It is the backstop rather than
+    the working part, and it is here because without it there is still no bound.
+
+    Neither touches the stored transcript. `chat_service` writes the message rows before and
+    after the agent runs, so what a person reads, exports, and sees on the timeline is
+    unaffected by construction — `tests/unit/services/test_chat_transcript_is_untouched.py`
+    holds that in place.
+    """
+    return [
+        ContextEditingMiddleware(
+            edits=[
+                ClearToolUsesEdit(
+                    trigger=settings.chat_clear_tools_after_tokens,
+                    keep=settings.chat_keep_recent_tool_results,
+                    # The inputs stay. They are small — a search query, a day count — and
+                    # they are what tells the model it has already asked something, which
+                    # is exactly what stops it asking again.
+                    clear_tool_inputs=False,
+                )
+            ]
+        ),
+        SummarizationMiddleware(
+            # The cheap tier. Condensing is a mechanical extraction, not a judgement about a
+            # plant, and it is the same class of work the two binary image checks use.
+            model=build_gate_model(),
+            trigger=("tokens", settings.chat_summarise_after_tokens),
+            keep=("messages", settings.chat_keep_recent_messages),
+        ),
+    ]
 
 
 def _make_tools(deps: Deps, plant_id: UUID) -> tuple[list, dict]:
