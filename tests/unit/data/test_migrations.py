@@ -30,6 +30,7 @@ from data.engine import build_engine
 from data.migrations.filters import include_name, include_object
 from data.models import Base
 from tests.postgres import _urls
+from tests.secrets import TEST_JWT_SECRET
 
 MIGRATED_DATABASE = "plantopia_migrations_test"
 
@@ -51,15 +52,28 @@ def migrated_url() -> Iterator[str]:
     # a migration cannot be applied to a different database than the code will talk to.
     # Pointing the environment at the throwaway one is therefore the only way to redirect
     # it, and setting ``sqlalchemy.url`` would silently migrate the development database.
-    previous = os.environ.get("PLANTOPIA_DATABASE_URL")
-    os.environ["PLANTOPIA_DATABASE_URL"] = target
+    #
+    # It builds ``Settings()`` bare, so it needs the two fields that have no default as
+    # well. This fixture is module-scoped and therefore runs *before* the function-scoped
+    # autouse fixture that supplies them — the same ordering `tests/postgres._urls` records.
+    # Without them these tests passed only on a machine with a real `.env`, and failed on
+    # the first machine without one. That is precisely the failure `M6` describes, and CI
+    # found it on its first run.
+    environment = {
+        "PLANTOPIA_DATABASE_URL": target,
+        "PLANTOPIA_OPENROUTER_API_KEY": "sk-test",
+        "PLANTOPIA_JWT_SECRET": TEST_JWT_SECRET,
+    }
+    previous = {name: os.environ.get(name) for name in environment}
+    os.environ.update(environment)
     try:
         command.upgrade(Config("alembic.ini"), "head")
     finally:
-        if previous is None:
-            del os.environ["PLANTOPIA_DATABASE_URL"]
-        else:
-            os.environ["PLANTOPIA_DATABASE_URL"] = previous
+        for name, was in previous.items():
+            if was is None:
+                del os.environ[name]
+            else:
+                os.environ[name] = was
 
     yield target
 
