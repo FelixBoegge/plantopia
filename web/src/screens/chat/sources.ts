@@ -7,13 +7,13 @@
  */
 
 const NAMES: Record<string, string> = {
-  search_plant_knowledge: "the disorder reference",
-  lookup_plant_care_profile: "care guidance for this species",
-  get_plant_weather: "the weather where this plant is",
-  get_local_weather: "the local weather",
-  web_search_plant_info: "the web",
-  get_plant_journal: "this plant's history",
-  suggest_new_diagnosis: "whether this needs a fresh diagnosis",
+  search_plant_knowledge: "Plantopia's disorder reference, for what this looks like",
+  lookup_plant_care_profile: "Plantopia's care guidance, for what this species needs",
+  get_plant_weather: "Open-Meteo, for the weather where this plant is",
+  get_local_weather: "Open-Meteo, for the local weather",
+  web_search_plant_info: "a web search, for what the reference does not cover",
+  get_plant_journal: "Plantopia's record of this plant, for what has happened to it",
+  suggest_new_diagnosis: "Plantopia's own check, for whether this needs a fresh diagnosis",
 };
 
 const UNKNOWN = "another source";

@@ -131,7 +131,7 @@ describe("the transcript", () => {
     render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
 
     expect(
-      await screen.findByText(/Consulted the disorder reference/),
+      await screen.findByText(/Consulted Plantopia's disorder reference/),
     ).toBeInTheDocument();
   });
 

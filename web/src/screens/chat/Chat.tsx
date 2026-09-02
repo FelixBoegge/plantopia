@@ -85,15 +85,28 @@ function Reply({ message }: { message: Message }) {
   ];
 
   return (
-    <div className={mine ? "text-right" : undefined}>
-      <p className="whitespace-pre-wrap">{message.content}</p>
-      {!mine ? (
-        <p className="text-muted-foreground mt-1 text-xs">
-          {sources.length
-            ? `Consulted ${sources.join(", ")}`
-            : "Answered from the model's own knowledge, without a lookup"}
-        </p>
-      ) : null}
+    // Two colours from the palette rather than two alignments. Both are palette tokens, so
+    // the pair moves with the theme instead of being a second set to keep in step: what
+    // somebody asked takes the accent, what Plantopia answered takes the plain surface with
+    // a border. The alignment stays too, because colour alone is not a distinction for
+    // anybody who cannot separate these two hues.
+    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[85%] rounded-2xl px-3 py-2 ${
+          mine
+            ? "bg-accent text-accent-foreground rounded-br-sm"
+            : "bg-card text-card-foreground rounded-bl-sm border"
+        }`}
+      >
+        <p className="whitespace-pre-wrap">{message.content}</p>
+        {!mine ? (
+          <p className="text-muted-foreground mt-1 text-xs">
+            {sources.length
+              ? `Consulted ${sources.join(", ")}`
+              : "Answered from the model's own knowledge, without a lookup"}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
