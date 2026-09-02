@@ -9,3 +9,15 @@
 - [x] location and date should be listed right after the plant identification part in the interrupt
 - [x] What Plantopia is doing should appear in a sidebar on the left and it should be more specific, like what exaclty is used when running a vision model or calling plantnet or meteo weather...
 - [x] the app called a diagnosis run a "check" in some places and a "diagnosis" in others. One word for one thing: "diagnosis"/"diagnose" everywhere in UI copy, buttons, allowance counts, error details and step descriptions. The other senses of "check" (check your email, checking your link, checking the photographs, checkbox) are untouched.
+- [x] in the plant detail view, the chat about a plant should appear next to the rest of the content of the page on the right, so basically have 2 columns, one having the diagnosis, what happend, what to do and so on and on the right have the chat
+- [x] in the chat, the formating is already good, but give the the conversation parts (user intput and llm output) boxes with different colours, also from the respective color palette, depending on light and dark mode
+- [x] the pictures uploaded will mainly be portraits. currently in each plant card in "Your plants" the picture is displayed on top and the info on the bottom. Like that, major parts of portrait images will be cut. lets put the image on the left and the info on the right
+- [x] When I am in the detail view of a plant, small thumbnails are displayed of the pictures uploaded. They should be clickable and expand into a bigger image to view them in more detail. clicking out of the image somewhere else collapses the image again to see the detail view
+- [x] currently, to get to a users landing page "Your plants" I can only click on "Plantopia in the top nav bar on the left. I would like to have an additional button in the navbar saying "My plants" left next to "Diagnose a plant"
+- [x] when I diagnose a plant again from "Your plants" and the species and indoor/outdoor is know, the user should not be asked again, if he knows what the plant is and whether its indoor or outdoor. Those information are already know and tied to the plant I am rediagnosing
+- [ ] when rediagnosing a plant, the verdict (improving, declining...) should be labeld at the top of the diagnosis, color coded
+- [x] after rediagnosing a plant, the weather and percipitation graph should update.
+- [x] the history (all diagnosis) in the detail view should be below the road map
+- [x] In the detail view, currently the treatment road map it tiled "What to do". Rename it to "Treatment road map"
+- [x] In the detail view, currently the history which lists the diagnosis is called "What has happened". Rename it to "Plant history"
+- [x] I like that in the chat about a plant, the user gets returned, where the information comes from. It can be more specific, eg "Consulted openMeteo for weather information"

@@ -30,7 +30,7 @@ def make_enrich(deps: Deps) -> NodeFn:
 
         passages = _retrieve(deps, state, tools_used)
         visual = _retrieve_by_image(deps, state, tools_used)
-        weather = _fetch_weather(deps, state, tools_used)
+        weather = fetch_weather(deps, state, tools_used)
         care_text = _care_baseline(deps, state, tools_used)
 
         # The escalation gate reads the TEXT path only. Cross-modal scores sit on a
@@ -118,8 +118,14 @@ def _retrieve_by_image(deps: Deps, state: DiagnosisState, tools_used: list[str])
     return kept
 
 
-def _fetch_weather(deps: Deps, state: DiagnosisState, tools_used: list[str]):
-    """Fetch recent weather, but only for an outdoor plant with a known location."""
+def fetch_weather(deps: Deps, state: DiagnosisState, tools_used: list[str]):
+    """Fetch recent weather, but only for an outdoor plant with a known location.
+
+    Shared with the re-check path. It used to live only here, and `enrich` is skipped
+    entirely by a re-check that is improving or static — so those runs recorded an
+    observation with no weather, and a plant's history drew a graph for its first diagnosis
+    and nothing beside the ones after it.
+    """
     if state.location_kind != "outdoor":
         return None
 

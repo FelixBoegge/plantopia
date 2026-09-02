@@ -11,6 +11,7 @@ import logging
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agent.deps import Deps
+from agent.nodes.enrich import fetch_weather
 from agent.nodes.intake import NodeFn
 from agent.prompts.recheck import COMPARE_PROGRESS, REVISE_ROADMAP
 from agent.schemas import ProgressVerdict, Roadmap
@@ -72,6 +73,12 @@ def make_revise_roadmap(deps: Deps) -> NodeFn:
             SystemMessage(REVISE_ROADMAP),
             HumanMessage(_build_revision_brief(state, steps)),
         ]
+        # This path never reaches `enrich`, which is where every other run picks up its
+        # weather. Without this the observation is saved with none, and the plant's history
+        # shows a graph beside the first diagnosis and nothing beside this one.
+        tools_used: list[str] = []
+        weather = fetch_weather(deps, state, tools_used)
+
         try:
             roadmap = invoke_structured(deps.chat_model, Roadmap, messages)
         except StructuredOutputFailed as exc:
@@ -79,10 +86,15 @@ def make_revise_roadmap(deps: Deps) -> NodeFn:
             return {
                 "differential": prior.differential,
                 "roadmap": None,
+                "weather": weather,
                 "errors": [*state.errors, f"revise_roadmap: {exc}"],
             }
 
-        return {"differential": prior.differential, "roadmap": roadmap}
+        return {
+            "differential": prior.differential,
+            "roadmap": roadmap,
+            "weather": weather,
+        }
 
     return revise_roadmap
 

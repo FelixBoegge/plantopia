@@ -95,6 +95,21 @@ def _prior_plant(owner, db, now) -> tuple[int, int]:
     return plant_id, diagnosis_id
 
 
+def _a_roadmap() -> Roadmap:
+    return Roadmap(
+        steps=[
+            RoadmapStep(
+                ordinal=1,
+                action="Continue the current watering schedule.",
+                rationale="It is working.",
+                success_signal="No new yellow leaves in a week.",
+                tier=IPMTier.CULTURAL,
+                day_offset=7,
+            )
+        ]
+    )
+
+
 def _state(images, plant_id, **overrides) -> DiagnosisState:
     base = {
         "images": images,
@@ -192,6 +207,56 @@ class TestReviseRoadmap:
         )
         result = make_revise_roadmap(deps)(state)
         assert result["roadmap"] == revised
+
+    def test_an_outdoor_recheck_still_gets_its_weather(
+        self, owner, make_deps, sample_images, db, now
+    ):
+        """This path skips `enrich`, which is the only place weather was ever fetched, so a
+        re-check that was going well recorded an observation with no weather at all — and
+        the plant's history drew a graph for the first diagnosis and nothing for the
+        second."""
+        plant_id, _ = _prior_plant(owner, db, now)
+        asked: list[str] = []
+
+        def weather(location, days, taken, position):
+            asked.append(location)
+            return {"daily": []}
+
+        deps = make_deps(
+            chat_model=ScriptedStructuredModel([_a_roadmap()]),
+            weather=weather,
+        )
+        state = _state(
+            sample_images,
+            plant_id,
+            location_kind="outdoor",
+            location_text="Frankfurt",
+            verdict=ProgressVerdict(verdict="improving", reasoning="Better."),
+        )
+
+        result = make_revise_roadmap(deps)(state)
+
+        assert asked == ["Frankfurt"]
+        assert result["weather"] == {"daily": []}
+
+    def test_an_indoor_recheck_asks_for_no_weather(self, owner, make_deps, sample_images, db, now):
+        plant_id, _ = _prior_plant(owner, db, now)
+        asked: list[str] = []
+
+        deps = make_deps(
+            chat_model=ScriptedStructuredModel([_a_roadmap()]),
+            weather=lambda location, *_: asked.append(location),
+        )
+        state = _state(
+            sample_images,
+            plant_id,
+            location_kind="indoor",
+            verdict=ProgressVerdict(verdict="improving", reasoning="Better."),
+        )
+
+        make_revise_roadmap(deps)(state)
+
+        assert asked == []
 
     def test_carries_the_prior_differential_forward_unchanged(
         self, owner, make_deps, sample_images, db, now
