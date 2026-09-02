@@ -40,6 +40,14 @@ export function Wizard() {
 
   const left = allowance(account);
 
+  // Diagnosing a named plant means the form is shaped by what that plant already is: it
+  // stops asking for a species and a location that are on record. Rendering before the
+  // record arrives would show those fields for an instant and then take them away, which
+  // reads as the page changing its mind.
+  if (!runId && plantId && plant.isPending) {
+    return <p role="status">Loading this plant…</p>;
+  }
+
   return runId ? (
     <Watching runId={runId} finished={hasFinished(run?.status)} />
   ) : (
@@ -67,7 +75,14 @@ export function Wizard() {
         failure={start.error}
         fixedPlant={
           plantId && plant.data
-            ? { id: plantId, name: plant.data.plant.name }
+            ? {
+                id: plantId,
+                name: plant.data.plant.name,
+                // Already on record from the diagnosis that created this plant. Asking
+                // again is asking somebody to retype what the application told them.
+                species: plant.data.plant.species,
+                locationKind: plant.data.plant.location_kind,
+              }
             : undefined
         }
         onStart={(fields) =>

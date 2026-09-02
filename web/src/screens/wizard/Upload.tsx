@@ -32,11 +32,26 @@ export function Upload({
   /** The allowance is used up, so the server would refuse this. */
   blocked?: boolean;
   failure: unknown;
-  fixedPlant?: { id: string; name: string };
+  /**
+   * The plant being diagnosed again, where there is one.
+   *
+   * `species` and `locationKind` come off its record. Both were established by the
+   * diagnosis that created it, so a re-diagnosis that asked for them again would be asking
+   * somebody to retype what the application already told them — and to get it wrong, since
+   * whatever they type overrides what is on record.
+   */
+  fixedPlant?: {
+    id: string;
+    name: string;
+    species?: string | null;
+    locationKind?: "indoor" | "outdoor";
+  };
 }) {
   const [photographs, setPhotographs] = useState<File[]>([]);
+  const knownSpecies = fixedPlant?.species ?? null;
+  const knownLocation = fixedPlant?.locationKind;
   const [locationKind, setLocationKind] = useState<"indoor" | "outdoor">(
-    "indoor",
+    knownLocation ?? "indoor",
   );
   const [statedSpecies, setStatedSpecies] = useState("");
   const [notes, setNotes] = useState("");
@@ -56,8 +71,9 @@ export function Upload({
           // plant from what the identification found — nobody is asked to name a plant
           // they came here to have identified.
           plantName: fixedPlant?.name,
-          statedSpecies,
-          locationKind,
+          // What is on record wins over an empty box that was never shown.
+          statedSpecies: knownSpecies ?? statedSpecies,
+          locationKind: knownLocation ?? locationKind,
           notes,
         });
       }}
@@ -135,36 +151,55 @@ export function Upload({
         ) : null}
       </div>
 
-      <Field
-        label="Do you know what it is?"
-        value={statedSpecies}
-        onChange={(event) => setStatedSpecies(event.target.value)}
-        hint={
-          // Optional, and said so plainly. Most people asking what is wrong with a plant do
-          // not know what it is — that is frequently why they are asking — and a field that
-          // looked required would stop the people this exists for.
-          "Optional. A common or botanical name. Plantopia works it out from the " +
-          "photographs either way, and will say if it disagrees."
-        }
-      />
+      {knownSpecies ? (
+        <p className="text-muted-foreground text-sm">
+          Diagnosing{" "}
+          <span className="text-foreground font-medium">
+            {fixedPlant?.name}
+          </span>
+          , a known{" "}
+          <span className="text-foreground italic">{knownSpecies}</span>
+          {knownLocation
+            ? knownLocation === "indoor"
+              ? " kept indoors."
+              : " kept outdoors."
+            : "."}{" "}
+          Plantopia will look again and say if it disagrees.
+        </p>
+      ) : (
+        <Field
+          label="Do you know what it is?"
+          value={statedSpecies}
+          onChange={(event) => setStatedSpecies(event.target.value)}
+          hint={
+            // Optional, and said so plainly. Most people asking what is wrong with a plant do
+            // not know what it is — that is frequently why they are asking — and a field that
+            // looked required would stop the people this exists for.
+            "Optional. A common or botanical name. Plantopia works it out from the " +
+            "photographs either way, and will say if it disagrees."
+          }
+        />
+      )}
 
-      <fieldset className="grid gap-2">
-        <legend className="text-sm font-medium">Where does it live?</legend>
-        <div className="flex gap-4">
-          {(["indoor", "outdoor"] as const).map((where) => (
-            <label key={where} className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="location"
-                value={where}
-                checked={locationKind === where}
-                onChange={() => setLocationKind(where)}
-              />
-              {where === "indoor" ? "Indoors" : "Outdoors"}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {knownLocation ? null : (
+        <fieldset className="grid gap-2">
+          <legend className="text-sm font-medium">Where does it live?</legend>
+          <div className="flex gap-4">
+            {(["indoor", "outdoor"] as const).map((where) => (
+              <label key={where} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="location"
+                  value={where}
+                  checked={locationKind === where}
+                  onChange={() => setLocationKind(where)}
+                />
+                {where === "indoor" ? "Indoors" : "Outdoors"}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <Field
         label="Anything else worth knowing?"

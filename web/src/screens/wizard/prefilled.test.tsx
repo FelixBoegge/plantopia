@@ -50,11 +50,12 @@ const WATERING = question({
 });
 
 function pausedAsking(...questions: unknown[]) {
-  const frame =
-    `id: 1\nevent: questions\ndata: ${JSON.stringify({ questions })}\n\n`;
+  const frame = `id: 1\nevent: questions\ndata: ${JSON.stringify({ questions })}\n\n`;
 
   server.use(
-    http.post("/api/v1/auth/refresh", () => HttpResponse.json({ access_token: "fresh" })),
+    http.post("/api/v1/auth/refresh", () =>
+      HttpResponse.json({ access_token: "fresh" }),
+    ),
     http.get("/api/v1/me", () => HttpResponse.json(ACCOUNT)),
     http.get("/api/v1/plants", () => HttpResponse.json([])),
     http.get(`/api/v1/runs/${RUN}`, () =>
@@ -69,12 +70,72 @@ function pausedAsking(...questions: unknown[]) {
         error: null,
       }),
     ),
-    http.get(`/api/v1/runs/${RUN}/events`, () =>
-      new HttpResponse(new TextEncoder().encode(frame), {
-        headers: { "Content-Type": "text/event-stream" },
+    http.get(
+      `/api/v1/runs/${RUN}/events`,
+      () =>
+        new HttpResponse(new TextEncoder().encode(frame), {
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+    ),
+  );
+}
+
+const PLANT = "01a0-basil";
+
+/** A plant already on record, as a re-diagnosis finds it. */
+function knownPlant(overrides: {
+  species: string | null;
+  location_kind: "indoor" | "outdoor";
+}) {
+  const plant = {
+    id: PLANT,
+    name: "Kitchen basil",
+    species_confidence: 0.9,
+    location_text: null,
+    photo_ref: "01a0-photo",
+    created_at: "2026-03-01T12:00:00Z",
+    ...overrides,
+  };
+  server.use(
+    http.post("/api/v1/auth/refresh", () =>
+      HttpResponse.json({ access_token: "fresh" }),
+    ),
+    http.get("/api/v1/me", () => HttpResponse.json(ACCOUNT)),
+    http.get(`/api/v1/plants/${PLANT}`, () =>
+      HttpResponse.json({
+        plant,
+        observations: [],
+        diagnoses: [],
+        roadmap_steps: [],
+        feedback_due: false,
       }),
     ),
   );
+}
+
+function openRediagnosis() {
+  return render(<AppRoutes />, { route: `/plants/${PLANT}/diagnose` });
+}
+
+/** Captures the multipart body the form posts to start a run. */
+function startedRun() {
+  let sent: FormData | null = null;
+  server.use(
+    http.post("/api/v1/runs", async ({ request }) => {
+      sent = await request.formData();
+      return HttpResponse.json({
+        id: RUN,
+        plant_id: PLANT,
+        kind: "diagnosis",
+        status: "queued",
+        created_at: "2026-03-01T12:00:00Z",
+        finished_at: null,
+        diagnosis_id: null,
+        error: null,
+      });
+    }),
+  );
+  return () => sent;
 }
 
 function open() {
@@ -108,7 +169,9 @@ describe("an answer the run already has", () => {
 
     open();
 
-    expect(await screen.findByLabelText(/Which town or city/)).toHaveValue("Berlin");
+    expect(await screen.findByLabelText(/Which town or city/)).toHaveValue(
+      "Berlin",
+    );
   });
 
   it("is submitted untouched", async () => {
@@ -146,20 +209,25 @@ describe("an answer the run already has", () => {
 
     open();
 
-    expect(await screen.findByText("Recorded by your camera")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Recorded by your camera"),
+    ).toBeInTheDocument();
   });
 
   it("credits the source its terms require crediting", async () => {
     pausedAsking(
       question({
         prefill: "Berlin",
-        prefill_note: "Recorded by your camera, named by OpenStreetMap contributors",
+        prefill_note:
+          "Recorded by your camera, named by OpenStreetMap contributors",
       }),
     );
 
     open();
 
-    expect(await screen.findByText(/OpenStreetMap contributors/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/OpenStreetMap contributors/),
+    ).toBeInTheDocument();
   });
 
   it("credits nothing when nothing was prefilled", async () => {
@@ -178,9 +246,9 @@ describe("an answer the run already has", () => {
 
     open();
 
-    expect(await screen.findByLabelText(/Which town or city/)).toHaveAccessibleDescription(
-      "Recorded by your camera",
-    );
+    expect(
+      await screen.findByLabelText(/Which town or city/),
+    ).toHaveAccessibleDescription("Recorded by your camera");
   });
 });
 
@@ -246,7 +314,10 @@ describe("a question that has to be answered", () => {
     pausedAsking(question({ required: true }));
     const sent = await submitted(async () => {
       open();
-      await userEvent.type(await screen.findByLabelText(/Which town or city/), "   ");
+      await userEvent.type(
+        await screen.findByLabelText(/Which town or city/),
+        "   ",
+      );
       await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
     });
 
@@ -358,5 +429,72 @@ describe("when the photograph was taken", () => {
     // Sent as empty rather than omitted: absent means "never asked", and the run would
     // keep what the photograph said.
     expect(sent()!.answers.captured_at).toBe("");
+  });
+});
+
+describe("diagnosing a plant again", () => {
+  it("does not ask what it is when that is on record", async () => {
+    // The species was established by the diagnosis that created this plant. Asking again is
+    // asking somebody to retype what the application told them.
+    knownPlant({ species: "Ocimum basilicum", location_kind: "indoor" });
+
+    openRediagnosis();
+
+    await screen.findByLabelText("Upload images");
+    expect(
+      screen.queryByLabelText("Do you know what it is?"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not ask where it lives when that is on record", async () => {
+    knownPlant({ species: "Ocimum basilicum", location_kind: "outdoor" });
+
+    openRediagnosis();
+
+    await screen.findByLabelText("Upload images");
+    expect(
+      screen.queryByRole("radio", { name: "Indoors" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("radio", { name: "Outdoors" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says which plant and species it is going on", async () => {
+    // Not asking is only acceptable if it says what it assumed instead.
+    knownPlant({ species: "Ocimum basilicum", location_kind: "outdoor" });
+
+    openRediagnosis();
+
+    expect(await screen.findByText(/Ocimum basilicum/)).toBeInTheDocument();
+    expect(screen.getByText(/kept outdoors/)).toBeInTheDocument();
+  });
+
+  it("sends what was on record rather than an empty species", async () => {
+    knownPlant({ species: "Ocimum basilicum", location_kind: "outdoor" });
+    const started = startedRun();
+
+    openRediagnosis();
+    await userEvent.upload(
+      await screen.findByLabelText("Upload images"),
+      new File(["png"], "leaf.png", { type: "image/png" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start the diagnosis" }),
+    );
+
+    await waitFor(() => expect(started()).not.toBeNull());
+    expect(started()!.get("stated_species")).toBe("Ocimum basilicum");
+    expect(started()!.get("location_kind")).toBe("outdoor");
+  });
+
+  it("still asks when the plant has no species on record", async () => {
+    knownPlant({ species: null, location_kind: "indoor" });
+
+    openRediagnosis();
+
+    expect(
+      await screen.findByLabelText("Do you know what it is?"),
+    ).toBeInTheDocument();
   });
 });
