@@ -48,13 +48,17 @@ export function Plants() {
         </Card>
       ) : null}
 
+      {/* More columns as the screen grows, now that the page has no maximum width. Three
+          columns across a wide desktop stretched each card to half a metre of mostly empty
+          space with the photograph as a thin strip down one side. */}
       {plants?.length ? (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {plants.map(({ plant, latest_diagnosis, pending_step_count }) => (
-            // A fixed height on every card rather than letting content decide. A grid row
-            // is only as tall as its tallest card, so one plant with a long name used to
-            // leave its neighbours short and their photographs letterboxed.
-            <li key={plant.id} className="h-40">
+            // A floor, not a fixed height. Grid rows stretch their items, so every card in
+            // a row still matches the tallest — but a long name can now take a second line
+            // and make the whole row taller, rather than being cut off to preserve a
+            // height nobody asked for.
+            <li key={plant.id} className="min-h-40">
               <Card className="hover:border-primary/60 h-full overflow-hidden py-0 transition-colors">
                 {/*
                   The photograph beside the text rather than above it. These are nearly all
@@ -66,24 +70,27 @@ export function Plants() {
                 <Link to={`/plants/${plant.id}`} className="flex h-full">
                   <Photo
                     photoKey={plant.photo_ref}
-                    className="h-full w-28 shrink-0 object-cover"
+                    className="h-full w-32 shrink-0 object-cover"
                   />
-                  <CardContent className="grid min-w-0 flex-1 content-start gap-2 py-4">
-                    <span className="truncate font-medium">{plant.name}</span>
+                  <CardContent className="grid min-w-0 flex-1 content-center gap-2 py-4">
+                    <span className="text-lg leading-tight font-semibold">
+                      {plant.name}
+                    </span>
                     {plant.species ? (
                       <span className="text-muted-foreground truncate text-sm italic">
                         {plant.species}
                       </span>
                     ) : null}
-                    {/* One line, and it stays one line. The badge and the step count used
-                        to wrap mid-phrase in a narrow column, which reads as two facts
-                        rather than one. */}
-                    <div className="flex items-center gap-2 overflow-hidden">
+                    {/* Stacked, and each one holds its line. Side by side they competed
+                        for a narrow column and wrapped mid-phrase, which reads as two
+                        facts where there is one. */}
+                    <div className="flex flex-col items-start gap-1 overflow-hidden">
                       <Severity
                         severity={latest_diagnosis?.candidates?.[0]?.severity}
+                        className="text-sm"
                       />
                       {pending_step_count > 0 ? (
-                        <span className="text-muted-foreground text-xs whitespace-nowrap">
+                        <span className="text-muted-foreground text-sm whitespace-nowrap">
                           {pending_step_count} step
                           {pending_step_count === 1 ? "" : "s"} to do
                         </span>

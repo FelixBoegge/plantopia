@@ -19,8 +19,9 @@ export function AppHeader() {
     <header className="border-b">
       <nav
         aria-label="Main"
-        // Matches the main column, or the wordmark and the content below it do not line up.
-        className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-3"
+        // Matches the main column's padding, or the wordmark and the content below it do
+        // not line up.
+        className="flex w-full items-center gap-4 px-4 py-3 sm:px-6 lg:px-10"
       >
         <Link
           to="/"

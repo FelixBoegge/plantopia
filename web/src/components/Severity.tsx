@@ -32,8 +32,11 @@ const UNKNOWN = {
 
 export function Severity({
   severity,
+  className: extra,
 }: {
   severity: string | null | undefined;
+  /** Appended, so a caller can size it. Everything else about it stays fixed. */
+  className?: string;
 }) {
   if (!severity) return null;
   // An unknown value still renders words. Falling back to the raw value would put
@@ -42,7 +45,7 @@ export function Severity({
 
   return (
     <span
-      className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${className}`}
+      className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${className} ${extra ?? ""}`}
     >
       {text}
     </span>

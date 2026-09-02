@@ -26,3 +26,5 @@
 - [x] normalize the images in the cards in Your plants, so that all images occupy the full hight of the card.
 - [x] The button text and "x steps to do" in the item cards on Your plants should have no line breaks. The cards should all have the same hight and width.
 - [x] when starting a new diagnosis, the upload image section should tell the user that at max 4 images can be uploaded and tell the supported data types and max file size.
+- [x] regarding the item cards in My plants. Increase the name font, if its getting to long for the card, they can have a linebreak. stack the urgancy banner and "x steps to do" and their font can also be a big bigger, but they should not have a linebreak (currently they dont).
+- [x] still not all of the screen width is used, lets make the display widht adaptive to the screen.

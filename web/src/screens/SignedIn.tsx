@@ -7,10 +7,12 @@ export function SignedIn() {
   return (
     <>
       <AppHeader />
-      {/* Wider than it was. `max-w-5xl` left a third of a desktop screen empty and squeezed
-          the plant page's two columns into each other — the chat in particular had barely
-          room for a sentence per line. */}
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      {/* No maximum: the width follows the screen. Two fixed caps in a row still left a
+          desktop with empty margins, and the two things that use this space — a grid of
+          cards and a page with a chat column beside it — both get better the more of it
+          they have. The padding grows with the viewport so the content never touches
+          the edge. */}
+      <main className="w-full px-4 py-8 sm:px-6 lg:px-10">
         <Outlet />
       </main>
     </>
