@@ -93,6 +93,24 @@
   }
 }
 
+/* The logo, as a mask rather than a picture.
+
+   The artwork is a white mark on a green square. Cut the background out and you have a
+   white mark, which is invisible on the light theme's sage; keep the background and you
+   have a green tile wherever the logo goes. Neither is what a wordmark next to a page
+   heading should look like.
+
+   So the PNG is used for its alpha alone and the colour comes from `currentColor` — the
+   very dark green the light theme already uses for text, and the pale ink the dark theme
+   uses. One asset, both themes, and it follows the palette if the palette changes. */
+.logo-mark {
+  background-color: currentColor;
+  mask-image: url("/logo-mark.png");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Geist Variable", sans-serif;
