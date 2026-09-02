@@ -90,7 +90,7 @@ describe("the history section", () => {
   it("carries a heading", () => {
     timeline({ observations: [observation()] });
 
-    expect(screen.getByRole("heading", { name: /what has happened/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /plant history/i })).toBeInTheDocument();
   });
 
   it("says so plainly when there is no history", () => {

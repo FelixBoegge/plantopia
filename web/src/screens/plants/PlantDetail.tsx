@@ -54,44 +54,56 @@ export function PlantDetail() {
         </div>
       </header>
 
-      {latest ? (
-        <section aria-labelledby="finding">
-          <h2 id="finding" className="mb-3 text-lg font-medium">
-            What Plantopia thinks
-          </h2>
-          <p className="mb-3">{latest.reasoning}</p>
-          <LinkButton
-            to={`/diagnoses/${latest.id}`}
-            variant="outline"
-            size="sm"
-          >
-            See the full differential
-          </LinkButton>
-        </section>
-      ) : (
-        <Notice title="Nothing has been diagnosed yet">
-          Start a diagnosis and Plantopia will tell you what it finds.
-        </Notice>
-      )}
-
       {/*
-        After the current verdict, before the plan that follows from it — the order the page
-        already reads in. `transcript` is a second request that <Chat> below makes anyway,
-        so this costs no extra call; the timeline renders without it and gains escalation
-        events when it arrives.
+        The plant on the left, the conversation about it on the right.
+
+        The header stays full width above both, because it names the plant the two columns
+        are each about. Below `xl` this collapses to one column with the chat last: on a
+        narrow screen the finding and the plan are what somebody scrolled to read, and a
+        conversation pinned above them would push the answer off the screen.
       */}
-      <Timeline
-        observations={observations}
-        diagnoses={diagnoses}
-        steps={roadmap_steps}
-        messages={transcript}
-      />
+      <div className="grid gap-8 xl:grid-cols-[1fr_24rem] xl:items-start">
+        <div className="grid gap-8">
+          {latest ? (
+            <section aria-labelledby="finding">
+              <h2 id="finding" className="mb-3 text-lg font-medium">
+                What Plantopia thinks
+              </h2>
+              <p className="mb-3">{latest.reasoning}</p>
+              <LinkButton
+                to={`/diagnoses/${latest.id}`}
+                variant="outline"
+                size="sm"
+              >
+                See the full differential
+              </LinkButton>
+            </section>
+          ) : (
+            <Notice title="Nothing has been diagnosed yet">
+              Start a diagnosis and Plantopia will tell you what it finds.
+            </Notice>
+          )}
 
-      <Roadmap plantId={plant.id} steps={roadmap_steps} />
+          {/*
+        After the plan rather than before it: the finding and what to do about it are what
+        somebody came for, and the history is what they read once they have both.
+        `transcript` is a second request that <Chat> makes anyway, so this costs no extra
+        call; the timeline renders without it and gains escalation events when it arrives.
+      */}
+          <Roadmap plantId={plant.id} steps={roadmap_steps} />
 
-      <Chat plantId={plant.id} />
+          <Timeline
+            observations={observations}
+            diagnoses={diagnoses}
+            steps={roadmap_steps}
+            messages={transcript}
+          />
 
-      <PlantSettings plantId={plant.id} name={plant.name} />
+          <PlantSettings plantId={plant.id} name={plant.name} />
+        </div>
+
+        <Chat plantId={plant.id} />
+      </div>
     </div>
   );
 }

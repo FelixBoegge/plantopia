@@ -25,7 +25,7 @@ export function Roadmap({
   return (
     <section aria-labelledby="plan">
       <h2 id="plan" className="mb-3 text-lg font-medium">
-        What to do
+        Treatment road map
       </h2>
 
       {mark.error ? (

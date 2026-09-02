@@ -6,7 +6,7 @@ import { Weather } from "@/screens/plants/Weather";
 import { seriesOf, timelineOf, type TimelineEvent } from "@/screens/plants/history";
 
 /**
- * What has happened to this plant, newest first.
+ * This plant's history, newest first.
  *
  * The question an owner has after the second or third diagnosis is whether the plant is
  * getting better, and that question is about sequence: what was seen, what it was judged to
@@ -34,7 +34,7 @@ export function Timeline({
   return (
     <section aria-labelledby="history">
       <h2 id="history" className="mb-3 text-lg font-medium">
-        What has happened
+        Plant history
       </h2>
 
       {events.length === 0 ? (

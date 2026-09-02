@@ -175,7 +175,7 @@ test("a plant's history reads as one sequence", async ({ page }) => {
   await page.getByRole("link", { name: "Plantopia" }).click();
   await page.getByText("Basil").first().click();
 
-  const history = page.getByRole("region", { name: "What has happened" });
+  const history = page.getByRole("region", { name: "Plant history" });
   await expect(history).toBeVisible();
 
   // The photograph carries a real capture date, so the observation is dated by when it was
@@ -217,7 +217,7 @@ test("an outdoor plant's weather is readable without seeing the chart", async ({
   await page.getByRole("link", { name: "Plantopia" }).click();
   await page.getByText("Basil").first().click();
 
-  const history = page.getByRole("region", { name: "What has happened" });
+  const history = page.getByRole("region", { name: "Plant history" });
   const table = history.getByRole("table");
   await expect(table).toBeAttached();
 

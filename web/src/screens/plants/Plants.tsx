@@ -52,13 +52,20 @@ export function Plants() {
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {plants.map(({ plant, latest_diagnosis, pending_step_count }) => (
             <li key={plant.id}>
-              <Card className="hover:border-primary/60 h-full overflow-hidden pt-0 transition-colors">
-                <Link to={`/plants/${plant.id}`} className="block">
+              <Card className="hover:border-primary/60 h-full overflow-hidden py-0 transition-colors">
+                {/*
+                  The photograph beside the text rather than above it. These are nearly all
+                  portraits, and a wide strip across the top of a card crops a tall picture
+                  to a band of leaf — the plant somebody is trying to recognise ends up the
+                  part that was cut. A tall column at a fixed width crops the sides of a
+                  portrait instead, which is where the least is happening.
+                */}
+                <Link to={`/plants/${plant.id}`} className="flex">
                   <Photo
                     photoKey={plant.photo_ref}
-                    className="h-40 w-full object-cover"
+                    className="h-full min-h-36 w-28 shrink-0 object-cover"
                   />
-                  <CardContent className="grid gap-2 pt-4">
+                  <CardContent className="grid flex-1 gap-2 py-4">
                     <span className="font-medium">{plant.name}</span>
                     {plant.species ? (
                       <span className="text-muted-foreground text-sm italic">

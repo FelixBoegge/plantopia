@@ -25,6 +25,11 @@ export function AppHeader() {
           Plantopia
         </Link>
         <div className="flex-1" />
+        {/* The wordmark goes here too, but a wordmark is not a signpost — somebody looking
+            for their plants should not have to guess that the logo is the way back. */}
+        <Link to="/" className="underline-offset-4 hover:underline">
+          My plants
+        </Link>
         <Link to="/diagnose" className="underline-offset-4 hover:underline">
           Diagnose a plant
         </Link>
