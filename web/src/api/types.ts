@@ -165,6 +165,13 @@ export interface Diagnosis {
   candidates: Candidate[];
   /** Which method produced the species this was reasoned from; null means unknown. */
   species_method: "typed" | "vision" | "plantnet" | "agreed" | null;
+  /**
+   * How this compared with the diagnosis before it.
+   *
+   * `null` on a first diagnosis, which has nothing to compare against, and on any re-check
+   * made before this was recorded.
+   */
+  progress_verdict: "improving" | "static" | "worsening" | "new_problem" | null;
   /** Whether a person picked that species, as opposed to it being the leading candidate. */
   species_confirmed: boolean;
   /**

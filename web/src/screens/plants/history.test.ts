@@ -35,6 +35,7 @@ function diagnosis(overrides: Partial<Diagnosis> = {}): Diagnosis {
     reasoning: "Yellowing consistent with overwatering.",
     candidates: [],
     species_method: null,
+    progress_verdict: null,
     species_confirmed: false,
     weather: null,
     created_at: "2026-08-20T09:05:00Z",

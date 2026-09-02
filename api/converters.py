@@ -51,6 +51,7 @@ def diagnosis(record: DiagnosisRecord) -> DiagnosisOut:
         plant_id=record.plant_id,
         observation_id=record.observation_id,
         species_method=record.species_method,
+        progress_verdict=record.progress_verdict,
         species_confirmed=record.species_confirmed,
         is_healthy=record.differential.is_healthy,
         reasoning=record.differential.reasoning,

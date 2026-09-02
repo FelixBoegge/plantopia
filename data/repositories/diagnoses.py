@@ -40,6 +40,10 @@ class DiagnosisRecord:
     species_method: str | None = None
     species_confirmed: bool = False
 
+    # How this compared with the diagnosis before it: improving, static, worsening or
+    # new_problem. ``None`` on a first diagnosis, which has nothing to compare against.
+    progress_verdict: str | None = None
+
     # The weather this diagnosis was reasoned against, read from its observation.
     #
     # Carried here rather than left for a caller to fetch separately, because "why did it
@@ -70,6 +74,7 @@ def _to_record(row: Diagnosis, weather_json: str | None = None) -> DiagnosisReco
         created_at=row.created_at,
         species_method=row.species_method,
         species_confirmed=bool(row.species_confirmed),
+        progress_verdict=row.progress_verdict,
         weather=(WeatherSummary.model_validate_json(weather_json) if weather_json else None),
     )
 
@@ -102,6 +107,7 @@ class DiagnosisRepository:
         token_usage: dict[str, int] | None = None,
         species_method: str | None = None,
         species_confirmed: bool = False,
+        progress_verdict: str | None = None,
     ) -> UUID:
         require_plant(self._session, user_id, plant_id)
         primary = differential.primary
@@ -120,6 +126,7 @@ class DiagnosisRepository:
             created_at=now,
             species_method=species_method,
             species_confirmed=species_confirmed,
+            progress_verdict=progress_verdict,
         )
         self._session.add(diagnosis)
         self._session.flush()

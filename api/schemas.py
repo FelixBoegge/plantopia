@@ -50,6 +50,10 @@ class DiagnosisOut(BaseModel):
     # it. `null` means unknown, which is what every diagnosis made before this was recorded
     # honestly says about itself.
     species_method: Literal["typed", "vision", "plantnet", "agreed"] | None = None
+
+    # How a re-check compared with the diagnosis before it. `null` on a first diagnosis,
+    # which has nothing to compare against, and on any made before this was recorded.
+    progress_verdict: Literal["improving", "static", "worsening", "new_problem"] | None = None
     species_confirmed: bool = False
 
     # The weather this was reasoned against, day by day, or `null` where none was recorded.

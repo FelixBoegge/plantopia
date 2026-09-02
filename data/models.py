@@ -259,6 +259,10 @@ class Diagnosis(Base):
     species_method: Mapped[str | None] = mapped_column(Text)
     species_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
+    # How a re-check compared with the diagnosis before it. Null on a first diagnosis, which
+    # has nothing to compare against, and on any re-check made before this was recorded.
+    progress_verdict: Mapped[str | None] = mapped_column(Text)
+
     primary_candidate: Mapped[str | None] = mapped_column(Text)
     primary_confidence: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[str | None] = mapped_column(Text)

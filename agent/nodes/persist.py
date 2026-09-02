@@ -126,6 +126,10 @@ def make_persist(deps: Deps) -> NodeFn:
                 cost_usd=usage.cost_usd if usage else None,
                 species_method=(state.species_method.value if state.species_method else None),
                 species_confirmed=state.species_confirmed,
+                # Only a re-check has one. The graph has always computed it to decide
+                # whether to revise the plan or diagnose afresh; keeping it is what lets the
+                # result say which way the plant is going.
+                progress_verdict=(state.verdict.verdict if state.verdict else None),
             )
 
             if state.roadmap is not None:

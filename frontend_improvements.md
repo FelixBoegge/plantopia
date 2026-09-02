@@ -15,7 +15,7 @@
 - [x] When I am in the detail view of a plant, small thumbnails are displayed of the pictures uploaded. They should be clickable and expand into a bigger image to view them in more detail. clicking out of the image somewhere else collapses the image again to see the detail view
 - [x] currently, to get to a users landing page "Your plants" I can only click on "Plantopia in the top nav bar on the left. I would like to have an additional button in the navbar saying "My plants" left next to "Diagnose a plant"
 - [x] when I diagnose a plant again from "Your plants" and the species and indoor/outdoor is know, the user should not be asked again, if he knows what the plant is and whether its indoor or outdoor. Those information are already know and tied to the plant I am rediagnosing
-- [ ] when rediagnosing a plant, the verdict (improving, declining...) should be labeld at the top of the diagnosis, color coded
+- [x] when rediagnosing a plant, the verdict (improving, declining...) should be labeld at the top of the diagnosis, color coded
 - [x] after rediagnosing a plant, the weather and percipitation graph should update.
 - [x] the history (all diagnosis) in the detail view should be below the road map
 - [x] In the detail view, currently the treatment road map it tiled "What to do". Rename it to "Treatment road map"

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { DiagnosisDetail } from "@/api/types";
 import { Severity } from "@/components/Severity";
+import { Verdict } from "@/components/Verdict";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
@@ -39,6 +40,11 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
       >
         What this looks like
       </h2>
+
+      {/* Above the reasoning, because which way the plant is going is the first thing
+          somebody wants from a re-check and the reasoning is why. Renders nothing at all on
+          a first diagnosis, which has nothing to compare against. */}
+      <Verdict verdict={diagnosis.progress_verdict} />
 
       <p>{diagnosis.reasoning}</p>
 

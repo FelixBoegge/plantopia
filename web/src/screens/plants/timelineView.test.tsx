@@ -48,6 +48,7 @@ function diagnosis(overrides: Partial<Diagnosis> = {}): Diagnosis {
       },
     ],
     species_method: null,
+    progress_verdict: null,
     species_confirmed: false,
     weather: null,
     created_at: "2026-08-20T10:00:00Z",
