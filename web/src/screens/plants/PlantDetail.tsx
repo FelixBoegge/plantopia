@@ -61,8 +61,13 @@ export function PlantDetail() {
         are each about. Below `xl` this collapses to one column with the chat last: on a
         narrow screen the finding and the plan are what somebody scrolled to read, and a
         conversation pinned above them would push the answer off the screen.
+
+        A third of the width, not a fixed 24rem. Once the page stopped capping its width the
+        fixed column stayed the same size while everything else grew, so the conversation
+        got proportionally narrower the wider the screen — the opposite of what more room
+        should buy. `minmax` keeps a floor for the desktops where a third is not much.
       */}
-      <div className="grid gap-8 xl:grid-cols-[1fr_24rem] xl:items-start">
+      <div className="grid gap-8 xl:grid-cols-[2fr_minmax(24rem,1fr)] xl:items-start">
         <div className="grid gap-8">
           {latest ? (
             <section aria-labelledby="finding">

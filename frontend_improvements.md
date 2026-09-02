@@ -28,3 +28,5 @@
 - [x] when starting a new diagnosis, the upload image section should tell the user that at max 4 images can be uploaded and tell the supported data types and max file size.
 - [x] regarding the item cards in My plants. Increase the name font, if its getting to long for the card, they can have a linebreak. stack the urgancy banner and "x steps to do" and their font can also be a big bigger, but they should not have a linebreak (currently they dont).
 - [x] still not all of the screen width is used, lets make the display widht adaptive to the screen.
+- [x] give the chat column more space on the detail page, at least 1/3 of the width
+- [ ] (noticed, not asked for) the severity badge in the plant detail header stretches to the full width of its column instead of hugging its text — it is a grid item, and grid items stretch by default. One class to fix.
