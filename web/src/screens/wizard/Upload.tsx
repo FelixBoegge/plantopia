@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Image as ImageIcon, ImagePlus } from "lucide-react";
 
+import { ACCEPTED_TYPES, MAX_IMAGE_MB, MAX_IMAGES } from "@/api/limits";
 import { readable } from "@/api/problems";
 import { Field } from "@/components/Field";
 import { Notice } from "@/components/Notice";
@@ -100,7 +101,7 @@ export function Upload({
         <input
           id="photographs"
           type="file"
-          accept="image/*"
+          accept={ACCEPTED_TYPES}
           multiple
           required
           onChange={(event) =>
@@ -122,6 +123,12 @@ export function Upload({
         <p className="text-muted-foreground text-sm">
           A clear shot of the whole plant and a close-up of the problem work
           best.
+        </p>
+        {/* Said before a file is chosen, not after the server refuses one. Somebody who
+            picked four photographs and waited for them to upload has done work this
+            sentence could have saved. */}
+        <p className="text-muted-foreground text-sm">
+          Up to {MAX_IMAGES} images, PNG or JPEG, {MAX_IMAGE_MB} MB each.
         </p>
 
         {/* Shown back, so somebody can see what they picked before paying for it. */}

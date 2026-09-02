@@ -21,3 +21,8 @@
 - [x] In the detail view, currently the treatment road map it tiled "What to do". Rename it to "Treatment road map"
 - [x] In the detail view, currently the history which lists the diagnosis is called "What has happened". Rename it to "Plant history"
 - [x] I like that in the chat about a plant, the user gets returned, where the information comes from. It can be more specific, eg "Consulted openMeteo for weather information"
+- [x] currently not all of the screen width is used, lets widen teh page, so chat does not look crapped
+- [x] the column in which the chat sits should be distinctive from the rest to resemble a kind of sidebar
+- [x] normalize the images in the cards in Your plants, so that all images occupy the full hight of the card.
+- [x] The button text and "x steps to do" in the item cards on Your plants should have no line breaks. The cards should all have the same hight and width.
+- [x] when starting a new diagnosis, the upload image section should tell the user that at max 4 images can be uploaded and tell the supported data types and max file size.

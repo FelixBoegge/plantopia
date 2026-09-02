@@ -173,6 +173,31 @@ describe("starting a diagnosis", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/2 images/i);
   });
 
+  it("says what it will accept before a file is chosen", async () => {
+    // Otherwise the limits are learned from a refusal, after somebody has waited for an
+    // upload of four photographs to finish.
+    signedIn();
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByText(/Up to 4 images, PNG or JPEG, 8 MB each/),
+    ).toBeInTheDocument();
+  });
+
+  it("offers only the formats the server recognises", async () => {
+    // `image/*` invited a HEIC straight off an iPhone, which the server refuses by magic
+    // bytes after the upload.
+    signedIn();
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(await screen.findByLabelText("Upload images")).toHaveAttribute(
+      "accept",
+      "image/png,image/jpeg",
+    );
+  });
+
   it("does not start one until it is asked to", async () => {
     // A run costs real money and takes a minute and a half. Starting one as a side effect
     // of choosing a file is a bill nobody agreed to.

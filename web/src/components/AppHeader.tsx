@@ -19,9 +19,13 @@ export function AppHeader() {
     <header className="border-b">
       <nav
         aria-label="Main"
-        className="mx-auto flex max-w-5xl items-center gap-4 px-6 py-3"
+        // Matches the main column, or the wordmark and the content below it do not line up.
+        className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-3"
       >
-        <Link to="/" className="font-semibold underline-offset-4 hover:underline">
+        <Link
+          to="/"
+          className="font-semibold underline-offset-4 hover:underline"
+        >
           Plantopia
         </Link>
         <div className="flex-1" />
@@ -34,7 +38,10 @@ export function AppHeader() {
           Diagnose a plant
         </Link>
         {account?.role === "admin" ? (
-          <Link to="/admin/evaluation" className="underline-offset-4 hover:underline">
+          <Link
+            to="/admin/evaluation"
+            className="underline-offset-4 hover:underline"
+          >
             Evaluation
           </Link>
         ) : null}
