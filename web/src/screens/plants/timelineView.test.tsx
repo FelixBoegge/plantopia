@@ -1,7 +1,14 @@
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import type { Diagnosis, Message, Observation, RoadmapStep, WeatherSummary } from "@/api/types";
+import type {
+  Diagnosis,
+  Message,
+  Observation,
+  RoadmapStep,
+  WeatherSummary,
+} from "@/api/types";
 import { Timeline } from "@/screens/plants/Timeline";
 import { Weather, summarise } from "@/screens/plants/Weather";
 import { render } from "@/test/render";
@@ -77,7 +84,9 @@ const SERIES: WeatherSummary = {
     { on: "2026-08-18", min_temp_c: 9, max_temp_c: 34, precip_mm: 1.5 },
     { on: "2026-08-19", min_temp_c: 11, max_temp_c: 21, precip_mm: 5 },
   ],
-  forecast: [{ on: "2026-08-21", min_temp_c: 10, max_temp_c: 20, precip_mm: 0 }],
+  forecast: [
+    { on: "2026-08-21", min_temp_c: 10, max_temp_c: 20, precip_mm: 0 },
+  ],
 };
 
 function timeline(props: Partial<Parameters<typeof Timeline>[0]> = {}) {
@@ -90,13 +99,17 @@ describe("the history section", () => {
   it("carries a heading", () => {
     timeline({ observations: [observation()] });
 
-    expect(screen.getByRole("heading", { name: /plant history/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /plant history/i }),
+    ).toBeInTheDocument();
   });
 
   it("says so plainly when there is no history", () => {
     timeline();
 
-    expect(screen.getByText(/nothing has happened to this plant yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/nothing has happened to this plant yet/i),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
@@ -104,10 +117,9 @@ describe("the history section", () => {
     timeline({ diagnoses: [diagnosis()] });
 
     expect(screen.getByText("Overwatering")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /see this diagnosis/i })).toHaveAttribute(
-      "href",
-      "/diagnoses/diag-1",
-    );
+    expect(
+      screen.getByRole("link", { name: /see this diagnosis/i }),
+    ).toHaveAttribute("href", "/diagnoses/diag-1");
   });
 
   it("says when nothing was wrong", () => {
@@ -118,7 +130,9 @@ describe("the history section", () => {
 
   it("puts the newest event first", () => {
     timeline({
-      observations: [observation({ id: "obs-1", captured_at: "2026-08-01T00:00:00Z" })],
+      observations: [
+        observation({ id: "obs-1", captured_at: "2026-08-01T00:00:00Z" }),
+      ],
       diagnoses: [diagnosis({ created_at: "2026-08-20T00:00:00Z" })],
     });
 
@@ -129,18 +143,26 @@ describe("the history section", () => {
   it("shows a settled step and leaves a pending one to the plan", () => {
     timeline({
       steps: [
-        step({ id: "done", status: "done", completed_at: "2026-08-26T00:00:00Z" }),
+        step({
+          id: "done",
+          status: "done",
+          completed_at: "2026-08-26T00:00:00Z",
+        }),
         step({ id: "pending", action: "Repot into fresh compost" }),
       ],
     });
 
     expect(screen.getByText("Let the top third dry out")).toBeInTheDocument();
-    expect(screen.queryByText("Repot into fresh compost")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Repot into fresh compost"),
+    ).not.toBeInTheDocument();
   });
 
   it("distinguishes a skipped step from a done one", () => {
     timeline({
-      steps: [step({ status: "skipped", completed_at: "2026-08-26T00:00:00Z" })],
+      steps: [
+        step({ status: "skipped", completed_at: "2026-08-26T00:00:00Z" }),
+      ],
     });
 
     expect(screen.getByText("Skipped")).toBeInTheDocument();
@@ -155,7 +177,9 @@ describe("dating an event", () => {
       observations: [observation({ captured_at: "2026-08-10T10:50:00Z" })],
     });
 
-    expect(container.querySelector('time[datetime="2026-08-10T10:50:00Z"]')).toBeInTheDocument();
+    expect(
+      container.querySelector('time[datetime="2026-08-10T10:50:00Z"]'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/uploaded/i)).not.toBeInTheDocument();
   });
 
@@ -164,7 +188,9 @@ describe("dating an event", () => {
     // the photograph never declared.
     timeline({ observations: [observation({ captured_at: null })] });
 
-    expect(screen.getByText(/date the photograph was uploaded/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/date the photograph was uploaded/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the date to a person as well", () => {
@@ -207,7 +233,9 @@ describe("an escalation", () => {
   it("is absent while the transcript has not loaded", () => {
     timeline({ observations: [observation()] });
 
-    expect(screen.queryByText(/flagged for a fresh look/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/flagged for a fresh look/i),
+    ).not.toBeInTheDocument();
     // And the rest of the timeline rendered anyway rather than waiting for it.
     expect(screen.getByRole("listitem")).toBeInTheDocument();
   });
@@ -220,7 +248,9 @@ describe("the weather", () => {
     render(<Weather summary={SERIES} />);
 
     const table = screen.getByRole("table");
-    expect(within(table).getByRole("rowheader", { name: "2026-08-17" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("rowheader", { name: "2026-08-17" }),
+    ).toBeInTheDocument();
     expect(within(table).getByText("-2 °C")).toBeInTheDocument();
     expect(within(table).getByText("5 mm")).toBeInTheDocument();
   });
@@ -238,7 +268,10 @@ describe("the weather", () => {
   it("hides the chart from assistive technology, since the table says the same", () => {
     const { container } = render(<Weather summary={SERIES} />);
 
-    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector("svg")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("does not draw the forecast", () => {
@@ -262,7 +295,9 @@ describe("the weather", () => {
   });
 
   it("shows nothing for a summary stored before the series was kept", () => {
-    timeline({ observations: [observation({ weather: { ...SERIES, days: [] } })] });
+    timeline({
+      observations: [observation({ weather: { ...SERIES, days: [] } })],
+    });
 
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
@@ -290,5 +325,59 @@ describe("the weather in a sentence", () => {
     expect(said).not.toContain("frost");
     expect(said).not.toContain("above");
     expect(said).toContain("11 to 20 °C");
+  });
+});
+
+describe("enlarging a photograph", () => {
+  it("offers each thumbnail as a control rather than a picture", async () => {
+    timeline({ observations: [observation({ photo_refs: ["photo-1"] })] });
+
+    expect(
+      await screen.findByRole("button", { name: "Enlarge photograph 1" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the photograph over the page", async () => {
+    timeline({ observations: [observation({ photo_refs: ["photo-1"] })] });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Enlarge photograph 1" }),
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Photograph" }),
+    ).toBeInTheDocument();
+  });
+
+  it("closes on Escape", async () => {
+    timeline({ observations: [observation({ photo_refs: ["photo-1"] })] });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Enlarge photograph 1" }),
+    );
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes when the backdrop is clicked", async () => {
+    timeline({ observations: [observation({ photo_refs: ["photo-1"] })] });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Enlarge photograph 1" }),
+    );
+
+    await userEvent.click(screen.getByRole("dialog", { name: "Photograph" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("puts the keyboard inside what just appeared", async () => {
+    timeline({ observations: [observation({ photo_refs: ["photo-1"] })] });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Enlarge photograph 1" }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Close the photograph" }),
+    ).toHaveFocus();
   });
 });

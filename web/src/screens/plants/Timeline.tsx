@@ -1,9 +1,15 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { Diagnosis, Message, Observation, RoadmapStep } from "@/api/types";
 import { Photo } from "@/components/Photo";
+import { PhotoViewer } from "@/components/PhotoViewer";
 import { Weather } from "@/screens/plants/Weather";
-import { seriesOf, timelineOf, type TimelineEvent } from "@/screens/plants/history";
+import {
+  seriesOf,
+  timelineOf,
+  type TimelineEvent,
+} from "@/screens/plants/history";
 
 /**
  * This plant's history, newest first.
@@ -39,8 +45,8 @@ export function Timeline({
 
       {events.length === 0 ? (
         <p className="text-muted-foreground">
-          Nothing has happened to this plant yet. Once you run a diagnosis, what you saw and what
-          Plantopia made of it will appear here.
+          Nothing has happened to this plant yet. Once you run a diagnosis, what
+          you saw and what Plantopia made of it will appear here.
         </p>
       ) : (
         <ol className="grid gap-4">
@@ -75,29 +81,53 @@ function ObservationEvent({
 }) {
   const { observation } = event;
   const series = seriesOf(observation);
+  const [enlarged, setEnlarged] = useState<string | null>(null);
 
   return (
     <article className="grid gap-2">
       <Heading
-        label={observation.kind === "recheck" ? "Photographed again" : "First photographed"}
+        label={
+          observation.kind === "recheck"
+            ? "Photographed again"
+            : "First photographed"
+        }
         at={event.at}
         // Said only where it is true. An upload date presented as a capture date would be
         // the timeline claiming something the photograph never declared.
-        note={event.dated === "uploaded" ? "date the photograph was uploaded" : undefined}
+        note={
+          event.dated === "uploaded"
+            ? "date the photograph was uploaded"
+            : undefined
+        }
       />
 
       <div className="flex flex-wrap items-start gap-3">
-        {observation.photo_refs.map((ref) => (
-          // Through `Photo`, which fetches with the bearer token and hands back an object
-          // URL. A bare `src` cannot send an Authorization header and would render broken.
-          <Photo
+        {observation.photo_refs.map((ref, index) => (
+          // A button, not an image with a click handler: this is a control, and making it
+          // one is what gives it the keyboard, the focus ring and a name for free.
+          //
+          // Inside it, `Photo` — which fetches with the bearer token and hands back an
+          // object URL. A bare `src` cannot send an Authorization header and would render
+          // broken.
+          <button
             key={ref}
-            photoKey={ref}
-            alt="This plant, as photographed"
-            className="h-20 w-20 rounded-md object-cover"
-          />
+            type="button"
+            onClick={() => setEnlarged(ref)}
+            aria-label={`Enlarge photograph ${index + 1}`}
+            className="focus-visible:outline-ring hover:border-primary/60 rounded-md border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <Photo
+              photoKey={ref}
+              alt="This plant, as photographed"
+              className="h-20 w-20 rounded-md object-cover"
+            />
+          </button>
         ))}
       </div>
+
+      {enlarged ? (
+        <PhotoViewer photoKey={enlarged} onClose={() => setEnlarged(null)} />
+      ) : null}
 
       {observation.user_notes ? <p>{observation.user_notes}</p> : null}
 
@@ -106,7 +136,11 @@ function ObservationEvent({
   );
 }
 
-function DiagnosisEvent({ event }: { event: Extract<TimelineEvent, { kind: "diagnosis" }> }) {
+function DiagnosisEvent({
+  event,
+}: {
+  event: Extract<TimelineEvent, { kind: "diagnosis" }>;
+}) {
   const { diagnosis } = event;
   const leading = diagnosis.candidates[0];
 
@@ -124,14 +158,21 @@ function DiagnosisEvent({ event }: { event: Extract<TimelineEvent, { kind: "diag
         Two identically-named links to one destination is a thing a screen reader reads
         twice and a person has to disambiguate by position.
       */}
-      <Link to={`/diagnoses/${diagnosis.id}`} className="text-sm underline underline-offset-4">
+      <Link
+        to={`/diagnoses/${diagnosis.id}`}
+        className="text-sm underline underline-offset-4"
+      >
         See this diagnosis
       </Link>
     </article>
   );
 }
 
-function StepEvent({ event }: { event: Extract<TimelineEvent, { kind: "step" }> }) {
+function StepEvent({
+  event,
+}: {
+  event: Extract<TimelineEvent, { kind: "step" }>;
+}) {
   const { step } = event;
   // Only settled steps reach the timeline, so this is "done" or "skipped" and never
   // "to do" — the plan itself lives in <Roadmap>, where a pending step can be ticked.
@@ -145,7 +186,11 @@ function StepEvent({ event }: { event: Extract<TimelineEvent, { kind: "step" }> 
   );
 }
 
-function EscalationEvent({ event }: { event: Extract<TimelineEvent, { kind: "escalation" }> }) {
+function EscalationEvent({
+  event,
+}: {
+  event: Extract<TimelineEvent, { kind: "escalation" }>;
+}) {
   return (
     <article className="grid gap-1">
       <Heading label="Flagged for a fresh look" at={event.at} />
@@ -154,14 +199,24 @@ function EscalationEvent({ event }: { event: Extract<TimelineEvent, { kind: "esc
   );
 }
 
-function Heading({ label, at, note }: { label: string; at: string; note?: string }) {
+function Heading({
+  label,
+  at,
+  note,
+}: {
+  label: string;
+  at: string;
+  note?: string;
+}) {
   return (
     <p className="flex flex-wrap items-baseline gap-2">
       <span className="font-medium">{label}</span>
       <time dateTime={at} className="text-muted-foreground text-sm">
         {readableDate(at)}
       </time>
-      {note ? <span className="text-muted-foreground text-sm">({note})</span> : null}
+      {note ? (
+        <span className="text-muted-foreground text-sm">({note})</span>
+      ) : null}
     </p>
   );
 }
