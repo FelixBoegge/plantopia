@@ -24,13 +24,15 @@ export function AppHeader() {
       >
         <Link
           to="/"
-          className="flex items-center gap-2 font-semibold underline-offset-4 hover:underline"
+          className="flex items-center gap-2.5 text-lg font-semibold underline-offset-4 hover:underline"
         >
           {/* Decorative: the word beside it already says what this is, and a screen reader
               announcing "Plantopia Plantopia" is worse than one that says it once. */}
-          {/* 32px, not 24. The mark carries a speech bubble, two leaves, a stem and a
-              magnifier; below this it stops being a drawing and becomes a smudge. */}
-          <span aria-hidden="true" className="logo-mark size-8 shrink-0" />
+          {/* 40px. The mark carries a speech bubble, two leaves, a stem and a magnifier,
+              and below about this size it stops being a drawing and becomes a smudge. The
+              wordmark is sized up with it so the two read as one lockup rather than as a
+              picture that happens to sit near some text. */}
+          <span aria-hidden="true" className="logo-mark size-10 shrink-0" />
           Plantopia
         </Link>
         <div className="flex-1" />
