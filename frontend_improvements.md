@@ -21,13 +21,13 @@
 - [x] In the detail view, currently the treatment road map it tiled "What to do". Rename it to "Treatment road map"
 - [x] In the detail view, currently the history which lists the diagnosis is called "What has happened". Rename it to "Plant history"
 - [x] I like that in the chat about a plant, the user gets returned, where the information comes from. It can be more specific, eg "Consulted openMeteo for weather information"
-- [x] currently not all of the screen width is used, lets widen teh page, so chat does not look crapped
+- [~] currently not all of the screen width is used, lets widen teh page, so chat does not look crapped — done, then reversed: with the chat on its own page nothing competes for width, so the page is back to a centred max-w-5xl
 - [x] the column in which the chat sits should be distinctive from the rest to resemble a kind of sidebar
 - [x] normalize the images in the cards in Your plants, so that all images occupy the full hight of the card.
 - [x] The button text and "x steps to do" in the item cards on Your plants should have no line breaks. The cards should all have the same hight and width.
 - [x] when starting a new diagnosis, the upload image section should tell the user that at max 4 images can be uploaded and tell the supported data types and max file size.
 - [x] regarding the item cards in My plants. Increase the name font, if its getting to long for the card, they can have a linebreak. stack the urgancy banner and "x steps to do" and their font can also be a big bigger, but they should not have a linebreak (currently they dont).
-- [x] still not all of the screen width is used, lets make the display widht adaptive to the screen.
+- [~] still not all of the screen width is used, lets make the display widht adaptive to the screen. — done, then reversed with the item above
 - [x] give the chat column more space on the detail page, at least 1/3 of the width
 - [x] (noticed, not asked for) the severity badge in the plant detail header stretches to the full width of its column instead of hugging its text — it is a grid item, and grid items stretch by default. One class to fix.
 - [x] the chat gets its own page, reached from a "Chat about this plant" button beside the plant's name in the detail view.

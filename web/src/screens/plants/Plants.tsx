@@ -48,11 +48,11 @@ export function Plants() {
         </Card>
       ) : null}
 
-      {/* More columns as the screen grows, now that the page has no maximum width. Three
-          columns across a wide desktop stretched each card to half a metre of mostly empty
-          space with the photograph as a thin strip down one side. */}
       {plants?.length ? (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        // Three at most. Four and five were for a page with no maximum width; inside a
+        // centred column they would leave each card too narrow for the photograph and the
+        // name to sit beside each other.
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {plants.map(({ plant, latest_diagnosis, pending_step_count }) => (
             // A floor, not a fixed height. Grid rows stretch their items, so every card in
             // a row still matches the tallest — but a long name can now take a second line
