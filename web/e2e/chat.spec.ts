@@ -13,11 +13,20 @@ import { signUp } from "./people";
  * the wire, which is why they are checked here rather than only in a component test.
  */
 
-const PHOTOGRAPH = resolve(import.meta.dirname, "../../test_pics/20260810_105048.jpg");
+const PHOTOGRAPH = resolve(
+  import.meta.dirname,
+  "../../test_pics/20260810_105048.jpg",
+);
 
 /** A plant to talk about. Chat is per-plant, so one has to exist first. */
-async function aPlantWithADiagnosis(page: import("@playwright/test").Page, name: string) {
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+async function aPlantWithADiagnosis(
+  page: import("@playwright/test").Page,
+  name: string,
+) {
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
@@ -33,6 +42,11 @@ async function aPlantWithADiagnosis(page: import("@playwright/test").Page, name:
   // "Basil", and `name` is now only what this test calls the run.
   await page.getByText("Basil").first().click();
   await page.getByRole("heading", { name: "Basil" }).waitFor();
+
+  // The conversation is its own page now, reached from the plant rather than sitting
+  // beside it.
+  await page.getByRole("link", { name: "Chat about this plant" }).click();
+  await page.getByLabel("Your question").waitFor();
 }
 
 test("announces the lookup before the reply arrives", async ({ page }) => {
@@ -43,15 +57,21 @@ test("announces the lookup before the reply arrives", async ({ page }) => {
     .getByRole("region", { name: "Ask about this plant" })
     .locator("[aria-live='polite']");
 
-  await page.getByLabel("Your question").fill("Why are the lower leaves yellow?");
+  await page
+    .getByLabel("Your question")
+    .fill("Why are the lower leaves yellow?");
   await page.getByRole("button", { name: "Ask" }).click();
 
   // While it is working, and in words — not a spinner. This is the half a person can act
   // on: it says the answer is being built from the reference rather than from memory.
-  await expect(announcement).toContainText("the disorder reference", { timeout: 60_000 });
+  await expect(announcement).toContainText("the disorder reference", {
+    timeout: 60_000,
+  });
 
   // And the reply itself, once it lands.
-  await expect(page.getByText(/Let the top third dry out/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/Let the top third dry out/)).toBeVisible({
+    timeout: 60_000,
+  });
 });
 
 test("keeps what a reply consulted, on the reply", async ({ page }) => {
@@ -61,9 +81,13 @@ test("keeps what a reply consulted, on the reply", async ({ page }) => {
   await signUp(page, "chat-record");
   await aPlantWithADiagnosis(page, "Remembered basil");
 
-  await page.getByLabel("Your question").fill("Why are the lower leaves yellow?");
+  await page
+    .getByLabel("Your question")
+    .fill("Why are the lower leaves yellow?");
   await page.getByRole("button", { name: "Ask" }).click();
-  await expect(page.getByText(/Let the top third dry out/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/Let the top third dry out/)).toBeVisible({
+    timeout: 60_000,
+  });
 
   await page.reload();
 
@@ -79,7 +103,10 @@ test("announces the weather lookup, and answers from what the diagnosis saw", as
   // answer consistent with the diagnosis that was made against those days.
   await signUp(page, "chat-weather");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("radio", { name: "Outdoors" }).check();
   await page.getByRole("button", { name: "Start the diagnosis" }).click();
@@ -101,12 +128,16 @@ test("announces the weather lookup, and answers from what the diagnosis saw", as
     .getByRole("region", { name: "Ask about this plant" })
     .locator("[aria-live='polite']");
 
-  await page.getByLabel("Your question").fill("What has the weather been doing?");
+  await page
+    .getByLabel("Your question")
+    .fill("What has the weather been doing?");
   await page.getByRole("button", { name: "Ask" }).click();
 
   await expect(announcement).toContainText("the weather where this plant is", {
     timeout: 60_000,
   });
 
-  await expect(page.getByText(/There was a frost/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/There was a frost/)).toBeVisible({
+    timeout: 60_000,
+  });
 });

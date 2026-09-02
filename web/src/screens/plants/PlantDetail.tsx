@@ -9,7 +9,6 @@ import { Notice } from "@/components/Notice";
 import { Photo } from "@/components/Photo";
 import { Severity } from "@/components/Severity";
 import { Button } from "@/components/ui/button";
-import { Chat } from "@/screens/chat/Chat";
 import { useTranscript } from "@/api/hooks/useChat";
 import { Roadmap } from "@/screens/plants/Roadmap";
 import { Timeline } from "@/screens/plants/Timeline";
@@ -18,7 +17,9 @@ import { Timeline } from "@/screens/plants/Timeline";
 export function PlantDetail() {
   const { plantId = "" } = useParams();
   const { data, isPending, error } = usePlant(plantId);
-  // The same query <Chat> makes, so TanStack Query serves both from one request.
+  // For the timeline's escalation events. This used to be free — <Chat> lived on this
+  // page and made the same request — and is now a request of this page's own, which is
+  // what the conversation having somewhere better to be costs.
   const { data: transcript } = useTranscript(plantId);
 
   if (isPending) return <p role="status">Loading…</p>;
@@ -46,6 +47,16 @@ export function PlantDetail() {
             <p className="text-muted-foreground italic">{plant.species}</p>
           ) : null}
           <Severity severity={latest?.candidates?.[0]?.severity} />
+          {/* Beside the name, because the conversation is about this plant and this is
+              where the plant is named. `w-fit` for the same reason the badge above needs
+              it: a grid item stretches to its column unless told otherwise. */}
+          <LinkButton
+            to={`/plants/${plant.id}/chat`}
+            variant="outline"
+            className="mt-2 w-fit"
+          >
+            Chat about this plant
+          </LinkButton>
         </div>
         <div className="ml-auto flex gap-2">
           <LinkButton to={`/plants/${plant.id}/diagnose`} variant="outline">
@@ -54,61 +65,42 @@ export function PlantDetail() {
         </div>
       </header>
 
+      {latest ? (
+        <section aria-labelledby="finding">
+          <h2 id="finding" className="mb-3 text-lg font-medium">
+            What Plantopia thinks
+          </h2>
+          <p className="mb-3">{latest.reasoning}</p>
+          <LinkButton
+            to={`/diagnoses/${latest.id}`}
+            variant="outline"
+            size="sm"
+          >
+            See the full differential
+          </LinkButton>
+        </section>
+      ) : (
+        <Notice title="Nothing has been diagnosed yet">
+          Start a diagnosis and Plantopia will tell you what it finds.
+        </Notice>
+      )}
+
       {/*
-        The plant on the left, the conversation about it on the right.
-
-        The header stays full width above both, because it names the plant the two columns
-        are each about. Below `xl` this collapses to one column with the chat last: on a
-        narrow screen the finding and the plan are what somebody scrolled to read, and a
-        conversation pinned above them would push the answer off the screen.
-
-        A third of the width, not a fixed 24rem. Once the page stopped capping its width the
-        fixed column stayed the same size while everything else grew, so the conversation
-        got proportionally narrower the wider the screen — the opposite of what more room
-        should buy. `minmax` keeps a floor for the desktops where a third is not much.
-      */}
-      <div className="grid gap-8 xl:grid-cols-[2fr_minmax(24rem,1fr)] xl:items-start">
-        <div className="grid gap-8">
-          {latest ? (
-            <section aria-labelledby="finding">
-              <h2 id="finding" className="mb-3 text-lg font-medium">
-                What Plantopia thinks
-              </h2>
-              <p className="mb-3">{latest.reasoning}</p>
-              <LinkButton
-                to={`/diagnoses/${latest.id}`}
-                variant="outline"
-                size="sm"
-              >
-                See the full differential
-              </LinkButton>
-            </section>
-          ) : (
-            <Notice title="Nothing has been diagnosed yet">
-              Start a diagnosis and Plantopia will tell you what it finds.
-            </Notice>
-          )}
-
-          {/*
         After the plan rather than before it: the finding and what to do about it are what
         somebody came for, and the history is what they read once they have both.
-        `transcript` is a second request that <Chat> makes anyway, so this costs no extra
-        call; the timeline renders without it and gains escalation events when it arrives.
+        The timeline renders without `transcript` and gains escalation events when it
+        arrives.
       */}
-          <Roadmap plantId={plant.id} steps={roadmap_steps} />
+      <Roadmap plantId={plant.id} steps={roadmap_steps} />
 
-          <Timeline
-            observations={observations}
-            diagnoses={diagnoses}
-            steps={roadmap_steps}
-            messages={transcript}
-          />
+      <Timeline
+        observations={observations}
+        diagnoses={diagnoses}
+        steps={roadmap_steps}
+        messages={transcript}
+      />
 
-          <PlantSettings plantId={plant.id} name={plant.name} />
-        </div>
-
-        <Chat plantId={plant.id} />
-      </div>
+      <PlantSettings plantId={plant.id} name={plant.name} />
     </div>
   );
 }

@@ -100,6 +100,50 @@ async function ask(question = "Why are the leaves yellow?") {
   await userEvent.click(screen.getByRole("button", { name: "Ask" }));
 }
 
+describe("getting to the conversation", () => {
+  it("offers a way in from the plant", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+
+    expect(
+      await screen.findByRole("link", { name: "Chat about this plant" }),
+    ).toHaveAttribute("href", `/plants/${PLANT_ID}/chat`);
+  });
+
+  it("does not put the conversation on the plant page any more", async () => {
+    // It was a column there and is a page now. Leaving both would mean two transcripts of
+    // the same conversation on screen at once, each fetching it.
+    signedIn();
+
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    await screen.findByRole("link", { name: "Chat about this plant" });
+
+    expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
+  });
+
+  it("names the plant on the conversation's own page", async () => {
+    // Arriving from a link, "Ask about this plant" alone does not say which.
+    signedIn();
+
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
+
+    expect(
+      await screen.findByRole("heading", { name: "Kitchen basil", level: 1 }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the way back", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
+
+    expect(
+      await screen.findByRole("link", { name: "Back to this plant" }),
+    ).toHaveAttribute("href", `/plants/${PLANT_ID}`);
+  });
+});
+
 describe("the transcript", () => {
   it("shows what was said", async () => {
     signedIn([
@@ -107,7 +151,7 @@ describe("the transcript", () => {
       message({ id: "2" }),
     ]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
 
     expect(
       await screen.findByText("Why are the leaves yellow?"),
@@ -128,7 +172,7 @@ describe("the transcript", () => {
       }),
     ]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
 
     expect(
       await screen.findByText(/Consulted Plantopia's disorder reference/),
@@ -140,7 +184,7 @@ describe("the transcript", () => {
     // and only one of them is worth trusting about a plant somebody is worried about.
     signedIn([message({ tool_calls: null })]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
 
     expect(await screen.findByText(/without a lookup/)).toBeInTheDocument();
   });
@@ -152,7 +196,7 @@ describe("the transcript", () => {
       }),
     ]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await screen.findByText(/Consulted/);
 
     expect(
@@ -167,7 +211,7 @@ describe("the transcript", () => {
       }),
     ]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
 
     expect(await screen.findByText(/another source/)).toBeInTheDocument();
     expect(screen.queryByText(/some_new_tool/)).not.toBeInTheDocument();
@@ -183,7 +227,7 @@ describe("the transcript", () => {
       }),
     ]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
 
     const note = await screen.findByText(/Consulted/);
     expect(note.textContent?.match(/disorder reference/g)).toHaveLength(1);
@@ -197,7 +241,7 @@ describe("the transcript", () => {
       message({ id: "2" }),
     ]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await screen.findByText("Probably overwatering.");
 
     expect(
@@ -218,7 +262,7 @@ describe("asking something", () => {
       { delayMs: 30 },
     );
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await ask();
 
     expect(
@@ -235,7 +279,7 @@ describe("asking something", () => {
       },
     );
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await ask();
 
     const live = document.querySelector("[aria-live='polite']");
@@ -271,7 +315,7 @@ describe("asking something", () => {
       }),
     );
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await ask();
 
     expect(
@@ -285,7 +329,7 @@ describe("asking something", () => {
       'event: completed\ndata: {"reply":"Done.","escalated":false}\n\n',
     ]);
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await ask();
 
     await waitFor(() =>
@@ -303,7 +347,7 @@ describe("asking something", () => {
       }),
     );
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await screen.findByLabelText("Your question");
 
     expect(screen.getByRole("button", { name: "Ask" })).toBeDisabled();
@@ -320,7 +364,7 @@ describe("asking something", () => {
       ),
     );
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await ask();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/may still be/i);
@@ -339,7 +383,7 @@ describe("asking something", () => {
       ),
     );
 
-    render(<AppRoutes />, { route: `/plants/${PLANT_ID}` });
+    render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
     await ask();
     await screen.findByRole("alert");
 

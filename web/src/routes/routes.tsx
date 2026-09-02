@@ -6,6 +6,7 @@ import { ResetPassword } from "@/screens/auth/ResetPassword";
 import { SignIn } from "@/screens/auth/SignIn";
 import { VerifyEmail } from "@/screens/auth/VerifyEmail";
 import { Account } from "@/screens/Account";
+import { ChatPage } from "@/screens/chat/ChatPage";
 import { Evaluation } from "@/screens/Evaluation";
 import { SignedIn } from "@/screens/SignedIn";
 import { DiagnosisPage } from "@/screens/plants/DiagnosisPage";
@@ -33,6 +34,7 @@ export function AppRoutes() {
           <Route path="/" element={<Plants />} />
           <Route path="/plants/:plantId" element={<PlantDetail />} />
           <Route path="/plants/:plantId/diagnose" element={<Wizard />} />
+          <Route path="/plants/:plantId/chat" element={<ChatPage />} />
           {/*
             Linked to from the plant page since the React frontend landed, and never
             served — it fell through to the catch-all below and redirected to the plants

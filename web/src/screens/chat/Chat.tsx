@@ -23,16 +23,10 @@ export function Chat({ plantId }: { plantId: string }) {
   const visible = (messages ?? []).filter((message) => message.role !== "tool");
 
   return (
-    // A surface of its own, so the column reads as a panel beside the page rather than as
-    // more of the page that happens to be over there. `sidebar` is a palette token defined
-    // for exactly this, so it follows the theme instead of being a hardcoded grey.
-    //
-    // Sticky on wide screens: the conversation is a companion to whatever somebody is
-    // reading, and one that scrolls away the moment they look at the history below is not.
-    <section
-      aria-labelledby="conversation"
-      className="bg-sidebar grid gap-4 rounded-lg border p-4 xl:sticky xl:top-6"
-    >
+    // Plain again. This was a bordered, sticky panel while it lived in a column beside the
+    // plant page; on a page of its own both were wrong — a sticky element on the only thing
+    // on the screen has nothing to stay beside.
+    <section aria-labelledby="conversation" className="grid gap-4">
       <h2 id="conversation" className="text-lg font-medium">
         Ask about this plant
       </h2>

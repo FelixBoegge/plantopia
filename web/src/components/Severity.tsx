@@ -45,7 +45,9 @@ export function Severity({
 
   return (
     <span
-      className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${className} ${extra ?? ""}`}
+      // `w-fit` because `inline-flex` is not enough on its own: as a grid item this
+      // stretches to its column, which put a pill the width of the page around two words.
+      className={`inline-flex w-fit shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${className} ${extra ?? ""}`}
     >
       {text}
     </span>
