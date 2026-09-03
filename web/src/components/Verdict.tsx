@@ -46,7 +46,10 @@ export function Verdict({
 
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${shown.className}`}
+      // `w-fit` for the reason `Severity` needs it: `inline-flex` is not enough when the
+      // element is a grid item, and it stretched into a pill the width of the page with two
+      // words at one end of it.
+      className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${shown.className}`}
     >
       {shown.text}
     </span>

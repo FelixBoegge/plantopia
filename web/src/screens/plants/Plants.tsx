@@ -59,7 +59,7 @@ export function Plants() {
             // and make the whole row taller, rather than being cut off to preserve a
             // height nobody asked for.
             <li key={plant.id} className="min-h-40">
-              <Card className="hover:border-primary/60 h-full overflow-hidden py-0 transition-colors">
+              <Card className="hover:border-primary hover:bg-accent h-full overflow-hidden py-0 transition-colors">
                 {/*
                   The photograph beside the text rather than above it. These are nearly all
                   portraits, and a wide strip across the top of a card crops a tall picture

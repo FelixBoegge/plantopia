@@ -47,18 +47,14 @@ export function PlantDetail() {
             <p className="text-muted-foreground italic">{plant.species}</p>
           ) : null}
           <Severity severity={latest?.candidates?.[0]?.severity} />
-          {/* Beside the name, because the conversation is about this plant and this is
-              where the plant is named. `w-fit` for the same reason the badge above needs
-              it: a grid item stretches to its column unless told otherwise. */}
-          <LinkButton
-            to={`/plants/${plant.id}/chat`}
-            variant="outline"
-            className="mt-2 w-fit"
-          >
+        </div>
+        {/* Both actions together on the right, rather than one here and one under the
+            name. Two buttons for the same plant reading as one group is worth more than
+            either being nearer the thing it acts on. */}
+        <div className="ml-auto grid justify-items-stretch gap-2">
+          <LinkButton to={`/plants/${plant.id}/chat`} variant="outline">
             Chat about this plant
           </LinkButton>
-        </div>
-        <div className="ml-auto flex gap-2">
           <LinkButton to={`/plants/${plant.id}/diagnose`} variant="outline">
             Diagnose again
           </LinkButton>
