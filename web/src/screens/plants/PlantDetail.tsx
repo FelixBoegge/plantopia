@@ -56,7 +56,7 @@ export function PlantDetail() {
             Chat about this plant
           </LinkButton>
           <LinkButton to={`/plants/${plant.id}/diagnose`} variant="outline">
-            Diagnose again
+            Diagnose this plant again
           </LinkButton>
         </div>
       </header>

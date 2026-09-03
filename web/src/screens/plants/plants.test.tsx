@@ -95,7 +95,9 @@ function withPlant(detail: Record<string, unknown>, messages: unknown[] = []) {
     // escalations out of it. Declared here rather than defaulted in `server.ts`, which has
     // no default handlers on purpose: a test that reaches an endpoint it did not declare
     // should fail loudly rather than pass against a stub nobody remembers writing.
-    http.get(`/api/v1/plants/${BASIL.id}/messages`, () => HttpResponse.json(messages)),
+    http.get(`/api/v1/plants/${BASIL.id}/messages`, () =>
+      HttpResponse.json(messages),
+    ),
   );
 }
 
@@ -256,7 +258,7 @@ describe("one plant", () => {
     render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
 
     expect(
-      await screen.findByRole("link", { name: "Diagnose again" }),
+      await screen.findByRole("link", { name: "Diagnose this plant again" }),
     ).toHaveAttribute("href", `/plants/${BASIL.id}/diagnose`);
   });
 });
