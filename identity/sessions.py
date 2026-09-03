@@ -141,16 +141,30 @@ def revoke_family(session: Session, family_id: UUID) -> int:
     return len(tokens)
 
 
-def revoke_all_for_user(session: Session, user_id: UUID) -> int:
-    """End every session this person has.
+def family_of(session: Session, presented: str) -> UUID | None:
+    """Which sign-in a refresh token belongs to, or `None` if it is not one we issued."""
+    stored = session.scalar(
+        select(RefreshToken).where(RefreshToken.token_hash == fingerprint(presented))
+    )
+    return stored.family_id if stored else None
 
-    Used by a password reset: somebody resetting a password they may not have chosen to
-    forget is the case this protects, and leaving existing sessions alive would leave the
-    reason for the reset in place.
+
+def revoke_all_for_user(session: Session, user_id: UUID, *, keep: UUID | None = None) -> int:
+    """End every session this person has, except optionally one family.
+
+    Used by a password reset with nothing kept: somebody resetting a password they may not
+    have chosen to forget is the case that protects, and leaving existing sessions alive
+    would leave the reason for the reset in place.
+
+    Used by a password *change* with the caller's own family kept. The same reasoning
+    applies to every other device, but signing somebody out of the session they are
+    changing their password in punishes them for tidying up.
     """
     tokens = session.scalars(
         select(RefreshToken).where(
-            RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None)
+            RefreshToken.user_id == user_id,
+            RefreshToken.revoked_at.is_(None),
+            *([RefreshToken.family_id != keep] if keep else []),
         )
     ).all()
     now = datetime.now(UTC)

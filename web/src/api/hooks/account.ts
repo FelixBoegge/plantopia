@@ -68,6 +68,22 @@ export function useDeleteAccount() {
   });
 }
 
+/**
+ * Replace the password of the account already signed in.
+ *
+ * Not the reset flow. That one exists for somebody who cannot sign in and proves who they
+ * are through their email; this proves it with the password being replaced, and touches no
+ * email at all.
+ */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (passwords: {
+      current_password: string;
+      new_password: string;
+    }) => request("/auth/password", { method: "POST", body: passwords }),
+  });
+}
+
 export function useEvaluation() {
   return useQuery({
     queryKey: keys.evaluation,

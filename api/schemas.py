@@ -242,6 +242,18 @@ class ResetRequestIn(BaseModel):
     email: EmailStr
 
 
+class ChangePasswordIn(BaseModel):
+    """Replacing the password of the account the request is authenticated as.
+
+    No email address: the only account this can change is that one. The replacement is
+    confirmed in the browser rather than here — a second copy over the wire would be a
+    second chance to mistype the same thing, not a check on the first.
+    """
+
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=1)
+
+
 class ResetConfirmIn(BaseModel):
     """A reset link and the password to set with it."""
 

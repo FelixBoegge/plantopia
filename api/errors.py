@@ -23,6 +23,7 @@ from core.guards import UploadRejected
 from data.repositories.errors import RecordNotFoundError
 from identity.accounts import (
     AuthenticationError,
+    PasswordChangeError,
     RegistrationError,
     ResetError,
     VerificationError,
@@ -280,9 +281,15 @@ def register(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RegistrationError)
-    def _registration(request: Request, exc: RegistrationError) -> JSONResponse:
-        """A registration the caller can fix: a password below the minimum, or a privacy
-        notice not agreed to.
+    @app.exception_handler(PasswordChangeError)
+    def _registration(
+        request: Request, exc: RegistrationError | PasswordChangeError
+    ) -> JSONResponse:
+        """A request the caller can fix: a password below the minimum, a privacy notice not
+        agreed to, or a current password that does not match.
+
+        Two exception families, one handler, because the answer is the same shape and a
+        second copy of it would be a second place for the `errors` contract to drift.
 
         The detail is safe to return because neither refusal depends on whether the address
         is registered — they are decided before anything is looked up.

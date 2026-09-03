@@ -21,6 +21,7 @@ from core.config import Settings
 from core.mail import Mailer
 from data.engine import transaction
 from data.models import User
+from data.repositories.errors import RecordNotFoundError
 from identity import email_tokens, messages, sessions
 from identity.passwords import UNUSABLE, hash_password, needs_rehash
 from identity.passwords import verify as verify_password
@@ -52,6 +53,34 @@ class ConsentRequiredError(RegistrationError):
     """The privacy notice was not agreed to."""
 
     field = "accepted_privacy_notice"
+
+
+class PasswordChangeError(Exception):
+    """A password change refused for a reason the caller can fix.
+
+    ``field`` names the box at fault, so a screen can put the message under it rather than
+    at the top of a form with three password inputs in it — where "that is not correct"
+    would be ambiguous between all three.
+    """
+
+    field: str | None = None
+
+
+class WrongPasswordError(PasswordChangeError):
+    """The current password given does not match the account's.
+
+    Said plainly, on the same reasoning as deletion: the caller is already authenticated as
+    this account, so confirming which password it has reveals nothing their session does not
+    already establish.
+    """
+
+    field = "current_password"
+
+
+class WeakNewPasswordError(PasswordChangeError):
+    """The replacement is shorter than the configured minimum."""
+
+    field = "new_password"
 
 
 class AuthenticationError(Exception):
@@ -277,3 +306,39 @@ def reset_password(session: Session, *, presented: str, password: str, settings:
             user.verified_at = datetime.now(UTC)
         sessions.revoke_all_for_user(session, user.id)
     return user_id
+
+
+def change_password(
+    session: Session,
+    *,
+    user_id: UUID,
+    current: str,
+    new: str,
+    settings: Settings,
+    keep_family: UUID | None = None,
+) -> None:
+    """Replace a signed-in account's password, having checked the one it replaces.
+
+    The current password is what proves this is the account's owner and not somebody who
+    found the screen unlocked. It is the whole reason this is not simply "set a new
+    password" — an unattended session could otherwise be used to lock the owner out of
+    their own account.
+
+    Every other session ends. Whoever prompted the change must not still be signed in when
+    it is over, and `keep_family` is what spares the one making it.
+    """
+    user = session.get(User, user_id)
+    if user is None:  # pragma: no cover - only if the account is deleted mid-request
+        raise RecordNotFoundError("no such account")
+
+    if not verify_password(current, user.password_hash):
+        raise WrongPasswordError("that password is not correct")
+
+    if len(new) < settings.minimum_password_length:
+        raise WeakNewPasswordError(
+            f"a password must be at least {settings.minimum_password_length} characters"
+        )
+
+    with transaction(session):
+        user.password_hash = hash_password(new)
+        sessions.revoke_all_for_user(session, user.id, keep=keep_family)

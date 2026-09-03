@@ -12,8 +12,16 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Response, status
 
 from api import cookies
-from api.dependencies import MailerDep, RateLimited, SessionDep, SettingsDep
-from api.schemas import LoginIn, RegisterIn, ResetConfirmIn, ResetRequestIn, SessionOut, VerifyIn
+from api.dependencies import MailerDep, OwnerDep, RateLimited, SessionDep, SettingsDep
+from api.schemas import (
+    ChangePasswordIn,
+    LoginIn,
+    RegisterIn,
+    ResetConfirmIn,
+    ResetRequestIn,
+    SessionOut,
+    VerifyIn,
+)
 from identity import accounts, sessions
 
 RefreshCookie = Annotated[str | None, Cookie(alias=cookies.NAME)]
@@ -145,4 +153,37 @@ def confirm_reset(body: ResetConfirmIn, session: SessionDep, settings: SettingsD
     """
     accounts.reset_password(
         session, presented=body.token, password=body.password, settings=settings
+    )
+
+
+@router.post("/password", status_code=status.HTTP_204_NO_CONTENT, dependencies=[RateLimited])
+def change_password(
+    body: ChangePasswordIn,
+    session: SessionDep,
+    settings: SettingsDep,
+    owner: OwnerDep,
+    presented: RefreshCookie = None,
+) -> None:
+    """Replace the password of the account making the request.
+
+    The other half of the reset flow, and not a substitute for it. Reset exists for somebody
+    who cannot sign in and proves who they are by email; this is for somebody who can, and
+    proves it with the password being replaced. Neither works in the other's place — you
+    cannot ask a person who has forgotten their password for it, and you should not make a
+    signed-in person wait on an email.
+
+    Takes no identifier. The only account this can change is the one the request is already
+    authenticated as, which is also why the wrong-password refusal may say so plainly.
+
+    Rate limited like signing in: it accepts a password guess, so it is a place to guess.
+    """
+    accounts.change_password(
+        session,
+        user_id=owner,
+        current=body.current_password,
+        new=body.new_password,
+        settings=settings,
+        # Every other session ends; this one is spared. Signing somebody out of the session
+        # they are changing their password in punishes them for tidying up.
+        keep_family=sessions.family_of(session, presented) if presented else None,
     )

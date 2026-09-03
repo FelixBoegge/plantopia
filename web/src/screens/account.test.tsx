@@ -323,7 +323,8 @@ describe("taking your data out", () => {
         return new HttpResponse(new Blob(["zip-bytes"]), {
           headers: {
             "content-type": "application/zip",
-            "content-disposition": 'attachment; filename="plantopia-export-01a0.zip"',
+            "content-disposition":
+              'attachment; filename="plantopia-export-01a0.zip"',
           },
         });
       }),
@@ -346,7 +347,8 @@ describe("taking your data out", () => {
             type: PROBLEM.invalidRequest,
             title: "That is too much to export at once",
             status: 413,
-            detail: "this account holds more than can be exported in one request",
+            detail:
+              "this account holds more than can be exported in one request",
           },
           { status: 413 },
         ),
@@ -358,7 +360,9 @@ describe("taking your data out", () => {
       await screen.findByRole("button", { name: /download my data/i }),
     );
 
-    expect(await screen.findByText(/more than can be exported/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/more than can be exported/i),
+    ).toBeInTheDocument();
   });
 });
 
@@ -381,7 +385,7 @@ describe("deleting your account", () => {
     );
 
     expect(called).toBe(false);
-    expect(screen.getByLabelText(/your password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Your password")).toBeInTheDocument();
   });
 
   it("says what will be destroyed before it happens", async () => {
@@ -405,9 +409,11 @@ describe("deleting your account", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /delete my account/i }),
     );
-    await userEvent.click(screen.getByRole("button", { name: /keep my account/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /keep my account/i }),
+    );
 
-    expect(screen.queryByLabelText(/your password/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Your password")).not.toBeInTheDocument();
   });
 
   it("sends the password and the typed confirmation", async () => {
@@ -418,16 +424,27 @@ describe("deleting your account", () => {
         sent = (await request.json()) as Record<string, string>;
         return new HttpResponse(null, { status: 204 });
       }),
-      http.post("/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
+      http.post(
+        "/api/v1/auth/logout",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
     );
 
     render(<AppRoutes />, { route: "/account" });
     await userEvent.click(
       await screen.findByRole("button", { name: /delete my account/i }),
     );
-    await userEvent.type(screen.getByLabelText(/your password/i), "hunter2000000");
-    await userEvent.type(screen.getByLabelText(/to confirm/i), "delete my account");
-    await userEvent.click(screen.getByRole("button", { name: /delete everything/i }));
+    await userEvent.type(
+      screen.getByLabelText("Your password"),
+      "hunter2000000",
+    );
+    await userEvent.type(
+      screen.getByLabelText(/to confirm/i),
+      "delete my account",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /delete everything/i }),
+    );
 
     await waitFor(() =>
       expect(sent).toEqual({
@@ -457,14 +474,26 @@ describe("deleting your account", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /delete my account/i }),
     );
-    await userEvent.type(screen.getByLabelText(/your password/i), "wrong-password");
-    await userEvent.type(screen.getByLabelText(/to confirm/i), "delete my account");
-    await userEvent.click(screen.getByRole("button", { name: /delete everything/i }));
+    await userEvent.type(
+      screen.getByLabelText("Your password"),
+      "wrong-password",
+    );
+    await userEvent.type(
+      screen.getByLabelText(/to confirm/i),
+      "delete my account",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /delete everything/i }),
+    );
 
-    expect(await screen.findByText(/password is not correct/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/password is not correct/i),
+    ).toBeInTheDocument();
     // Still on the form, with the confirmation intact — retyping the phrase because the
     // password was mistyped would be a punishment for a typo.
-    expect(screen.getByLabelText(/to confirm/i)).toHaveValue("delete my account");
+    expect(screen.getByLabelText(/to confirm/i)).toHaveValue(
+      "delete my account",
+    );
   });
 
   it("signs out once the account is gone", async () => {
@@ -473,19 +502,153 @@ describe("deleting your account", () => {
     signedIn();
     server.use(
       http.delete("/api/v1/me", () => new HttpResponse(null, { status: 204 })),
-      http.post("/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
+      http.post(
+        "/api/v1/auth/logout",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
     );
 
     render(<AppRoutes />, { route: "/account" });
     await userEvent.click(
       await screen.findByRole("button", { name: /delete my account/i }),
     );
-    await userEvent.type(screen.getByLabelText(/your password/i), "hunter2000000");
-    await userEvent.type(screen.getByLabelText(/to confirm/i), "delete my account");
-    await userEvent.click(screen.getByRole("button", { name: /delete everything/i }));
+    await userEvent.type(
+      screen.getByLabelText("Your password"),
+      "hunter2000000",
+    );
+    await userEvent.type(
+      screen.getByLabelText(/to confirm/i),
+      "delete my account",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /delete everything/i }),
+    );
 
     expect(
       await screen.findByRole("heading", { name: "Sign in" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("changing your password", () => {
+  async function fillIn({
+    current = "the-old-one",
+    next = "a-new-long-password",
+    confirm,
+  }: { current?: string; next?: string; confirm?: string } = {}) {
+    // Defaults to matching, because a mismatch is the exception these tests opt into.
+    confirm ??= next;
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Current password"), current);
+    await user.type(screen.getByLabelText("New password"), next);
+    await user.type(screen.getByLabelText("Confirm new password"), confirm);
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    return user;
+  }
+
+  it("sends the current and the new password, and no address", async () => {
+    // The only account this can change is the one already signed in.
+    signedIn();
+    let sent: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/v1/auth/password", async ({ request }) => {
+        sent = (await request.json()) as Record<string, unknown>;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await fillIn();
+
+    await waitFor(() =>
+      expect(sent).toEqual({
+        current_password: "the-old-one",
+        new_password: "a-new-long-password",
+      }),
+    );
+  });
+
+  it("says so when it worked", async () => {
+    signedIn();
+    server.use(
+      http.post(
+        "/api/v1/auth/password",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await fillIn();
+
+    expect(
+      await screen.findByText(/password has been changed/i),
+    ).toBeInTheDocument();
+  });
+
+  it("catches a mistyped confirmation without asking the server", async () => {
+    // The confirmation exists to catch a typo in a box nobody can read back. Sending it
+    // would hand the server a second copy of the same mistake.
+    signedIn();
+    let asked = false;
+    server.use(
+      http.post("/api/v1/auth/password", () => {
+        asked = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await fillIn({ next: "a-new-long-password", confirm: "a-different-typo" });
+
+    expect(
+      await screen.findByText("These two do not match."),
+    ).toBeInTheDocument();
+    expect(asked).toBe(false);
+  });
+
+  it("puts a wrong current password under the box it is about", async () => {
+    signedIn();
+    server.use(
+      http.post("/api/v1/auth/password", () =>
+        HttpResponse.json(
+          {
+            type: PROBLEM.invalidRequest,
+            title: "Invalid request",
+            status: 400,
+            detail: "that password is not correct",
+            errors: [
+              {
+                location: ["body", "current_password"],
+                message: "that password is not correct",
+              },
+            ],
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+    await fillIn();
+
+    const field = await screen.findByLabelText("Current password");
+    await waitFor(() => expect(field).toHaveAttribute("aria-invalid", "true"));
+    expect(field).toHaveAccessibleDescription(/not correct/);
+  });
+
+  it("shows what was typed when asked to", async () => {
+    signedIn();
+
+    render(<AppRoutes />, { route: "/account" });
+    const field = await screen.findByLabelText("New password");
+    expect(field).toHaveAttribute("type", "password");
+
+    // By role, not by label: the checkbox renders a span carrying the role and a hidden
+    // input beside it, and both answer to the label.
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Show passwords" }),
+    );
+
+    expect(field).toHaveAttribute("type", "text");
   });
 });

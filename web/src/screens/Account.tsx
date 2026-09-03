@@ -3,6 +3,7 @@ import { useState } from "react";
 import {
   allowance,
   useAccount,
+  useChangePassword,
   useDeleteAccount,
   useExport,
   useFacts,
@@ -10,10 +11,12 @@ import {
 } from "@/api/hooks/account";
 import { useAuth } from "@/auth/AuthProvider";
 import { Field } from "@/components/Field";
-import { readable } from "@/api/problems";
+import { fieldMessages, readable } from "@/api/problems";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 /**
  * What Plantopia knows about somebody, and what they agreed to.
@@ -44,8 +47,8 @@ export function Account() {
             </p>
             {left ? (
               <p>
-                {left.used} of {left.limit} diagnoses used this month. It resets on{" "}
-                {left.resetsAt.toLocaleDateString()}.
+                {left.used} of {left.limit} diagnoses used this month. It resets
+                on {left.resetsAt.toLocaleDateString()}.
               </p>
             ) : null}
           </CardContent>
@@ -62,6 +65,8 @@ export function Account() {
       <LearnedFacts />
 
       <YourData />
+
+      <ChangePassword />
 
       <DeleteAccount />
     </div>
@@ -80,8 +85,9 @@ function YourData() {
         Your data
       </h2>
       <p className="text-muted-foreground mb-3">
-        Everything Plantopia holds about you — your plants, what it diagnosed, what you
-        told it, and the photographs you uploaded — as one file you can keep.
+        Everything Plantopia holds about you — your plants, what it diagnosed,
+        what you told it, and the photographs you uploaded — as one file you can
+        keep.
       </p>
 
       {take.isError ? (
@@ -95,6 +101,117 @@ function YourData() {
       >
         {take.isPending ? "Preparing…" : "Download my data"}
       </Button>
+    </section>
+  );
+}
+
+function ChangePassword() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showing, setShowing] = useState(false);
+  const [mismatch, setMismatch] = useState(false);
+  const [done, setDone] = useState(false);
+  const change = useChangePassword();
+  const named = fieldMessages(change.error);
+
+  return (
+    <section aria-labelledby="change-password" className="border-t pt-6">
+      <h2 id="change-password" className="mb-3 text-lg font-medium">
+        Change your password
+      </h2>
+
+      <p className="text-muted-foreground mb-3">
+        {/* Said here so nobody has to discover it by being signed out of their phone. */}
+        Your current password proves this is you. Every other device is signed
+        out; this one stays.
+      </p>
+
+      {done ? (
+        <Notice title="Done">Your password has been changed.</Notice>
+      ) : null}
+
+      {/* Only what the server did not pin to a field. */}
+      {change.error && Object.keys(named).length === 0 ? (
+        <Notice tone="failure">{readable(change.error)}</Notice>
+      ) : null}
+
+      <form
+        className="mt-3 grid max-w-md gap-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          // Checked here and nowhere else: the confirmation exists to catch a typo in a
+          // box nobody can read back, which is a question about this screen rather than
+          // about the account. Sending it would give the server a second copy of the same
+          // mistake to compare against itself.
+          setMismatch(next !== confirm);
+          if (next !== confirm) return;
+          setDone(false);
+          change.mutate(
+            { current_password: current, new_password: next },
+            {
+              onSuccess: () => {
+                setDone(true);
+                setCurrent("");
+                setNext("");
+                setConfirm("");
+              },
+            },
+          );
+        }}
+      >
+        <Field
+          label="Current password"
+          type={showing ? "text" : "password"}
+          autoComplete="current-password"
+          required
+          value={current}
+          onChange={(event) => setCurrent(event.target.value)}
+          error={named.current_password}
+        />
+        <Field
+          label="New password"
+          type={showing ? "text" : "password"}
+          autoComplete="new-password"
+          required
+          value={next}
+          onChange={(event) => setNext(event.target.value)}
+          hint="At least 12 characters. Length matters more than punctuation."
+          error={named.new_password}
+        />
+        <Field
+          label="Confirm new password"
+          type={showing ? "text" : "password"}
+          autoComplete="new-password"
+          required
+          value={confirm}
+          onChange={(event) => {
+            setConfirm(event.target.value);
+            setMismatch(false);
+          }}
+          error={mismatch ? "These two do not match." : undefined}
+        />
+
+        <div className="flex items-center gap-3">
+          <Checkbox
+            id="show-password"
+            checked={showing}
+            onCheckedChange={(value) => setShowing(value === true)}
+          />
+          {/* The other half of the confirmation box: one catches a typo you cannot see,
+              this lets you look. Neither replaces the other. */}
+          <Label htmlFor="show-password" className="text-sm font-normal">
+            Show passwords
+          </Label>
+        </div>
+
+        <div>
+          <Button type="submit" disabled={change.isPending}>
+            {change.isPending ? "Changing…" : "Change password"}
+          </Button>
+        </div>
+      </form>
     </section>
   );
 }
@@ -139,8 +256,9 @@ function DeleteAccount() {
           }}
         >
           <Notice tone="failure" title="Delete your account?">
-            Your plants, their photographs, every diagnosis and every conversation go with
-            it. Plantopia will not be able to recover any of it, and neither will you.
+            Your plants, their photographs, every diagnosis and every
+            conversation go with it. Plantopia will not be able to recover any
+            of it, and neither will you.
           </Notice>
 
           {remove.isError ? (
@@ -164,7 +282,11 @@ function DeleteAccount() {
           />
 
           <div className="flex gap-2">
-            <Button type="submit" variant="destructive" disabled={remove.isPending}>
+            <Button
+              type="submit"
+              variant="destructive"
+              disabled={remove.isPending}
+            >
               {remove.isPending ? "Deleting…" : "Delete everything"}
             </Button>
             <Button
