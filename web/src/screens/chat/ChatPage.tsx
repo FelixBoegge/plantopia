@@ -1,7 +1,8 @@
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { usePlant } from "@/api/hooks/plants";
 import { readable } from "@/api/problems";
+import { LinkButton } from "@/components/LinkButton";
 import { Notice } from "@/components/Notice";
 import { Chat } from "@/screens/chat/Chat";
 
@@ -41,12 +42,16 @@ export function ChatPage() {
     <div className="grid max-w-3xl gap-6">
       <div className="grid gap-1">
         <h1 className="text-2xl font-semibold">{data.plant.name}</h1>
-        <Link
+        {/* A button, like every other way off a page here. An underlined line of
+            text is a control somebody has to recognise; a button announces itself,
+            and answers a pointer by changing under it. */}
+        <LinkButton
           to={`/plants/${plantId}`}
-          className="text-muted-foreground w-fit text-sm underline underline-offset-4"
+          variant="outline"
+          className="w-fit"
         >
-          Back to this plant
-        </Link>
+          Back to plant
+        </LinkButton>
       </div>
 
       <Chat plantId={plantId} />

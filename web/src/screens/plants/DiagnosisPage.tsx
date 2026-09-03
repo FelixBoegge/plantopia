@@ -1,7 +1,8 @@
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { useActivity, useDiagnosis } from "@/api/hooks/runs";
 import { readable } from "@/api/problems";
+import { LinkButton } from "@/components/LinkButton";
 import { Notice } from "@/components/Notice";
 import { StepLine } from "@/components/StepLine";
 import { Differential } from "@/screens/wizard/Differential";
@@ -42,12 +43,16 @@ export function DiagnosisPage() {
       {/* Above the result, not below it. A diagnosis runs to a differential, a plan and an
           activity log, and a way back that only appears after all of it is a way back
           somebody has to scroll to find. */}
-      <Link
+      {/* A button, like every other way off a page here. An underlined line of
+          text is a control somebody has to recognise; a button announces itself,
+          and answers a pointer by changing under it. */}
+      <LinkButton
         to={`/plants/${data.diagnosis.plant_id}`}
-        className="text-muted-foreground w-fit text-sm underline underline-offset-4"
+        variant="outline"
+        className="w-fit"
       >
-        Back to this plant
-      </Link>
+        Back to plant
+      </LinkButton>
 
       <Differential detail={data} />
 

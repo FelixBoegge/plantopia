@@ -139,7 +139,7 @@ describe("getting to the conversation", () => {
     render(<AppRoutes />, { route: `/plants/${PLANT_ID}/chat` });
 
     expect(
-      await screen.findByRole("link", { name: "Back to this plant" }),
+      await screen.findByRole("link", { name: "Back to plant" }),
     ).toHaveAttribute("href", `/plants/${PLANT_ID}`);
   });
 });
