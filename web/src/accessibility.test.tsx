@@ -118,10 +118,18 @@ const DETAIL = {
 
 function everything() {
   server.use(
-    http.post("/api/v1/auth/refresh", () => HttpResponse.json({ access_token: "fresh" })),
+    http.post("/api/v1/auth/refresh", () =>
+      HttpResponse.json({ access_token: "fresh" }),
+    ),
     http.get("/api/v1/me", () => HttpResponse.json(ACCOUNT)),
     http.get("/api/v1/plants", () =>
-      HttpResponse.json([{ plant: DETAIL.plant, latest_diagnosis: DETAIL.diagnoses[0], pending_step_count: 1 }]),
+      HttpResponse.json([
+        {
+          plant: DETAIL.plant,
+          latest_diagnosis: DETAIL.diagnoses[0],
+          pending_step_count: 1,
+        },
+      ]),
     ),
     http.get(`/api/v1/plants/${PLANT}`, () => HttpResponse.json(DETAIL)),
     http.get(`/api/v1/plants/${PLANT}/messages`, () => HttpResponse.json([])),
@@ -132,7 +140,10 @@ function everything() {
 
 function signedOut() {
   server.use(
-    http.post("/api/v1/auth/refresh", () => new HttpResponse(null, { status: 401 })),
+    http.post(
+      "/api/v1/auth/refresh",
+      () => new HttpResponse(null, { status: 401 }),
+    ),
   );
 }
 
@@ -152,23 +163,29 @@ const SIGNED_IN_SCREENS: [string, string][] = [
 ];
 
 describe("the automated pass", () => {
-  it.each(OPEN_SCREENS)("finds nothing to fix on %s", async (route, heading) => {
-    signedOut();
+  it.each(OPEN_SCREENS)(
+    "finds nothing to fix on %s",
+    async (route, heading) => {
+      signedOut();
 
-    const { container } = render(<AppRoutes />, { route });
-    await screen.findByRole("heading", { name: heading });
+      const { container } = render(<AppRoutes />, { route });
+      await screen.findByRole("heading", { name: heading });
 
-    expect(await axe(container)).toHaveNoViolations();
-  });
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
 
-  it.each(SIGNED_IN_SCREENS)("finds nothing to fix on %s", async (route, heading) => {
-    everything();
+  it.each(SIGNED_IN_SCREENS)(
+    "finds nothing to fix on %s",
+    async (route, heading) => {
+      everything();
 
-    const { container } = render(<AppRoutes />, { route });
-    await screen.findByRole("heading", { name: heading });
+      const { container } = render(<AppRoutes />, { route });
+      await screen.findByRole("heading", { name: heading });
 
-    expect(await axe(container)).toHaveNoViolations();
-  });
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
 });
 
 describe("what a checker cannot see", () => {
@@ -197,12 +214,17 @@ describe("what a checker cannot see", () => {
           error: "The run could not be completed.",
         }),
       ),
-      http.get(`/api/v1/runs/${RUN}/events`, () => new HttpResponse(null, { status: 204 })),
+      http.get(
+        `/api/v1/runs/${RUN}/events`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
     );
 
     render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
 
-    expect(await screen.findByText(/could not be finished/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/could not be finished/i),
+    ).toBeInTheDocument();
   });
 
   it("announces the agent's progress", async () => {
@@ -222,13 +244,15 @@ describe("what a checker cannot see", () => {
           error: null,
         }),
       ),
-      http.get(`/api/v1/runs/${RUN}/events`, () =>
-        new HttpResponse(
-          new TextEncoder().encode(
-            'id: 1\nevent: step\ndata: {"step":"checking","description":"Checking the photographs"}\n\n',
+      http.get(
+        `/api/v1/runs/${RUN}/events`,
+        () =>
+          new HttpResponse(
+            new TextEncoder().encode(
+              'id: 1\nevent: step\ndata: {"step":"checking","description":"Checking the photographs"}\n\n',
+            ),
+            { headers: { "Content-Type": "text/event-stream" } },
           ),
-          { headers: { "Content-Type": "text/event-stream" } },
-        ),
       ),
     );
 
@@ -257,8 +281,14 @@ describe("what a checker cannot see", () => {
     );
 
     render(<AppRoutes />, { route: "/login" });
-    await userEvent.type(await screen.findByLabelText("Email"), "ada@example.com");
-    await userEvent.type(screen.getByLabelText("Password"), "wrong-password-entirely");
+    await userEvent.type(
+      await screen.findByLabelText("Email"),
+      "ada@example.com",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Password"),
+      "wrong-password-entirely",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     // `role="alert"` rather than a red paragraph: a form that silently grows one is a form
@@ -271,27 +301,26 @@ describe("what a checker cannot see", () => {
 
     render(<AppRoutes />, { route: "/" });
 
-    expect(await screen.findByRole("link", { name: "Account" })).toHaveAttribute(
-      "href",
-      "/account",
-    );
+    expect(
+      await screen.findByRole("link", { name: "Account" }),
+    ).toHaveAttribute("href", "/account");
   });
 
-  it.each([...OPEN_SCREENS.map(([route]) => route), ...SIGNED_IN_SCREENS.map(([route]) => route)])(
-    "gives %s exactly one first-level heading",
-    async (route) => {
-      // A screen reader's heading navigation is how many people find their way. Two h1s, or
-      // none, and that stops working. Checking one screen is what let the evaluation screen
-      // ship with its heading inside the branch that succeeds, so every screen is checked.
-      OPEN_SCREENS.some(([open]) => open === route) ? signedOut() : everything();
+  it.each([
+    ...OPEN_SCREENS.map(([route]) => route),
+    ...SIGNED_IN_SCREENS.map(([route]) => route),
+  ])("gives %s exactly one first-level heading", async (route) => {
+    // A screen reader's heading navigation is how many people find their way. Two h1s, or
+    // none, and that stops working. Checking one screen is what let the evaluation screen
+    // ship with its heading inside the branch that succeeds, so every screen is checked.
+    OPEN_SCREENS.some(([open]) => open === route) ? signedOut() : everything();
 
-      render(<AppRoutes />, { route });
+    render(<AppRoutes />, { route });
 
-      await waitFor(() =>
-        expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1),
-      );
-    },
-  );
+    await waitFor(() =>
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1),
+    );
+  });
 
   it("keeps a heading on a screen whose content was refused", async () => {
     // The state a member always sees. It is the failure branch, which is exactly the branch
@@ -339,21 +368,30 @@ describe("choosing between two machines", () => {
       http.get(
         `/api/v1/runs/${RUN}/events`,
         () =>
-          new HttpResponse(new TextEncoder().encode('id: 1\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often do you water it?","kind":"text","options":[]}],"identification":[{"common_name":"Basil","scientific_name":"Ocimum basilicum","confidence":0.85,"method":"vision"},{"common_name":"Thai basil","scientific_name":"Ocimum africanum","confidence":0.71,"method":"plantnet"}]}\n\n'), {
-            headers: { "Content-Type": "text/event-stream" },
-          }),
+          new HttpResponse(
+            new TextEncoder().encode(
+              'id: 1\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often do you water it?","kind":"text","options":[]}],"identification":[{"common_name":"Basil","scientific_name":"Ocimum basilicum","confidence":0.85,"method":"vision"},{"common_name":"Thai basil","scientific_name":"Ocimum africanum","confidence":0.71,"method":"plantnet"}]}\n\n',
+            ),
+            {
+              headers: { "Content-Type": "text/event-stream" },
+            },
+          ),
       ),
     );
 
-    const { container } = render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    const { container } = render(<AppRoutes />, {
+      route: `/diagnose?run=${RUN}`,
+    });
     await screen.findByRole("heading", { name: "Which plant is this?" });
 
     expect(await axe(container)).toHaveNoViolations();
   });
 });
 
-const FRAME = 'id: 1\nevent: questions\ndata: {"questions":[{"key":"location","text":"Which town or city is the plant in?","kind":"text","options":[],"prefill":"Berlin","prefill_note":"Recorded by your camera, named by OpenStreetMap contributors","required":true},{"key":"captured_at","text":"When was the photograph taken?","kind":"date","options":[],"prefill":"2026-08-10","prefill_note":"Recorded by your camera","required":true}]}\n\n';
-const EMPTY_REQUIRED = 'id: 1\nevent: questions\ndata: {"questions":[{"key":"location","text":"Which town or city is the plant in?","kind":"text","options":[],"prefill":null,"prefill_note":null,"required":true}]}\n\n';
+const FRAME =
+  'id: 1\nevent: questions\ndata: {"questions":[{"key":"location","text":"Which town or city is the plant in?","kind":"text","options":[],"prefill":"Berlin","prefill_note":"Recorded by your camera, named by OpenStreetMap contributors","required":true},{"key":"captured_at","text":"When was the photograph taken?","kind":"date","options":[],"prefill":"2026-08-10","prefill_note":"Recorded by your camera","required":true}]}\n\n';
+const EMPTY_REQUIRED =
+  'id: 1\nevent: questions\ndata: {"questions":[{"key":"location","text":"Which town or city is the plant in?","kind":"text","options":[],"prefill":null,"prefill_note":null,"required":true}]}\n\n';
 
 describe("the fields a photograph filled in", () => {
   it("finds nothing to fix in a prefilled, required question", async () => {
@@ -380,7 +418,9 @@ describe("the fields a photograph filled in", () => {
       ),
     );
 
-    const { container } = render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    const { container } = render(<AppRoutes />, {
+      route: `/diagnose?run=${RUN}`,
+    });
     await screen.findByLabelText(/Which town or city/);
 
     expect(await axe(container)).toHaveNoViolations();
@@ -412,7 +452,9 @@ describe("the fields a photograph filled in", () => {
       ),
     );
 
-    const { container } = render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    const { container } = render(<AppRoutes />, {
+      route: `/diagnose?run=${RUN}`,
+    });
     await screen.findByLabelText(/Which town or city/);
     await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
     await screen.findByRole("alert");
@@ -467,6 +509,12 @@ describe("using it without a pointer", () => {
     await userEvent.tab();
     expect(screen.getByLabelText("Password")).toHaveFocus();
     await userEvent.tab();
+    // The show-password toggle sits between the field and the button, so it has to be
+    // reachable in that order rather than skipped over to the submit.
+    expect(
+      screen.getByRole("checkbox", { name: "Show password" }),
+    ).toHaveFocus();
+    await userEvent.tab();
     expect(screen.getByRole("button", { name: "Sign in" })).toHaveFocus();
   });
 
@@ -481,13 +529,18 @@ describe("using it without a pointer", () => {
     await userEvent.tab();
     expect(screen.getByRole("checkbox")).toHaveFocus();
     await userEvent.tab();
-    expect(screen.getByRole("button", { name: "Create account" })).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "Create account" }),
+    ).toHaveFocus();
   });
 
   it("can tick a plan step from the keyboard", async () => {
     everything();
     server.use(
-      http.patch("/api/v1/roadmap-steps/01a0-step", () => new HttpResponse(null, { status: 204 })),
+      http.patch(
+        "/api/v1/roadmap-steps/01a0-step",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
     );
 
     render(<AppRoutes />, { route: `/plants/${PLANT}` });

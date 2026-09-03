@@ -4,6 +4,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { readable } from "@/api/problems";
 import { useAuth } from "@/auth/AuthProvider";
 import { Field } from "@/components/Field";
+import { ShowPasswords } from "@/components/ShowPasswords";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
 import { AuthShell } from "@/screens/auth/AuthShell";
@@ -23,6 +24,7 @@ export function SignIn() {
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showing, setShowing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -69,12 +71,16 @@ export function SignIn() {
         />
         <Field
           label="Password"
-          type="password"
+          type={showing ? "text" : "password"}
           autoComplete="current-password"
           required
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
+
+        {/* A wrong password here is otherwise discovered by being refused, which is a slow
+            way to find out you typed it with caps lock on. */}
+        <ShowPasswords showing={showing} onChange={setShowing} />
 
         <Button type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}

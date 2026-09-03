@@ -13,10 +13,9 @@ import { useAuth } from "@/auth/AuthProvider";
 import { Field } from "@/components/Field";
 import { fieldMessages, readable } from "@/api/problems";
 import { Notice } from "@/components/Notice";
+import { ShowPasswords } from "@/components/ShowPasswords";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 
 /**
  * What Plantopia knows about somebody, and what they agreed to.
@@ -193,18 +192,13 @@ function ChangePassword() {
           error={mismatch ? "These two do not match." : undefined}
         />
 
-        <div className="flex items-center gap-3">
-          <Checkbox
-            id="show-password"
-            checked={showing}
-            onCheckedChange={(value) => setShowing(value === true)}
-          />
-          {/* The other half of the confirmation box: one catches a typo you cannot see,
-              this lets you look. Neither replaces the other. */}
-          <Label htmlFor="show-password" className="text-sm font-normal">
-            Show passwords
-          </Label>
-        </div>
+        {/* The other half of the confirmation box: one catches a typo you cannot see, this
+            lets you look. Neither replaces the other. */}
+        <ShowPasswords
+          showing={showing}
+          onChange={setShowing}
+          label="Show passwords"
+        />
 
         <div>
           <Button type="submit" disabled={change.isPending}>

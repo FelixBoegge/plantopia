@@ -5,6 +5,7 @@ import { request } from "@/api/client";
 import { readable } from "@/api/problems";
 import type { Accepted } from "@/api/types";
 import { Field } from "@/components/Field";
+import { ShowPasswords } from "@/components/ShowPasswords";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
 import { AuthShell } from "@/screens/auth/AuthShell";
@@ -99,6 +100,7 @@ function AskForLink() {
 
 function ChooseNew({ token }: { token: string }) {
   const [password, setPassword] = useState("");
+  const [showing, setShowing] = useState(false);
   const [done, setDone] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -138,13 +140,18 @@ function ChooseNew({ token }: { token: string }) {
         {failure ? <Notice tone="failure">{failure}</Notice> : null}
         <Field
           label="New password"
-          type="password"
+          type={showing ? "text" : "password"}
           autoComplete="new-password"
           required
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           hint="At least 12 characters. Setting it signs you out everywhere else."
         />
+        {/* Worth more here than on sign-in: nobody knows this password yet, so there is
+            nothing for a shoulder to look over, and a typo would be locked in behind a
+            link that only works once. */}
+        <ShowPasswords showing={showing} onChange={setShowing} />
+
         <Button type="submit" disabled={busy}>
           {busy ? "Setting it…" : "Set my password"}
         </Button>

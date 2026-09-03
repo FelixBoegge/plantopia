@@ -139,6 +139,52 @@ describe("signing in", () => {
   });
 });
 
+describe("reading what you typed", () => {
+  it("shows the password on the sign-in screen when asked", async () => {
+    // A password mistyped with caps lock on is otherwise discovered by being refused.
+    signedOut();
+
+    render(<AppRoutes />, { route: "/login" });
+    const field = await screen.findByLabelText("Password");
+    expect(field).toHaveAttribute("type", "password");
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Show password" }),
+    );
+
+    expect(field).toHaveAttribute("type", "text");
+  });
+
+  it("hides it again when unticked", async () => {
+    signedOut();
+
+    render(<AppRoutes />, { route: "/login" });
+    const field = await screen.findByLabelText("Password");
+    const toggle = screen.getByRole("checkbox", { name: "Show password" });
+
+    await userEvent.click(toggle);
+    await userEvent.click(toggle);
+
+    expect(field).toHaveAttribute("type", "password");
+  });
+
+  it("shows the new password when choosing one after a reset", async () => {
+    // Worth more here than on sign-in: nobody knows this password yet, and a typo would be
+    // locked in behind a link that only works once.
+    signedOut();
+
+    render(<AppRoutes />, { route: "/reset-password?token=a-token" });
+    const field = await screen.findByLabelText("New password");
+    expect(field).toHaveAttribute("type", "password");
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Show password" }),
+    );
+
+    expect(field).toHaveAttribute("type", "text");
+  });
+});
+
 describe("verifying an address", () => {
   it("checks the link on arrival rather than behind a button", async () => {
     // Somebody who clicked a link in an email has already expressed the intent. Asking
