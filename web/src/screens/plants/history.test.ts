@@ -343,22 +343,40 @@ describe("a diagnosis and the photographs it read", () => {
     expect(only?.kind === "observation" && only.diagnosis?.id).toBe("diag-1");
   });
 
-  it("orders the bundles by when the plant was photographed", () => {
-    // Two runs today, one on August photographs and one on September's. The plant's history
-    // is the plant's, so it reads in the order the plant lived it.
+  it("orders the bundles by when each diagnosis ran", () => {
+    // The deciding case, and the reason this is not ordered by capture date: the September
+    // photographs are diagnosed first and the August ones second. Ordered by capture, the
+    // second run would appear *below* the first — the list rearranging itself behind you.
     const events = timelineOf({
       observations: [
         observation({ id: "obs-old", captured_at: "2026-08-14T09:00:00Z" }),
         observation({ id: "obs-new", captured_at: "2026-09-02T09:00:00Z" }),
       ],
       diagnoses: [
-        diagnosis({ id: "d-old", observation_id: "obs-old", created_at: "2026-09-03T09:00:00Z" }),
-        diagnosis({ id: "d-new", observation_id: "obs-new", created_at: "2026-09-03T10:00:00Z" }),
+        diagnosis({ id: "d-new", observation_id: "obs-new", created_at: "2026-09-03T09:00:00Z" }),
+        diagnosis({ id: "d-old", observation_id: "obs-old", created_at: "2026-09-03T10:00:00Z" }),
       ],
       steps: [],
     });
 
-    expect(events.map((event) => event.id)).toEqual(["obs-new", "obs-old"]);
+    expect(events.map((event) => event.id)).toEqual(["obs-old", "obs-new"]);
+  });
+
+  it("keeps the capture date beside the run date", () => {
+    // Both are shown: they differ whenever an old photograph is diagnosed today, which is
+    // the case that made this confusing in the first place.
+    const [entry] = timelineOf({
+      observations: [observation({ id: "obs-1", captured_at: "2026-08-14T09:00:00Z" })],
+      diagnoses: [
+        diagnosis({ observation_id: "obs-1", created_at: "2026-09-03T09:00:00Z" }),
+      ],
+      steps: [],
+    });
+
+    expect(entry?.at).toBe("2026-09-03T09:00:00Z");
+    expect(entry?.kind === "observation" && entry.photographedAt).toBe(
+      "2026-08-14T09:00:00Z",
+    );
   });
 
   it("keeps an observation that has no diagnosis yet", () => {

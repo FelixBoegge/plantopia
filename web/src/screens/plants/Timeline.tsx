@@ -51,8 +51,21 @@ export function Timeline({
         </p>
       ) : (
         <ol className="grid gap-4">
-          {events.map((event) => (
-            <li key={`${event.kind}:${event.id}`} className="border-l-2 pl-4">
+          {events.map((event, index) => (
+            <li
+              key={`${event.kind}:${event.id}`}
+              className="relative border-l-2 pl-4"
+            >
+              {/* Counted from the bottom, so the first thing that happened is 1 and an
+                  entry's number never changes when a newer one appears above it. The list
+                  itself is newest first, which is the order the question a history answers
+                  — is this getting better? — is asked in. */}
+              <span
+                aria-hidden="true"
+                className="bg-muted text-muted-foreground absolute -left-3 flex size-5 items-center justify-center rounded-full text-xs font-medium"
+              >
+                {events.length - index}
+              </span>
               <Event event={event} />
             </li>
           ))}
@@ -86,21 +99,42 @@ function ObservationEvent({
 
   return (
     <article className="grid gap-2">
-      <Heading
-        label={
-          observation.kind === "recheck"
+      {/* The finding first, then what it was made from. Somebody scanning a history is
+          asking what happened; the photographs are the evidence for the answer rather than
+          the answer itself. An observation with no diagnosis leads with its own heading,
+          because then the photographs are all there is. */}
+      {event.diagnosis ? (
+        <Finding diagnosis={event.diagnosis} at={event.at} />
+      ) : (
+        <Heading
+          label={
+            observation.kind === "recheck"
+              ? "Photographed again"
+              : "First photographed"
+          }
+          at={event.photographedAt}
+          note={
+            event.dated === "uploaded"
+              ? "date the photograph was uploaded"
+              : undefined
+          }
+        />
+      )}
+
+      {event.diagnosis ? (
+        <p className="text-muted-foreground text-sm">
+          {/* Both dates, because they differ whenever an old photograph is diagnosed
+              today — which is exactly when a reader needs telling which is which. */}
+          {observation.kind === "recheck"
             ? "Photographed again"
-            : "First photographed"
-        }
-        at={event.at}
-        // Said only where it is true. An upload date presented as a capture date would be
-        // the timeline claiming something the photograph never declared.
-        note={
-          event.dated === "uploaded"
-            ? "date the photograph was uploaded"
-            : undefined
-        }
-      />
+            : "First photographed"}{" "}
+          on {new Date(event.photographedAt).toLocaleDateString()}
+          {event.dated === "uploaded"
+            ? " (date the photograph was uploaded)"
+            : null}
+          .
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-start gap-3">
         {observation.photo_refs.map((ref, index) => (
@@ -134,18 +168,6 @@ function ObservationEvent({
 
       {series ? (
         <Weather summary={series} capturedOn={observation.captured_at} />
-      ) : null}
-
-      {/* Inside the same article, because the diagnosis is what these photographs came to
-          mean. Its own date is shown with it: the two differ whenever somebody diagnoses a
-          photograph they took weeks ago, which is the case that scattered this list. */}
-      {event.diagnosis ? (
-        <div className="border-border mt-1 grid gap-1 border-t pt-3">
-          <Finding
-            diagnosis={event.diagnosis}
-            at={event.diagnosis.created_at}
-          />
-        </div>
       ) : null}
     </article>
   );

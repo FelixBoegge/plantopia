@@ -106,7 +106,11 @@ class TestTheWindowThisCovers:
     """
 
     @respx.mock
-    def test_ends_the_day_before_the_photograph_was_taken(self):
+    def test_it_spans_three_weeks_before_the_photograph_and_a_week_after(self):
+        """The day of the photograph used to be dropped, which protected a photograph taken
+        today at the cost of every older one. The week after it is recorded weather too,
+        whenever that week has already happened, and it is the half that says whether things
+        got better."""
         from datetime import date
 
         respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
@@ -115,8 +119,38 @@ class TestTheWindowThisCovers:
         get_local_weather("Berlin", 21, as_of=date(2026, 8, 10))
 
         params = archive.calls[0].request.url.params
-        assert params["end_date"] == "2026-08-09"
-        assert params["start_date"] == "2026-07-20"
+        assert params["start_date"] == "2026-07-21"
+        assert params["end_date"] == "2026-08-17"
+
+    @respx.mock
+    def test_the_week_after_is_clipped_where_it_has_not_happened(self):
+        """A photograph from two days ago has two of its seven days on record and five still
+        to come. The archive stops at yesterday; the forecast covers the rest."""
+        from datetime import UTC, datetime, timedelta
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        today = datetime.now(tz=UTC).date()
+        get_local_weather("Berlin", 21, as_of=today - timedelta(days=2))
+
+        end = archive.calls[0].request.url.params["end_date"]
+        assert end == (today - timedelta(days=1)).isoformat()
+
+    @respx.mock
+    def test_a_photograph_taken_today_still_stops_at_yesterday(self):
+        """The archive lags about a day, and asking for today returns a row of nulls that
+        the aggregates then average."""
+        from datetime import UTC, datetime, timedelta
+
+        respx.get(GEOCODE_URL).mock(return_value=httpx.Response(200, json=_GEOCODE_OK))
+        archive = respx.get(ARCHIVE_URL).mock(return_value=httpx.Response(200, json=_ARCHIVE_OK))
+
+        today = datetime.now(tz=UTC).date()
+        get_local_weather("Berlin", 21, as_of=today)
+
+        end = archive.calls[0].request.url.params["end_date"]
+        assert end == (today - timedelta(days=1)).isoformat()
 
     @respx.mock
     def test_without_a_date_it_still_ends_yesterday(self):
@@ -142,10 +176,10 @@ class TestTheWindowThisCovers:
         get_local_weather("Berlin", 21, as_of=date(2026, 8, 10))
         get_local_weather("Berlin", 21, as_of=date(2026, 8, 13))
 
-        first = archive.calls[0].request.url.params["end_date"]
-        second = archive.calls[1].request.url.params["end_date"]
-        assert first == "2026-08-09"
-        assert second == "2026-08-12"
+        first = archive.calls[0].request.url.params["start_date"]
+        second = archive.calls[1].request.url.params["start_date"]
+        assert first == "2026-07-21"
+        assert second == "2026-07-24"
 
 
 class TestTheDaysThemselves:
@@ -316,7 +350,7 @@ class TestTheDaysAhead:
         get_local_weather("Berlin", 21, as_of=date(2026, 8, 10))
 
         # The history moved with the photograph.
-        assert archive.calls[0].request.url.params["end_date"] == "2026-08-09"
+        assert archive.calls[0].request.url.params["start_date"] == "2026-07-21"
         # The forecast did not: it carries no date at all, only a count from now.
         assert "start_date" not in forecast.calls[0].request.url.params
         assert forecast.calls[0].request.url.params["forecast_days"] == "7"

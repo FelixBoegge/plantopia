@@ -440,18 +440,77 @@ describe("the weather chart's landmarks", () => {
       />,
     );
 
-    expect(screen.getByText(/Photographed on/)).toBeInTheDocument();
+    expect(screen.getByText(/when this was photographed/)).toBeInTheDocument();
   });
 
   it("says nothing about a capture date outside the window", () => {
     render(<Weather summary={SERIES} capturedOn="1999-01-01T09:00:00Z" />);
 
-    expect(screen.queryByText(/Photographed on/)).not.toBeInTheDocument();
+    // Not silent, though: a window with no day to mark still says what it covers.
+    expect(
+      screen.queryByText(/when this was photographed/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/The three weeks up to/)).toBeInTheDocument();
   });
 
   it("draws nothing extra when the camera said nothing", () => {
     render(<Weather summary={SERIES} />);
 
-    expect(screen.queryByText(/Photographed on/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/when this was photographed/),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("scales that can be compared between charts", () => {
+  function axisLabels(container: HTMLElement) {
+    return [...container.querySelectorAll("text")].map(
+      (node) => node.textContent,
+    );
+  }
+
+  it("uses the same standing scale for ordinary weather", () => {
+    // Two windows with different weather must draw against one scale, or a history becomes
+    // a row of pictures that cannot be compared with each other.
+    const mild = {
+      ...SERIES,
+      days: SERIES.days.map((d) => ({ ...d, min_temp_c: 8, max_temp_c: 18 })),
+    };
+    const warm = {
+      ...SERIES,
+      days: SERIES.days.map((d) => ({ ...d, min_temp_c: 14, max_temp_c: 26 })),
+    };
+
+    const first = render(<Weather summary={mild} />);
+    const second = render(<Weather summary={warm} />);
+
+    expect(axisLabels(first.container)).toEqual(axisLabels(second.container));
+  });
+
+  it("labels temperature in fives", () => {
+    const { container } = render(<Weather summary={SERIES} />);
+
+    expect(axisLabels(container)).toEqual(
+      expect.arrayContaining(["0°", "5°", "10°", "15°", "20°", "25°", "30°"]),
+    );
+  });
+
+  it("grows by whole steps rather than clipping a hot day", () => {
+    const hot = {
+      ...SERIES,
+      days: SERIES.days.map((d) => ({ ...d, max_temp_c: 38 })),
+    };
+
+    const { container } = render(<Weather summary={hot} />);
+
+    expect(axisLabels(container)).toEqual(expect.arrayContaining(["40°"]));
+  });
+
+  it("labels rainfall in tens", () => {
+    const { container } = render(<Weather summary={SERIES} />);
+
+    expect(axisLabels(container)).toEqual(
+      expect.arrayContaining(["0", "10", "20", "30"]),
+    );
   });
 });

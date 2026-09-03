@@ -21,10 +21,47 @@ import type { WeatherSummary } from "@/api/types";
 const FROST_C = 0;
 const HEAT_C = 32;
 
+// **The scales are fixed, not fitted to each chart.** A chart scaled to its own data reads
+// as if every August were the same August: two windows with different weather draw the same
+// shape, and a plant's history becomes a row of pictures that cannot be compared with each
+// other, which is the one thing a history is for.
+//
+// So both axes start from a standing range with round ticks, and grow by whole steps only
+// when a reading falls outside. Most charts therefore share one scale, and the ones that do
+// not say so plainly with a different top number rather than lying quietly.
+const TEMP_STEP = 5;
+const TEMP_FLOOR = 0;
+const TEMP_CEILING = 30;
+const RAIN_STEP = 10;
+const RAIN_CEILING = 30;
+
+/** The lowest multiple of `step` at or below `value`. */
+function down(value: number, step: number): number {
+  return Math.floor(value / step) * step;
+}
+
+/** The lowest multiple of `step` at or above `value`. */
+function up(value: number, step: number): number {
+  return Math.ceil(value / step) * step;
+}
+
+/** Every tick from `from` to `to`, inclusive, `step` apart. */
+function ticks(from: number, to: number, step: number): number[] {
+  const marks: number[] = [];
+  for (let value = from; value <= to; value += step) marks.push(value);
+  return marks;
+}
+
 /** Chart geometry, in user units. The viewBox scales it; nothing here is pixels. */
 const WIDTH = 320;
 const HEIGHT = 90;
 const PAD = 4;
+
+// Room on the flanks for the two scales. Temperature reads on the left and rainfall on the
+// right, because they are different units on one picture and a single axis would invite
+// reading a millimetre off the degree scale.
+const GUTTER_LEFT = 26;
+const GUTTER_RIGHT = 24;
 
 export function Weather({
   summary,
@@ -53,15 +90,20 @@ export function Weather({
 
   const lows = days.map((day) => day.min_temp_c);
   const highs = days.map((day) => day.max_temp_c);
-  const floor = Math.min(...lows, FROST_C);
-  const ceiling = Math.max(...highs);
+  const floor = Math.min(down(Math.min(...lows), TEMP_STEP), TEMP_FLOOR);
+  const ceiling = Math.max(up(Math.max(...highs), TEMP_STEP), TEMP_CEILING);
   const span = ceiling - floor || 1;
-  const rain = Math.max(...days.map((day) => day.precip_mm), 1);
+  const rain = Math.max(
+    up(Math.max(...days.map((day) => day.precip_mm)), RAIN_STEP),
+    RAIN_CEILING,
+  );
 
+  const left = GUTTER_LEFT + PAD;
+  const right = WIDTH - GUTTER_RIGHT - PAD;
   const x = (index: number) =>
     days.length === 1
-      ? WIDTH / 2
-      : PAD + (index * (WIDTH - 2 * PAD)) / (days.length - 1);
+      ? (left + right) / 2
+      : left + (index * (right - left)) / (days.length - 1);
   const y = (value: number) =>
     HEIGHT - PAD - ((value - floor) / span) * (HEIGHT - 2 * PAD);
 
@@ -98,10 +140,41 @@ export function Weather({
             className="fill-sky-400/50"
           />
         ))}
+        {/* The scales. Three labels each: nothing between them has to be read precisely,
+            and the table below carries every exact value anyway. */}
+        {ticks(floor, ceiling, TEMP_STEP).map((value) => (
+          <text
+            key={`t${value}`}
+            x={GUTTER_LEFT - 4}
+            y={y(value) + 3}
+            textAnchor="end"
+            className="fill-orange-600 text-[9px]"
+          >
+            {value}°
+          </text>
+        ))}
+        {ticks(0, rain, RAIN_STEP).map((value) => (
+          <text
+            key={`r${value}`}
+            x={WIDTH - GUTTER_RIGHT + 4}
+            y={HEIGHT - PAD - (value / rain) * (HEIGHT / 3) + 3}
+            className="fill-sky-600 text-[9px]"
+          >
+            {value}
+          </text>
+        ))}
+        <text
+          x={WIDTH - GUTTER_RIGHT + 4}
+          y={9}
+          className="fill-sky-600 text-[8px]"
+        >
+          mm
+        </text>
+
         {floor <= FROST_C && ceiling >= FROST_C ? (
           <line
-            x1={0}
-            x2={WIDTH}
+            x1={GUTTER_LEFT}
+            x2={WIDTH - GUTTER_RIGHT}
             y1={y(FROST_C)}
             y2={y(FROST_C)}
             className="stroke-muted-foreground/40"
@@ -147,17 +220,19 @@ export function Weather({
         ) : null}
       </svg>
 
-      {captured >= 0 || today >= 0 ? (
-        <p className="text-muted-foreground text-xs">
-          {captured >= 0
-            ? `Photographed on ${asDate(days[captured]!.on)}.`
-            : null}
-          {captured >= 0 && today >= 0 && today !== captured ? " " : null}
-          {today >= 0 && today !== captured
-            ? "The dashed line is today."
-            : null}
-        </p>
-      ) : null}
+      <p className="text-muted-foreground text-xs">
+        {/* Said in words as well as drawn, because the chart is decorative and a mark
+            nobody can read is not information.
+
+            The fallback carries more weight than it looks: every window stored before
+            the capture day was included ends the day *before* the photograph, so those
+            charts have no day to mark and would otherwise say nothing about what they
+            cover. */}
+        {captured >= 0
+          ? `The solid line is ${asDate(days[captured]!.on)}, when this was photographed.`
+          : `The three weeks up to ${asDate(days.at(-1)!.on)}, before this was photographed.`}
+        {today >= 0 && today !== captured ? " The dashed line is today." : null}
+      </p>
 
       <table className="sr-only">
         <caption>Daily weather while this plant was photographed</caption>

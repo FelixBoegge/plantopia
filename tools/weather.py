@@ -25,6 +25,9 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 # A week. Long enough to matter to a treatment plan whose steps carry a day offset, short
 # enough that the far end is still worth reading.
+#
+# `DAYS_AFTER` is how far past the photograph the history reaches, matching the forecast's
+# length so that the two together always cover the same span either side of the picture.
 FORECAST_DAYS = 7
 
 FROST_THRESHOLD_C = 0.0
@@ -104,6 +107,9 @@ def _geocode(client: httpx.Client, location: str) -> tuple[float, float] | None:
     return float(results[0]["latitude"]), float(results[0]["longitude"])
 
 
+DAYS_AFTER = 7
+
+
 def _fetch_archive(
     client: httpx.Client,
     latitude: float,
@@ -112,18 +118,32 @@ def _fetch_archive(
     days_back: int,
     as_of: date | None = None,
 ) -> WeatherSummary | None:
-    """The window ending the day before ``as_of``, or the day before today.
+    """The window ending on the day of ``as_of``, or as close to it as the archive reaches.
 
     ``as_of`` is when the photograph was taken. A plant photographed on Sunday and uploaded
     on Wednesday was not standing in Monday's and Tuesday's weather when the picture was
     made, and diagnosing it against three days it never had is a wrong answer nothing
     downstream can question — the two dates are indistinguishable once the file is stored.
 
-    The day before, in both cases: the archive lags roughly a day, and asking for today
+    **The day of the photograph is included where the archive has it**, which it does for
+    anything but the last day or two: that day is the one the plant's state is actually
+    evidence about, and leaving it out meant a chart that could not mark the moment it was
+    drawn for. It used to be excluded unconditionally, which protected the one case that
+    needs it — a photograph taken today — at the cost of every case that does not.
+
+    **And the week after it, where that week has already happened.** A photograph diagnosed
+    three weeks later has a fortnight of recorded weather after it that is every bit as real
+    as the weather before, and it is the half that says whether things got better. Where
+    those days are still in the future they are simply absent here; the forecast covers them
+    instead.
+
+    Never past yesterday, in any case: the archive lags roughly a day, and asking for today
     returns a row of nulls that the aggregates then average.
     """
-    end = (as_of or datetime.now(tz=UTC).date()) - timedelta(days=1)
-    start = end - timedelta(days=days_back - 1)
+    yesterday = datetime.now(tz=UTC).date() - timedelta(days=1)
+    taken = min(as_of or yesterday, yesterday)
+    start = taken - timedelta(days=days_back - 1)
+    end = min(taken + timedelta(days=DAYS_AFTER), yesterday)
 
     response = client.get(
         ARCHIVE_URL,

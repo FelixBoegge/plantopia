@@ -26,6 +26,8 @@ export type TimelineEvent =
       kind: "observation";
       id: string;
       at: string;
+      /** When the photographs were taken, which is not always when they were diagnosed. */
+      photographedAt: string;
       /** Whether the date above is when the photograph was taken or only when it arrived. */
       dated: "captured" | "uploaded";
       observation: Observation;
@@ -133,9 +135,13 @@ export function timelineOf({
   steps: RoadmapStep[];
   messages?: Message[];
 }): TimelineEvent[] {
-  // Each diagnosis joins the observation it read. Dated by the photographs rather than by
-  // the run: the history is the plant's, and it should read in the order the plant lived
-  // it, not the order somebody got round to asking about it.
+  // Each diagnosis joins the observation it read, and the pair is dated by the *run*.
+  //
+  // Not by the photographs, which was the first attempt. Both orderings are defensible —
+  // one is the plant's biography, the other is the record of what was asked and when — and
+  // the deciding case is diagnosing an old photograph: by capture date that entry drops
+  // below one diagnosed before it, which reads as the list rearranging itself behind you.
+  // An observation with no diagnosis has only its own date to go on.
   const readings = new Map(diagnoses.map((diagnosis) => [diagnosis.observation_id, diagnosis]));
   const attached = new Set<string>();
 
@@ -144,7 +150,17 @@ export function timelineOf({
       const { at, dated } = observedAt(observation);
       const diagnosis = readings.get(observation.id) ?? null;
       if (diagnosis) attached.add(diagnosis.id);
-      return { kind: "observation", id: observation.id, at, dated, observation, diagnosis };
+      return {
+        kind: "observation",
+        id: observation.id,
+        at: diagnosis?.created_at ?? at,
+        // `at` above orders the list; this is when the shutter went, which the entry shows
+        // beside the photographs and which is frequently a different day.
+        photographedAt: at,
+        dated,
+        observation,
+        diagnosis,
+      };
     }),
     // A diagnosis whose observation is not in this list still belongs in the history.
     // Nothing may disappear because two records failed to find each other.
