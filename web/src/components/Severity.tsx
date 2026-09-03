@@ -7,6 +7,13 @@
  *
  * One component, used everywhere a severity appears, so that this is a property of a thing
  * with a test rather than a rule each screen has to remember.
+ *
+ * **The dark palette is light, not dark.** The obvious dark-mode badge is a very dark tint
+ * of its hue — `amber-950`, `red-950` — and on this theme's near-black page those read as
+ * two slightly different dark rectangles: neither legible at a glance nor distinguishable
+ * from each other, which is the whole job. So dark mode uses a *brighter* fill with dark
+ * ink on it, and the three levels step up in weight — neutral, amber, red — so urgency is
+ * carried by how much the badge asserts itself and not by hue alone.
  */
 
 const LABELS: Record<string, { text: string; className: string }> = {
@@ -17,11 +24,11 @@ const LABELS: Record<string, { text: string; className: string }> = {
   act_this_week: {
     text: "Act this week",
     className:
-      "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100",
+      "bg-amber-200 text-amber-950 dark:bg-amber-300 dark:text-amber-950",
   },
   act_today: {
     text: "Act today",
-    className: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-100",
+    className: "bg-red-200 text-red-950 dark:bg-red-400 dark:text-red-950",
   },
 };
 

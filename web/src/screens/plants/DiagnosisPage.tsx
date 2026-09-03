@@ -39,6 +39,16 @@ export function DiagnosisPage() {
 
   return (
     <div className="grid gap-6">
+      {/* Above the result, not below it. A diagnosis runs to a differential, a plan and an
+          activity log, and a way back that only appears after all of it is a way back
+          somebody has to scroll to find. */}
+      <Link
+        to={`/plants/${data.diagnosis.plant_id}`}
+        className="text-muted-foreground w-fit text-sm underline underline-offset-4"
+      >
+        Back to this plant
+      </Link>
+
       <Differential detail={data} />
 
       {/* Only when there is something to show. Every diagnosis reached before any of this
@@ -58,13 +68,6 @@ export function DiagnosisPage() {
           </ol>
         </section>
       ) : null}
-
-      <Link
-        to={`/plants/${data.diagnosis.plant_id}`}
-        className="text-sm underline underline-offset-4"
-      >
-        Back to this plant
-      </Link>
     </div>
   );
 }

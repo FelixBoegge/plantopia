@@ -227,8 +227,9 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
             </Notice>
           ) : null}
 
-          {detail ? <Differential detail={detail} /> : null}
-
+          {/* Above the result rather than after it. A finished diagnosis is a differential,
+              a plan and a set of candidates; putting the way onward at the end of all that
+              hides it behind a scroll from the moment it becomes useful. */}
           {over ? (
             <div className="flex gap-2">
               {(ending?.plantId ?? run?.plant_id) ? (
@@ -244,6 +245,8 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
               </Button>
             </div>
           ) : null}
+
+          {detail ? <Differential detail={detail} /> : null}
         </div>
       </div>
     </div>
