@@ -103,12 +103,25 @@
    So the PNG is used for its alpha alone and the colour comes from `currentColor` — the
    very dark green the light theme already uses for text, and the pale ink the dark theme
    uses. One asset, both themes, and it follows the palette if the palette changes. */
-.logo-mark {
+.logo-mark,
+.logo-lockup {
   background-color: currentColor;
-  mask-image: url("/logo-mark.png");
   mask-size: contain;
   mask-repeat: no-repeat;
   mask-position: center;
+}
+
+/* The mark alone, square, for places that sit beside a word already saying "Plantopia". */
+.logo-mark {
+  mask-image: url("/logo-mark.png");
+}
+
+/* Mark and wordmark together, as the artwork was drawn.
+   A mask has no intrinsic size, so the ratio lives here by hand and has to match the file.
+   `design/extract_logo_assets.py` prints the value to use whenever it regenerates. */
+.logo-lockup {
+  aspect-ratio: 640 / 604;
+  mask-image: url("/logo-lockup.png");
 }
 
 @theme inline {
