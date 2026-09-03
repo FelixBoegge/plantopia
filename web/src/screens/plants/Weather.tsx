@@ -61,7 +61,7 @@ const PAD = 4;
 // right, because they are different units on one picture and a single axis would invite
 // reading a millimetre off the degree scale.
 const GUTTER_LEFT = 26;
-const GUTTER_RIGHT = 24;
+const GUTTER_RIGHT = 34;
 
 export function Weather({
   summary,
@@ -165,18 +165,9 @@ export function Weather({
             textAnchor="middle"
             className="fill-sky-600 text-[9px]"
           >
-            {value}
+            {value} mm
           </text>
         ))}
-        <text
-          x={WIDTH - GUTTER_RIGHT / 2}
-          y={9}
-          textAnchor="middle"
-          className="fill-sky-600 text-[8px]"
-        >
-          mm
-        </text>
-
         {floor <= FROST_C && ceiling >= FROST_C ? (
           <line
             x1={GUTTER_LEFT}

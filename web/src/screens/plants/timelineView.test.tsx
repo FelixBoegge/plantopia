@@ -506,11 +506,13 @@ describe("scales that can be compared between charts", () => {
     expect(axisLabels(container)).toEqual(expect.arrayContaining(["40°"]));
   });
 
-  it("labels rainfall in tens", () => {
+  it("labels rainfall in tens, each carrying its unit", () => {
+    // The unit rides on every tick, as the degree sign does, rather than sitting once at
+    // the top of the axis where it reads as a label for the chart instead of for the scale.
     const { container } = render(<Weather summary={SERIES} />);
 
     expect(axisLabels(container)).toEqual(
-      expect.arrayContaining(["0", "10", "20", "30"]),
+      expect.arrayContaining(["0 mm", "10 mm", "20 mm", "30 mm"]),
     );
   });
 });

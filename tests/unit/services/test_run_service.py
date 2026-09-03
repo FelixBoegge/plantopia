@@ -230,6 +230,33 @@ class TestWhatARunInheritsFromItsPlant:
 
         assert state.location_text is None
 
+    def test_a_run_on_a_known_plant_inherits_its_species(self, service, db, owner, sample_images):
+        """Re-identifying a plant already on record costs a vision call and a Pl@ntNet call
+        to arrive at an answer the database already holds — about ten seconds of a run
+        somebody is watching, to learn nothing."""
+        plant_id = self._plant(db, owner)
+
+        state = service.state_for(
+            StartRequest(images=sample_images, location_kind="outdoor", plant_id=plant_id)
+        )
+
+        assert state.species is not None
+        assert state.species.common_name == "Fragaria x ananassa"
+
+    def test_a_plant_that_was_never_identified_is_identified_now(
+        self, service, db, owner, sample_images
+    ):
+        """Left unset rather than filled with a placeholder: the placeholder satisfies both
+        the node's guard and the router's skip, so such a plant could never acquire a
+        species however many times it was re-checked."""
+        plant_id = self._plant(db, owner, species=None, species_confidence=None)
+
+        state = service.state_for(
+            StartRequest(images=sample_images, location_kind="outdoor", plant_id=plant_id)
+        )
+
+        assert state.species is None
+
     def test_a_first_diagnosis_has_no_plant_to_inherit_from(self, service, sample_images):
         state = service.state_for(
             StartRequest(images=sample_images, location_kind="outdoor", plant_name="New one")

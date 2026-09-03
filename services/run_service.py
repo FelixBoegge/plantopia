@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from agent.schemas import ImageRef, Question
+from agent.schemas import ImageRef, Question, SpeciesGuess
 from agent.state import DiagnosisState
 from agent.threads import diagnosis_thread
 from core.config import Settings
@@ -126,13 +126,39 @@ class RunService:
         this photograph; the plant's record is about where it usually lives, and the
         specific one should not lose to the general.
 
-        Only the location. The species and whether it lives indoors are already sent by the
-        form, which reads them off the same record.
+        **And its species**, which is what stops a re-check identifying a plant the database
+        already knows. Without it every re-check spent a vision call and a Pl@ntNet call —
+        about ten seconds of a run somebody is watching — to arrive at an answer already on
+        record. The graph has always been able to skip that step; it reads `species` to
+        decide, and nothing on this path was setting it.
+
+        A plant that was never successfully identified inherits nothing and is identified
+        again. Filling the field with a placeholder would satisfy both the node's guard and
+        the router's skip, so such a plant could never acquire a species however many times
+        it was re-checked.
+
+        Whether it lives indoors is not inherited here: the form already sends it, read off
+        this same record.
         """
+        known = (
+            self._plants.get(self._user_id, request.plant_id)
+            if request.plant_id is not None
+            else None
+        )
+
         location_text = request.location_text
-        if location_text is None and request.plant_id is not None:
-            known = self._plants.get(self._user_id, request.plant_id)
-            location_text = known.location_text if known else None
+        if location_text is None and known is not None:
+            location_text = known.location_text
+
+        species = (
+            SpeciesGuess(
+                common_name=known.species,
+                scientific_name=None,
+                confidence=known.species_confidence or 0.0,
+            )
+            if known is not None and known.species is not None
+            else None
+        )
 
         return DiagnosisState(
             images=request.images,
@@ -145,6 +171,7 @@ class RunService:
             location_text=location_text,
             user_notes=request.user_notes,
             plant_id=request.plant_id,
+            species=species,
         )
 
     @property

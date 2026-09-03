@@ -44,17 +44,21 @@ export function Timeline({
         Plant history
       </h2>
 
+      {/* A rule between entries, not only space. An entry can run long — photographs, a
+          weather chart, a finding — and by the time somebody reaches the bottom of one it is
+          not obvious where the next begins. `divide-y` draws the line only between them,
+          never above the first or below the last. */}
       {events.length === 0 ? (
         <p className="text-muted-foreground">
           Nothing has happened to this plant yet. Once you run a diagnosis, what
           you saw and what Plantopia made of it will appear here.
         </p>
       ) : (
-        <ol className="grid gap-4">
+        <ol className="divide-border grid divide-y">
           {events.map((event, index) => (
             <li
               key={`${event.kind}:${event.id}`}
-              className="relative border-l-2 pl-4"
+              className="relative border-l-2 py-4 pl-4 first:pt-0 last:pb-0"
             >
               {/* Counted from the bottom, so the first thing that happened is 1 and an
                   entry's number never changes when a newer one appears above it. The list
