@@ -26,9 +26,30 @@ const WIDTH = 320;
 const HEIGHT = 90;
 const PAD = 4;
 
-export function Weather({ summary }: { summary: WeatherSummary }) {
+export function Weather({
+  summary,
+  capturedOn,
+}: {
+  summary: WeatherSummary;
+  /**
+   * When the photographs were taken, if the camera said.
+   *
+   * Marked on the chart because it is the only day in the window that the plant's state is
+   * actually evidence about — the rest is what led up to it. Without it a reader has three
+   * weeks of line and no idea which point the photograph belongs to.
+   */
+  capturedOn?: string | null;
+}) {
   const days = summary.days;
   if (days.length === 0) return null;
+
+  const onDay = (iso: string | null | undefined) => {
+    if (!iso) return -1;
+    const date = iso.slice(0, 10);
+    return days.findIndex((day) => day.on.slice(0, 10) === date);
+  };
+  const captured = onDay(capturedOn);
+  const today = onDay(new Date().toISOString());
 
   const lows = days.map((day) => day.min_temp_c);
   const highs = days.map((day) => day.max_temp_c);
@@ -38,15 +59,24 @@ export function Weather({ summary }: { summary: WeatherSummary }) {
   const rain = Math.max(...days.map((day) => day.precip_mm), 1);
 
   const x = (index: number) =>
-    days.length === 1 ? WIDTH / 2 : PAD + (index * (WIDTH - 2 * PAD)) / (days.length - 1);
-  const y = (value: number) => HEIGHT - PAD - ((value - floor) / span) * (HEIGHT - 2 * PAD);
+    days.length === 1
+      ? WIDTH / 2
+      : PAD + (index * (WIDTH - 2 * PAD)) / (days.length - 1);
+  const y = (value: number) =>
+    HEIGHT - PAD - ((value - floor) / span) * (HEIGHT - 2 * PAD);
 
   const path = (values: number[]) =>
-    values.map((value, index) => `${index === 0 ? "M" : "L"}${x(index)} ${y(value)}`).join(" ");
+    values
+      .map(
+        (value, index) => `${index === 0 ? "M" : "L"}${x(index)} ${y(value)}`,
+      )
+      .join(" ");
 
   return (
     <figure className="grid gap-1">
-      <figcaption className="text-muted-foreground text-sm">{summarise(summary)}</figcaption>
+      <figcaption className="text-muted-foreground text-sm">
+        {summarise(summary)}
+      </figcaption>
 
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -79,9 +109,55 @@ export function Weather({ summary }: { summary: WeatherSummary }) {
             strokeWidth={1}
           />
         ) : null}
-        <path d={path(highs)} fill="none" className="stroke-orange-500" strokeWidth={1.5} />
-        <path d={path(lows)} fill="none" className="stroke-blue-500" strokeWidth={1.5} />
+        <path
+          d={path(highs)}
+          fill="none"
+          className="stroke-orange-500"
+          strokeWidth={1.5}
+        />
+        <path
+          d={path(lows)}
+          fill="none"
+          className="stroke-blue-500"
+          strokeWidth={1.5}
+        />
+
+        {/* The two days worth finding by eye. Both are named in the caption as well, since
+            the chart is decorative and a mark nobody can read is not information. */}
+        {captured >= 0 ? (
+          <line
+            x1={x(captured)}
+            x2={x(captured)}
+            y1={0}
+            y2={HEIGHT}
+            className="stroke-primary"
+            strokeWidth={1.5}
+          />
+        ) : null}
+        {today >= 0 && today !== captured ? (
+          <line
+            x1={x(today)}
+            x2={x(today)}
+            y1={0}
+            y2={HEIGHT}
+            className="stroke-muted-foreground/70"
+            strokeDasharray="2 2"
+            strokeWidth={1}
+          />
+        ) : null}
       </svg>
+
+      {captured >= 0 || today >= 0 ? (
+        <p className="text-muted-foreground text-xs">
+          {captured >= 0
+            ? `Photographed on ${asDate(days[captured]!.on)}.`
+            : null}
+          {captured >= 0 && today >= 0 && today !== captured ? " " : null}
+          {today >= 0 && today !== captured
+            ? "The dashed line is today."
+            : null}
+        </p>
+      ) : null}
 
       <table className="sr-only">
         <caption>Daily weather while this plant was photographed</caption>
@@ -150,4 +226,12 @@ export function summarise(summary: WeatherSummary): string {
   parts.push(`${Math.round(rain * 10) / 10} mm of rain`);
 
   return parts.join(", ");
+}
+
+/** A date in the reader's own format, from the `YYYY-MM-DD` the series carries. */
+function asDate(on: string): string {
+  const when = new Date(`${on}T00:00:00`);
+  return Number.isNaN(when.valueOf())
+    ? on
+    : when.toLocaleDateString(undefined, { day: "numeric", month: "long" });
 }

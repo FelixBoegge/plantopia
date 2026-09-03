@@ -29,6 +29,15 @@ export type TimelineEvent =
       /** Whether the date above is when the photograph was taken or only when it arrived. */
       dated: "captured" | "uploaded";
       observation: Observation;
+      /**
+       * What was concluded from these photographs, once something was.
+       *
+       * The two travel together because they are one event in the plant's life, and they
+       * are dated by different clocks — the photographs by when they were taken, the
+       * diagnosis by when it ran. Listing them separately put a diagnosis of an August
+       * photograph at the top of the history and the photograph itself at the bottom.
+       */
+      diagnosis: Diagnosis | null;
     }
   | { kind: "diagnosis"; id: string; at: string; diagnosis: Diagnosis }
   | { kind: "step"; id: string; at: string; step: RoadmapStep }
@@ -124,19 +133,31 @@ export function timelineOf({
   steps: RoadmapStep[];
   messages?: Message[];
 }): TimelineEvent[] {
+  // Each diagnosis joins the observation it read. Dated by the photographs rather than by
+  // the run: the history is the plant's, and it should read in the order the plant lived
+  // it, not the order somebody got round to asking about it.
+  const readings = new Map(diagnoses.map((diagnosis) => [diagnosis.observation_id, diagnosis]));
+  const attached = new Set<string>();
+
   const events: TimelineEvent[] = [
     ...observations.map((observation): TimelineEvent => {
       const { at, dated } = observedAt(observation);
-      return { kind: "observation", id: observation.id, at, dated, observation };
+      const diagnosis = readings.get(observation.id) ?? null;
+      if (diagnosis) attached.add(diagnosis.id);
+      return { kind: "observation", id: observation.id, at, dated, observation, diagnosis };
     }),
-    ...diagnoses.map(
-      (diagnosis): TimelineEvent => ({
-        kind: "diagnosis",
-        id: diagnosis.id,
-        at: diagnosis.created_at,
-        diagnosis,
-      }),
-    ),
+    // A diagnosis whose observation is not in this list still belongs in the history.
+    // Nothing may disappear because two records failed to find each other.
+    ...diagnoses
+      .filter((diagnosis) => !attached.has(diagnosis.id))
+      .map(
+        (diagnosis): TimelineEvent => ({
+          kind: "diagnosis",
+          id: diagnosis.id,
+          at: diagnosis.created_at,
+          diagnosis,
+        }),
+      ),
     ...steps.flatMap((step): TimelineEvent[] => {
       const settled = steppedAt(step);
       return settled ? [{ kind: "step", id: step.id, at: settled.at, step }] : [];

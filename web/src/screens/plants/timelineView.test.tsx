@@ -382,3 +382,76 @@ describe("enlarging a photograph", () => {
     ).toHaveFocus();
   });
 });
+
+describe("a diagnosis and its photographs as one entry", () => {
+  it("draws the finding inside the observation it was made from", () => {
+    // Two entries put an August photograph at the bottom of the history and the diagnosis
+    // of it at the top, with another run's photographs in between.
+    timeline({
+      observations: [
+        observation({
+          id: "obs-1",
+          captured_at: "2026-08-14T09:00:00Z",
+          photo_refs: ["p"],
+        }),
+      ],
+      diagnoses: [
+        diagnosis({
+          id: "diag-1",
+          observation_id: "obs-1",
+          created_at: "2026-09-03T09:00:00Z",
+        }),
+      ],
+    });
+
+    const [entry] = screen.getAllByRole("article");
+    expect(within(entry!).getByText(/photographed/i)).toBeInTheDocument();
+    expect(within(entry!).getByText("Diagnosed")).toBeInTheDocument();
+    expect(
+      within(entry!).getByRole("link", { name: "See this diagnosis" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the verdict with the finding", () => {
+    timeline({
+      observations: [observation({ id: "obs-1" })],
+      diagnoses: [
+        diagnosis({
+          id: "diag-1",
+          observation_id: "obs-1",
+          progress_verdict: "improving",
+        }),
+      ],
+    });
+
+    expect(
+      screen.getByText(/Improving since the last diagnosis/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("the weather chart's landmarks", () => {
+  it("names the day the photographs were taken", () => {
+    // Twenty-one points of line, and only one of them is the day the plant was looked at.
+    render(
+      <Weather
+        summary={SERIES}
+        capturedOn={`${SERIES.days[1]!.on}T09:00:00Z`}
+      />,
+    );
+
+    expect(screen.getByText(/Photographed on/)).toBeInTheDocument();
+  });
+
+  it("says nothing about a capture date outside the window", () => {
+    render(<Weather summary={SERIES} capturedOn="1999-01-01T09:00:00Z" />);
+
+    expect(screen.queryByText(/Photographed on/)).not.toBeInTheDocument();
+  });
+
+  it("draws nothing extra when the camera said nothing", () => {
+    render(<Weather summary={SERIES} />);
+
+    expect(screen.queryByText(/Photographed on/)).not.toBeInTheDocument();
+  });
+});

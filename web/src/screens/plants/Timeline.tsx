@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { Diagnosis, Message, Observation, RoadmapStep } from "@/api/types";
 import { Photo } from "@/components/Photo";
 import { PhotoViewer } from "@/components/PhotoViewer";
+import { Verdict } from "@/components/Verdict";
 import { Weather } from "@/screens/plants/Weather";
 import {
   seriesOf,
@@ -131,7 +132,21 @@ function ObservationEvent({
 
       {observation.user_notes ? <p>{observation.user_notes}</p> : null}
 
-      {series ? <Weather summary={series} /> : null}
+      {series ? (
+        <Weather summary={series} capturedOn={observation.captured_at} />
+      ) : null}
+
+      {/* Inside the same article, because the diagnosis is what these photographs came to
+          mean. Its own date is shown with it: the two differ whenever somebody diagnoses a
+          photograph they took weeks ago, which is the case that scattered this list. */}
+      {event.diagnosis ? (
+        <div className="border-border mt-1 grid gap-1 border-t pt-3">
+          <Finding
+            diagnosis={event.diagnosis}
+            at={event.diagnosis.created_at}
+          />
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -141,12 +156,22 @@ function DiagnosisEvent({
 }: {
   event: Extract<TimelineEvent, { kind: "diagnosis" }>;
 }) {
-  const { diagnosis } = event;
+  // Only reached by a diagnosis whose observation is missing from the list. The ordinary
+  // case is drawn inside the observation above.
+  return (
+    <article className="grid gap-1">
+      <Finding diagnosis={event.diagnosis} at={event.at} />
+    </article>
+  );
+}
+
+function Finding({ diagnosis, at }: { diagnosis: Diagnosis; at: string }) {
   const leading = diagnosis.candidates[0];
 
   return (
-    <article className="grid gap-1">
-      <Heading label="Diagnosed" at={event.at} />
+    <>
+      <Heading label="Diagnosed" at={at} />
+      <Verdict verdict={diagnosis.progress_verdict} />
       <p>
         {diagnosis.is_healthy
           ? "Nothing wrong was found."
@@ -164,7 +189,7 @@ function DiagnosisEvent({
       >
         See this diagnosis
       </Link>
-    </article>
+    </>
   );
 }
 

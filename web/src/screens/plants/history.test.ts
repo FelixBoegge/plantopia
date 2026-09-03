@@ -316,3 +316,70 @@ describe("the merged timeline", () => {
     expect(once.map((event) => event.id)).toEqual(twice.map((event) => event.id));
   });
 });
+
+describe("a diagnosis and the photographs it read", () => {
+  /**
+   * They are one event in a plant's life and used to be two in this list, because they are
+   * dated by different clocks: an observation by when the photograph was taken, a diagnosis
+   * by when it ran. Diagnosing an August photograph today put the two at opposite ends of
+   * the history, with a second run's photographs in between.
+   */
+  it("bundles a diagnosis into the observation it read", () => {
+    const events = timelineOf({
+      observations: [observation({ id: "obs-1", captured_at: "2026-08-14T09:00:00Z" })],
+      diagnoses: [
+        diagnosis({
+          id: "diag-1",
+          observation_id: "obs-1",
+          created_at: "2026-09-03T09:00:00Z",
+        }),
+      ],
+      steps: [],
+    });
+
+    expect(events).toHaveLength(1);
+    const [only] = events;
+    expect(only?.kind).toBe("observation");
+    expect(only?.kind === "observation" && only.diagnosis?.id).toBe("diag-1");
+  });
+
+  it("orders the bundles by when the plant was photographed", () => {
+    // Two runs today, one on August photographs and one on September's. The plant's history
+    // is the plant's, so it reads in the order the plant lived it.
+    const events = timelineOf({
+      observations: [
+        observation({ id: "obs-old", captured_at: "2026-08-14T09:00:00Z" }),
+        observation({ id: "obs-new", captured_at: "2026-09-02T09:00:00Z" }),
+      ],
+      diagnoses: [
+        diagnosis({ id: "d-old", observation_id: "obs-old", created_at: "2026-09-03T09:00:00Z" }),
+        diagnosis({ id: "d-new", observation_id: "obs-new", created_at: "2026-09-03T10:00:00Z" }),
+      ],
+      steps: [],
+    });
+
+    expect(events.map((event) => event.id)).toEqual(["obs-new", "obs-old"]);
+  });
+
+  it("keeps an observation that has no diagnosis yet", () => {
+    const events = timelineOf({
+      observations: [observation({ id: "obs-1" })],
+      diagnoses: [],
+      steps: [],
+    });
+
+    const [only] = events;
+    expect(only?.kind === "observation" && only.diagnosis).toBeNull();
+  });
+
+  it("keeps a diagnosis whose observation is not here", () => {
+    // Nothing may disappear from a history because two records failed to find each other.
+    const events = timelineOf({
+      observations: [],
+      diagnoses: [diagnosis({ id: "orphan", observation_id: "obs-missing" })],
+      steps: [],
+    });
+
+    expect(events.map((event) => event.kind)).toEqual(["diagnosis"]);
+  });
+});
