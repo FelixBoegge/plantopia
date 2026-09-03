@@ -103,9 +103,11 @@ test("shows the finished diagnosis on the plant it created", async ({ page }) =>
 test("asks which plant it is when the methods disagree, and takes the answer", async ({
   page,
 }) => {
-  // The scripted vision model says "Basil"; the scripted second opinion says "Thai basil"
-  // and "Holy basil". A disagreement is the case the choice screen exists for, so it is the
-  // one the browser walks through.
+  // The scripted vision model says "Basil"; the scripted second opinion returns "Thai
+  // basil" leading "Holy basil". Only the leading answer is ever offered — one vote per
+  // method — so "Holy basil" never reaches the screen. A disagreement between the two
+  // methods that remain is the case the choice screen exists for, and the one the browser
+  // walks through.
   await signUp(page, "chooses");
 
   await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
@@ -118,8 +120,11 @@ test("asks which plant it is when the methods disagree, and takes the answer", a
 
   // How each answer was reached, in words, and the credit its terms require.
   await expect(page.getByText("Read from your photo")).toBeVisible();
-  // Two, because the specialist returned two candidates and each says where it came from.
-  await expect(page.getByText(/Matched against a plant database/)).toHaveCount(2);
+  // One, not two: the specialist's response carried two candidates and only the leading
+  // one is offered, which is what stopped this screen showing three rows with two of them
+  // reading identically.
+  await expect(page.getByText(/Matched against a plant database/)).toHaveCount(1);
+  await expect(page.getByText("Holy basil")).toHaveCount(0);
   await expect(page.getByText(/powered by Pl@ntNet/i)).toBeVisible();
 
   // Confidence in words, never as a bare number.

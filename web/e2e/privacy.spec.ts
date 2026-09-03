@@ -38,13 +38,13 @@ test("an account can be deleted, and only with both confirmations", async ({ pag
   await expect(warning).toContainText(/conversation/i);
 
   // The wrong password is refused, and the account survives it.
-  await page.getByLabel("Your password").fill("not-the-password");
+  await page.getByLabel("Your password", { exact: true }).fill("not-the-password");
   await page.getByLabel(/to confirm/i).fill("delete my account");
   await page.getByRole("button", { name: "Delete everything" }).click();
   await expect(page.getByText(/password is not correct/i)).toBeVisible();
 
   // So is the right password without the phrase.
-  await page.getByLabel("Your password").fill(PASSWORD);
+  await page.getByLabel("Your password", { exact: true }).fill(PASSWORD);
   await page.getByLabel(/to confirm/i).fill("yes");
   await page.getByRole("button", { name: "Delete everything" }).click();
   await expect(page.getByText(/confirmation phrase does not match/i)).toBeVisible();
@@ -61,7 +61,7 @@ test("an account can be deleted, and only with both confirmations", async ({ pag
 
   // And the credentials no longer work — refused the same way an unknown address is.
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page.getByRole("alert")).toBeVisible();

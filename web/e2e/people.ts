@@ -59,7 +59,7 @@ export async function signUp(page: Page, label = "someone"): Promise<string> {
 
   await page.goto("/register");
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Create account" }).click();
 
@@ -68,7 +68,7 @@ export async function signUp(page: Page, label = "someone"): Promise<string> {
   await page.getByRole("link", { name: /sign in/i }).click();
 
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("heading", { name: "Your plants" }).waitFor();
 

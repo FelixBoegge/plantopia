@@ -64,7 +64,7 @@ test("announces the lookup before the reply arrives", async ({ page }) => {
 
   // While it is working, and in words — not a spinner. This is the half a person can act
   // on: it says the answer is being built from the reference rather than from memory.
-  await expect(announcement).toContainText("the disorder reference", {
+  await expect(announcement).toContainText("disorder reference", {
     timeout: 60_000,
   });
 
@@ -92,7 +92,7 @@ test("keeps what a reply consulted, on the reply", async ({ page }) => {
   await page.reload();
 
   await expect(page.getByText(/Let the top third dry out/)).toBeVisible();
-  await expect(page.getByText("the disorder reference")).toBeVisible();
+  await expect(page.getByText("disorder reference")).toBeVisible();
 });
 
 test("announces the weather lookup, and answers from what the diagnosis saw", async ({
@@ -123,6 +123,11 @@ test("announces the weather lookup, and answers from what the diagnosis saw", as
   await page.getByRole("link", { name: "Plantopia" }).click();
   await page.getByText("Basil").first().click();
   await page.getByRole("heading", { name: "Basil" }).waitFor();
+
+  // The conversation is its own page now, reached from the plant rather than sitting
+  // beside it — the same step `aPlantWithADiagnosis` takes above.
+  await page.getByRole("link", { name: "Chat about this plant" }).click();
+  await page.getByLabel("Your question").waitFor();
 
   const announcement = page
     .getByRole("region", { name: "Ask about this plant" })

@@ -16,7 +16,7 @@ test("registers, verifies and signs in", async ({ page }) => {
 
   await page.goto("/register");
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Create account" }).click();
 
@@ -33,7 +33,7 @@ test("registers, verifies and signs in", async ({ page }) => {
 
   await page.getByRole("link", { name: /sign in/i }).click();
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page.getByRole("heading", { name: "Your plants" })).toBeVisible();
@@ -47,7 +47,7 @@ test("refuses a link that has already been used", async ({ page }) => {
 
   await page.goto("/register");
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Create account" }).click();
 
@@ -67,14 +67,14 @@ test("keeps somebody signed in across a reload", async ({ page }) => {
 
   await page.goto("/register");
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Create account" }).click();
   await page.goto(pathOf(await linkSentTo(address, page)));
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(address);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Your plants" })).toBeVisible();
 
