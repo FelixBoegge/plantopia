@@ -169,3 +169,70 @@ def test_a_typed_species_reaches_the_graphs_state(service, sample_images, db, mo
     )
 
     assert seen[0].stated_species == "Ocimum basilicum"
+
+
+class TestWhatARunInheritsFromItsPlant:
+    """Re-diagnosing a plant should not lose what that plant already knows.
+
+    A re-check skips the questions pause — roadmap-step completion answers what it would
+    otherwise ask — so nothing on the way in supplies a location. The upload form has no
+    location field either. Without this, an outdoor plant with a town on its record produced
+    a run that believed it had no location, and the weather lookup, which needs one, quietly
+    returned nothing: a first diagnosis with a weather graph and every re-check after it
+    without one.
+    """
+
+    def _plant(self, db, owner, **overrides):
+        fields = {
+            "name": "Garden strawberry",
+            "species": "Fragaria x ananassa",
+            "species_confidence": 0.9,
+            "location_kind": "outdoor",
+            "location_text": "Frankfurt am Main",
+            "photo_ref": None,
+            "now": datetime.now(UTC),
+        } | overrides
+        plant_id = PlantRepository(db).create(owner, **fields)
+        db.commit()
+        return plant_id
+
+    def test_a_run_on_a_known_plant_inherits_its_location(self, service, db, owner, sample_images):
+        plant_id = self._plant(db, owner)
+
+        state = service.state_for(
+            StartRequest(images=sample_images, location_kind="outdoor", plant_id=plant_id)
+        )
+
+        assert state.location_text == "Frankfurt am Main"
+
+    def test_what_the_request_carries_wins(self, service, db, owner, sample_images):
+        """A photograph that says where it was taken is about this photograph; the plant's
+        record is about where it usually lives. The specific one wins."""
+        plant_id = self._plant(db, owner)
+
+        state = service.state_for(
+            StartRequest(
+                images=sample_images,
+                location_kind="outdoor",
+                plant_id=plant_id,
+                location_text="Offenbach am Main",
+            )
+        )
+
+        assert state.location_text == "Offenbach am Main"
+
+    def test_a_plant_with_no_location_inherits_nothing(self, service, db, owner, sample_images):
+        plant_id = self._plant(db, owner, location_kind="indoor", location_text=None)
+
+        state = service.state_for(
+            StartRequest(images=sample_images, location_kind="indoor", plant_id=plant_id)
+        )
+
+        assert state.location_text is None
+
+    def test_a_first_diagnosis_has_no_plant_to_inherit_from(self, service, sample_images):
+        state = service.state_for(
+            StartRequest(images=sample_images, location_kind="outdoor", plant_name="New one")
+        )
+
+        assert state.location_text is None

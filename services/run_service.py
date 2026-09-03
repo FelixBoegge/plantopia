@@ -112,6 +112,41 @@ class RunService:
         self._build_graph = build_graph
         self._session_factory = session_factory
 
+    def state_for(self, request: StartRequest) -> DiagnosisState:
+        """The state a run starts from, including what its plant already knows.
+
+        **A run that names a plant inherits that plant's location.** Nothing else supplies
+        one: a re-check skips the questions pause, because roadmap-step completion answers
+        what it would otherwise ask, and the upload form has no location field. So an
+        outdoor plant with a town on its record produced a run that believed it had none,
+        and the weather lookup — which needs one — returned nothing. The symptom was a first
+        diagnosis with a weather graph and every re-check after it without one.
+
+        What the request carries wins. A photograph that says where it was taken is about
+        this photograph; the plant's record is about where it usually lives, and the
+        specific one should not lose to the general.
+
+        Only the location. The species and whether it lives indoors are already sent by the
+        form, which reads them off the same record.
+        """
+        location_text = request.location_text
+        if location_text is None and request.plant_id is not None:
+            known = self._plants.get(self._user_id, request.plant_id)
+            location_text = known.location_text if known else None
+
+        return DiagnosisState(
+            images=request.images,
+            plant_name=request.plant_name,
+            stated_species=request.stated_species,
+            captured_at=request.captured_at,
+            latitude=request.latitude,
+            longitude=request.longitude,
+            location_kind=request.location_kind,
+            location_text=location_text,
+            user_notes=request.user_notes,
+            plant_id=request.plant_id,
+        )
+
     @property
     def user_id(self) -> UUID:
         """Whose runs these are. Read by the upload handler, which stores photographs
@@ -145,20 +180,12 @@ class RunService:
                 now=self._now(),
             )
 
-        state = DiagnosisState(
-            images=request.images,
-            plant_name=request.plant_name,
-            stated_species=request.stated_species,
-            captured_at=request.captured_at,
-            latitude=request.latitude,
-            longitude=request.longitude,
-            location_kind=request.location_kind,
-            location_text=request.location_text,
-            user_notes=request.user_notes,
-            plant_id=request.plant_id,
+        self._submit(
+            run_id=run_id,
+            thread_id=thread_id,
+            initial_state=self.state_for(request),
+            resume=None,
         )
-
-        self._submit(run_id=run_id, thread_id=thread_id, initial_state=state, resume=None)
         return self._runs.get(self._user_id, run_id)
 
     def get(self, run_id: UUID) -> RunRecord:
