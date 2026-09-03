@@ -29,7 +29,7 @@ const HEAT_C = 32;
 // So both axes start from a standing range with round ticks, and grow by whole steps only
 // when a reading falls outside. Most charts therefore share one scale, and the ones that do
 // not say so plainly with a different top number rather than lying quietly.
-const TEMP_STEP = 5;
+const TEMP_STEP = 10;
 const TEMP_FLOOR = 0;
 const TEMP_CEILING = 30;
 const RAIN_STEP = 10;
@@ -134,20 +134,24 @@ export function Weather({
           <rect
             key={`${day.on}-rain`}
             x={x(index) - 2}
-            y={HEIGHT - PAD - (day.precip_mm / rain) * (HEIGHT / 3)}
+            // The full height, not a third of it. A wet day and a very wet day were three
+            // pixels apart at the bottom of the frame, which is a scale nobody can read.
+            y={HEIGHT - PAD - (day.precip_mm / rain) * (HEIGHT - 2 * PAD)}
             width={4}
-            height={(day.precip_mm / rain) * (HEIGHT / 3)}
+            height={(day.precip_mm / rain) * (HEIGHT - 2 * PAD)}
             className="fill-sky-400/50"
           />
         ))}
         {/* The scales. Three labels each: nothing between them has to be read precisely,
             and the table below carries every exact value anyway. */}
+        {/* Each column of numbers is centred on its own axis, so the values sit under
+            each other rather than ragged against the edge of the frame. */}
         {ticks(floor, ceiling, TEMP_STEP).map((value) => (
           <text
             key={`t${value}`}
-            x={GUTTER_LEFT - 4}
+            x={GUTTER_LEFT / 2}
             y={y(value) + 3}
-            textAnchor="end"
+            textAnchor="middle"
             className="fill-orange-600 text-[9px]"
           >
             {value}°
@@ -156,16 +160,18 @@ export function Weather({
         {ticks(0, rain, RAIN_STEP).map((value) => (
           <text
             key={`r${value}`}
-            x={WIDTH - GUTTER_RIGHT + 4}
-            y={HEIGHT - PAD - (value / rain) * (HEIGHT / 3) + 3}
+            x={WIDTH - GUTTER_RIGHT / 2}
+            y={HEIGHT - PAD - (value / rain) * (HEIGHT - 2 * PAD) + 3}
+            textAnchor="middle"
             className="fill-sky-600 text-[9px]"
           >
             {value}
           </text>
         ))}
         <text
-          x={WIDTH - GUTTER_RIGHT + 4}
+          x={WIDTH - GUTTER_RIGHT / 2}
           y={9}
+          textAnchor="middle"
           className="fill-sky-600 text-[8px]"
         >
           mm

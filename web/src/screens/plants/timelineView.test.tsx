@@ -487,11 +487,11 @@ describe("scales that can be compared between charts", () => {
     expect(axisLabels(first.container)).toEqual(axisLabels(second.container));
   });
 
-  it("labels temperature in fives", () => {
+  it("labels temperature in tens", () => {
     const { container } = render(<Weather summary={SERIES} />);
 
     expect(axisLabels(container)).toEqual(
-      expect.arrayContaining(["0°", "5°", "10°", "15°", "20°", "25°", "30°"]),
+      expect.arrayContaining(["0°", "10°", "20°", "30°"]),
     );
   });
 
