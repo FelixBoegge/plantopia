@@ -20,8 +20,8 @@ Grouped by whether they can bite a user, a maintainer, or nobody yet.
 | U1 | **Parts of the pipeline still have not run live.** *Resolved for the main path on 2026-08-10* — see [First live run](#first-live-run). *The outdoor/weather branch was exercised live on 2026-08-31* — an outdoor run against Frankfurt am Main stored a 21-day series and a 7-day forecast, and its reasoning cited the photograph's age unprompted; an indoor run in the same session fetched nothing. *Web search was exercised live on 2026-08-31* — a Tavily key is configured and working, and `add-species-care-profiles` drives it on every researched care profile. Still unexercised against real APIs: the healthy-plant branch and the retake path. | The main path is now verified; the rest degrade rather than crash. | Run a case that triggers each: an outdoor plant with a town, a healthy plant, a deliberately blurry photo. |
 | U2 | **~~The multimodal embeddings request shape is unverified.~~** *Resolved 2026-08-10, and the underlying feature is disabled.* The shape was never exercised because no multimodal embedding model is reachable at all: `google/gemini-embedding-2` (the old default) does not exist on OpenRouter, and `gemini-embedding-001`, the only real candidate, is data-policy blocked on restricted keys. `PLANTOPIA_MULTIMODAL_EMBEDDINGS` now defaults to `false`. | The slug came from a docs fetch and was flagged unverified precisely because it might be wrong. It was. | The request shape in `core/embeddings.py` remains unverified and will stay so until a multimodal embedder is reachable — re-check it against OpenRouter's reference at that point, not before. |
 | U3 | **Uploads are not re-encoded or downscaled.** Pillow is a dependency but unused; four 8 MB images go to the vision model at full size. | No correctness impact; cost only. | Downscale in `core/images.py:store_upload` before base64 encoding. |
-| U4 | **An unanswered boolean question is recorded as "no".** `ui/pages/diagnose.py` conflates "no" with "didn't say". | Only the mandatory drainage question is a choice; boolean questions are model-generated and rare. | Use a tri-state widget or omit unanswered keys from the answers dict. |
-| U5 | **The low-confidence banner omits the escalation advice** PLAN §13.4 specifies — it names the distinguishing tests but never suggests a local nursery or extension service. | The substantive half (tests to run) is present. | One sentence in `ui/components/differential.py`. |
+| U4 | **~~An unanswered boolean question is recorded as "no".~~** *Resolved by the React frontend and noticed on 2026-09-03, not when it happened.* `ui/pages/diagnose.py` no longer exists; `web/src/screens/wizard/Question.tsx` starts a choice at "Not sure", sends only keys that carry a value, and cites this row in a comment while doing it. | Only the mandatory drainage question is a choice; boolean questions are model-generated and rare. | ✓ Complete |
+| U5 | **The low-confidence banner omits the escalation advice** PLAN §13.4 specifies — it names the distinguishing tests but never suggests a local nursery or extension service. | The substantive half (tests to run) is present. | One sentence in `web/src/screens/wizard/Differential.tsx` — the Streamlit file this row named was deleted in the React migration, and neither `nursery` nor `extension service` appears anywhere in `web/src`. |
 | U6 | **`calcium-deficiency` omits blossom-end rot**, the most recognisable calcium symptom in fruiting plants. | The corpus deliberately skews houseplant/ornamental; the document is correct for that scope. | Add a section if the corpus ever grows toward edibles. |
 | U7 | **~~Rejected and retake paths do not rotate `thread_id`.~~** *Resolved 2026-08-12 — added `_rotate_thread()` helper called on both rejected and retake branches in ui/pages/diagnose.py.* State from the abandoned attempt stayed in the checkpoint and merged into the retry. **Amended 2026-08-12 (whole-branch review):** the first fix covered only the wizard. The re-check entry point derived its thread id as `recheck-{plant_id}-{latest_diagnosis_id}`, and neither a rejection nor a retake writes a diagnosis — so that id never changed and a second attempt resumed the abandoned run's checkpoint, the same bug class in the other entry point. `ui/pages/plant_detail.py` now appends a `recheck_attempt` counter that `_rotate_recheck_thread()` increments on both branches. | Fixed by rotating thread_id on both paths, in both entry points. | ✓ Complete |
 | U8 | **The upload-rejection message interpolates the model's description raw**, producing "This looks like A screenshot of a web form…., not a plant." — capitalised mid-sentence, with the description's own full stop left in. Seen on the first live run. | Cosmetic; the message is still comprehensible and the rejection itself is correct. | Lowercase the first character and strip trailing punctuation before interpolating, in the rejection copy. |
@@ -527,6 +527,52 @@ succeeds, so the state a member always sees had no `h1` at all — the heading c
 looked at one screen — and the differential took no focus when it replaced the reasoning panel,
 after a wait long enough that somebody will have gone elsewhere.
 
+
+### The frontend pass, and what is still only true in a test (2026-09-03)
+
+Two days of using the application as a person rather than as its author, driven from
+`frontend_improvements.md`. Thirty-one items, all closed. What is worth recording is not the
+list — it is in that file — but the shape of what the work found and what it did not settle.
+
+**Four of the items were not cosmetic.** Each was reported as a look-and-feel complaint and
+turned out to be behaviour:
+
+1. **No confirmation email ever arrived.** Not a bug: no provider is configured, so
+   `core/mail.py` falls back to writing the link to the log. But both screens said "check
+   your email" unconditionally, which is false on every deployment without a key. They now
+   say where the link actually went, and the README documents activating an account without
+   email — the path a reviewer running this locally has to take.
+2. **A re-check never fetched weather.** `revise_roadmap → persist` skips `enrich`, which was
+   the only place weather was fetched, so an improving re-check saved an observation with
+   none. The plant's history drew a graph beside the first diagnosis and nothing beside the
+   second, which is exactly what it looked like from outside.
+3. **Re-diagnosis overrode what it already knew.** The form asked for a species the record
+   already held, and whatever was typed won. A hurried answer could displace a reliable one.
+4. **The upload picker offered formats the server refuses.** `accept="image/*"` invited a
+   HEIC straight off a phone; the server validates by magic bytes and knows PNG and JPEG.
+   The refusal arrived after the upload finished.
+
+**The palette hid two faults of its own.** A second, unused set of tokens lived under
+`.dark`, and two of its names collided with the shadcn tokens — so `bg-muted`, used in eleven
+places, rendered light sage on a dark page. And `color-scheme` was left as `light dark` while
+`theme.ts` resolves the theme itself, so browsers drew the controls they own from the
+operating system: a dark calendar icon on a dark date field for anyone in dark mode on a
+light desktop.
+
+**What is still only true in a test.** The suites are green and several things in them have
+never been seen working:
+
+- The run-activity sidebar has never had a live diagnosis in it, and no stored diagnosis
+  predates the change, so the model name and duration have never rendered from real data.
+- The progress verdict has never rendered with a value. It needs a re-diagnosis of a plant
+  that already has one.
+- The weather fix above is verified by unit tests only; no live re-check has run through it.
+- The Playwright specs were updated for the renamed controls and the chat's move to its own
+  page. They have not been run — they need both servers and real model calls.
+- Changing a password has not been driven in a browser. The property worth watching is that
+  other sessions die while the one making the change survives.
+
+One live outdoor re-check would exercise the first three at once.
 
 ## Two plan defects caught during implementation
 
