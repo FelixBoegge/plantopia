@@ -410,6 +410,12 @@ describe("a diagnosis and its photographs as one entry", () => {
     expect(
       within(entry!).getByRole("link", { name: "See this diagnosis" }),
     ).toBeInTheDocument();
+
+    // Machine-readable, not only visible text: the browser suite asserts against this
+    // attribute because the rendered date is locale-formatted, and a plain string here once
+    // silently dropped it when the finding was moved to lead the entry.
+    const captureTime = entry!.querySelector('time[datetime^="2026-08-14"]');
+    expect(captureTime).not.toBeNull();
   });
 
   it("shows the verdict with the finding", () => {

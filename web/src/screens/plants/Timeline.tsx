@@ -128,11 +128,19 @@ function ObservationEvent({
       {event.diagnosis ? (
         <p className="text-muted-foreground text-sm">
           {/* Both dates, because they differ whenever an old photograph is diagnosed
-              today — which is exactly when a reader needs telling which is which. */}
+              today — which is exactly when a reader needs telling which is which.
+
+              A real <time>, not a formatted string dropped into the paragraph: this is
+              the one place the earlier version of this lost the machine-readable date the
+              rest of the file keeps deliberately, because the visible text is locale-
+              formatted and nothing should be asserted against it. */}
           {observation.kind === "recheck"
             ? "Photographed again"
             : "First photographed"}{" "}
-          on {new Date(event.photographedAt).toLocaleDateString()}
+          on{" "}
+          <time dateTime={event.photographedAt}>
+            {readableDate(event.photographedAt)}
+          </time>
           {event.dated === "uploaded"
             ? " (date the photograph was uploaded)"
             : null}
