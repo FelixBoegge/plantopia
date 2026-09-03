@@ -220,3 +220,76 @@ describe("the header", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("when the server cannot be reached", () => {
+  /**
+   * A refused connection and an ended session are not the same thing, and the application
+   * used to treat them identically: a network failure forgot the token and reported a lost
+   * session, so restarting the API — or closing a laptop lid on a train — signed somebody
+   * out of a session that was still perfectly valid.
+   */
+  it("does not sign somebody out", async () => {
+    server.use(
+      http.post("/api/v1/auth/refresh", () => HttpResponse.error()),
+      http.get("/api/v1/me", () => HttpResponse.json(ADA)),
+    );
+
+    render(<AppRoutes />, { route: "/" });
+
+    expect(
+      await screen.findByText(/cannot be reached/i, {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Sign in" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still signs somebody out when the server says the session is over", async () => {
+    // The distinction only earns its keep if the other half still works.
+    server.use(
+      http.post("/api/v1/auth/refresh", () =>
+        HttpResponse.json(REFUSED, { status: 401 }),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/" });
+
+    expect(
+      await screen.findByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a way to try again", async () => {
+    server.use(http.post("/api/v1/auth/refresh", () => HttpResponse.error()));
+
+    render(<AppRoutes />, { route: "/" });
+
+    expect(
+      await screen.findByRole(
+        "button",
+        { name: "Try again" },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("recovers when the server comes back", async () => {
+    server.use(http.post("/api/v1/auth/refresh", () => HttpResponse.error()));
+
+    render(<AppRoutes />, { route: "/" });
+    await screen.findByRole("button", { name: "Try again" }, { timeout: 5000 });
+
+    server.use(
+      http.post("/api/v1/auth/refresh", () =>
+        HttpResponse.json({ access_token: "fresh" }),
+      ),
+      http.get("/api/v1/me", () => HttpResponse.json(ADA)),
+      http.get("/api/v1/plants", () => HttpResponse.json([])),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Your plants" }),
+    ).toBeInTheDocument();
+  });
+});

@@ -11,7 +11,13 @@ import type { ReactNode } from "react";
 
 import { request } from "@/api/client";
 import type { Account, Session } from "@/api/types";
-import { forget, onSessionLost, renew, setToken } from "@/api/session";
+import {
+  ServerUnreachableError,
+  forget,
+  onSessionLost,
+  renew,
+  setToken,
+} from "@/api/session";
 
 /**
  * Who is signed in, as far as the rest of the application is concerned.
@@ -21,11 +27,18 @@ import { forget, onSessionLost, renew, setToken } from "@/api/session";
  * and which screens genuinely read.
  */
 
-type State = "starting" | "signed-in" | "signed-out";
+/**
+ * `unreachable` is not `signed-out`. The server never answered, so it has said nothing
+ * about the session — and treating silence as an ended session signs people out over a
+ * restarted API or a laptop waking from sleep.
+ */
+type State = "starting" | "signed-in" | "signed-out" | "unreachable";
 
 interface Auth {
   state: State;
   account: Account | null;
+  /** Try to re-establish the session after the server could not be reached. */
+  retry: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshAccount: () => Promise<void>;
@@ -37,6 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queries = useQueryClient();
   const [state, setState] = useState<State>("starting");
   const [account, setAccount] = useState<Account | null>(null);
+  // Bumped to re-run the effect below, which is the whole of what a retry is.
+  const [attempt, setAttempt] = useState(0);
 
   const load = useCallback(async () => {
     const who = await request<Account>("/me");
@@ -68,7 +83,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // get wrong.
     onSessionLost(clear);
     (async () => {
-      const token = await renew();
+      let token: string | null;
+      try {
+        token = await renew();
+      } catch (error) {
+        // Nothing answered after several tries. Say so and stop, rather than clearing a
+        // session the server has not said anything about.
+        if (error instanceof ServerUnreachableError) {
+          setState("unreachable");
+          return;
+        }
+        throw error;
+      }
       if (token === null) return; // `renew` has already reported the loss.
       try {
         await load();
@@ -76,12 +102,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clear();
       }
     })();
-  }, [clear, load]);
+  }, [clear, load, attempt]);
 
   const value = useMemo<Auth>(
     () => ({
       state,
       account,
+      retry: () => {
+        setState("starting");
+        setAttempt((n) => n + 1);
+      },
       signIn: async (email, password) => {
         const session = await request<Session>("/auth/login", {
           method: "POST",
