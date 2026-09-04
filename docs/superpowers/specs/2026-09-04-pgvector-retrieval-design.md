@@ -97,26 +97,35 @@ Two smaller effects worth stating plainly:
   `SELECT DISTINCT doc_id` over 301 rows. At that size it scans in under a millisecond, and
   trading it for a session-holding singleton would be a bad bargain.
 
-## The capability this costs
+## The cross-modal path is dropped, not preserved
 
-`ChromaRetriever.supports_image_search` returns `self._image_embedder is not None`.
-`PgVectorRetriever` hardcodes `False`, and its `search_by_image` returns `[]`.
+Settled with the owner on 2026-09-04: no multimodal embedding model will be available, so
+the idea is abandoned rather than parked. That makes this simpler than the first draft of
+this design, which proposed amending `core/config.py`'s promise that the path would "light
+up with no code change". There is no promise to amend once the path is gone.
 
-Today that is a no-op: `multimodal_embeddings` defaults to off, and no multimodal embedding
-model is reachable — `gemini-embedding-001` is data-policy blocked on restricted keys and
-the OpenAI embedding models reject image input outright. The cross-modal path (spec §10.4,
-`U2`) has therefore never run in production.
+The cross-modal path (spec §10.4, `U2`) has never run in production. It was off by default
+because no multimodal embedding model is reachable — `gemini-embedding-001` is data-policy
+blocked on restricted keys, and the OpenAI embedding models reject image input outright.
+Keeping it would mean carrying a Protocol member, a settings flag, a threshold, a branch in
+`enrich`, an HTTP client and 91 lines of tests for a capability nothing can supply.
 
-But `core/config.py:55` currently promises that turning the flag on "together with a
-multimodal `embedding_model` and the path lights up with no code change". After this change
-that is false — it would need the image path built on pgvector first.
+Removed: `core/embeddings.py` (`ImageEmbedder`) and its tests; `multimodal_embeddings` and
+`image_match_threshold` from `core/config.py` and their tests; `supports_image_search` and
+`search_by_image` from the `Retriever` Protocol, from `ChromaRetriever` and from
+`PgVectorRetriever`; the visual-matches branch in `agent/nodes/enrich.py` together with the
+`search_by_photograph` entry it contributes to `tools_used`; `embed_image` from
+`tests/fakes/embeddings.py`; and the explanatory comments in `core/llm.py` and
+`eval/run_eval.py`.
 
-Resolved by amending the promise rather than by porting the path: the honest statement is
-that the wiring exists and the pgvector implementation does not, and `U2` is where that is
-recorded. Porting `search_by_image` speculatively would mean writing, and testing, a query
-against a vector space no reachable model can produce — code whose first real exercise
-would be years away, if ever. `ImageEmbedder` (`core/embeddings.py`) is kept: it is the
-provider-facing half, is model-agnostic, and is what a future port would build on.
+`U2` is closed as *not pursued* rather than struck as fixed — the distinction matters,
+because a future reader should find that the capability was considered and declined for a
+supply reason, not that it was delivered.
+
+This is the one part of this change that removes a documented feature, so it is stated
+plainly rather than folded into the deletion list: §10.4 of the design describes a
+capability the application will no longer have any code for. Nothing observable changes,
+because the flag has always been off.
 
 ## The data wipe, and what it does and does not change
 
@@ -173,6 +182,8 @@ afterwards needs a plant made by hand first.
    dependencies, `tests/unit/knowledge/test_retriever.py`, the Chroma fixtures in
    `tests/conftest.py` and `tests/e2e/server.py`, and the `data/chroma/`,
    `tests/e2e/.chroma/` and `data/corpus_vectors.json` entries in `.gitignore`.
+   The cross-modal removals land here too, since `ChromaRetriever` is the only
+   implementation that ever had a working `search_by_image`.
 7. **Record it** in `docs/known-limitations.md`: strike `M25` with the date, and amend
    `U2` and `M24`'s standing note.
 
@@ -216,7 +227,8 @@ struck; the model question is recorded as open in its place.
 **A vector index.** 301 rows scan exactly in under a millisecond, and an HNSW index may
 reorder results by construction. Nothing to buy at this size.
 
-**The cross-modal image path on pgvector.** See *The capability this costs*.
+**The cross-modal image path.** Not ported and not kept — removed outright. See *The
+cross-modal path is dropped, not preserved*.
 
 **A fresh evaluation baseline.** Not warranted by a change that keeps every vector
 identical. The 2026-08-19 numbers remain the standing baseline, already knowingly stale for
