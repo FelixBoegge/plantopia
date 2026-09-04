@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { readable } from "@/api/problems";
 import { useAuth } from "@/auth/AuthProvider";
 import { Field } from "@/components/Field";
+import { TextLink } from "@/components/TextLink";
 import { ShowPasswords } from "@/components/ShowPasswords";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
@@ -51,18 +52,19 @@ export function SignIn() {
   return (
     <AuthShell
       title="Sign in"
+      description="Welcome back — pick up where you left off."
       footer={
         <>
-          No account yet? <Link to="/register">Register</Link> ·{" "}
-          <Link to="/reset-password">Forgot your password?</Link>
+          No account yet? <TextLink to="/register">Register</TextLink>
         </>
       }
     >
-      <form onSubmit={submit} className="grid gap-6" noValidate>
+      <form onSubmit={submit} className="grid gap-4" noValidate>
         {failure ? <Notice tone="failure">{failure}</Notice> : null}
 
         <Field
           label="Email"
+          className="h-10 md:text-base"
           type="email"
           autoComplete="email"
           required
@@ -71,6 +73,7 @@ export function SignIn() {
         />
         <Field
           label="Password"
+          className="h-10 md:text-base"
           type={showing ? "text" : "password"}
           autoComplete="current-password"
           required
@@ -82,9 +85,19 @@ export function SignIn() {
             way to find out you typed it with caps lock on. */}
         <ShowPasswords showing={showing} onChange={setShowing} />
 
-        <Button type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </Button>
+        {/* Recovery sits with the form it rescues rather than down beside registering:
+            somebody who cannot remember their password is still trying to sign in. */}
+        <div className="grid gap-3">
+          <Button type="submit" className="h-10 text-base" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+          <TextLink
+            to="/reset-password"
+            className="text-center text-sm text-muted-foreground"
+          >
+            Forgot your password?
+          </TextLink>
+        </div>
       </form>
     </AuthShell>
   );

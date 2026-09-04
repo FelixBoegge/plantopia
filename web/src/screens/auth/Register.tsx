@@ -1,10 +1,10 @@
 import { useId, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { request } from "@/api/client";
 import { fieldMessages, readable } from "@/api/problems";
 import type { Accepted } from "@/api/types";
 import { Field } from "@/components/Field";
+import { TextLink } from "@/components/TextLink";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -94,15 +94,16 @@ export function Register() {
       description="Diagnose a plant, keep its history, and ask about it afterwards."
       footer={
         <>
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account? <TextLink to="/login">Sign in</TextLink>
         </>
       }
     >
-      <form onSubmit={submit} className="grid gap-6" noValidate>
+      <form onSubmit={submit} className="grid gap-4" noValidate>
         {failure ? <Notice tone="failure">{failure}</Notice> : null}
 
         <Field
           label="Email"
+          className="h-10 md:text-base"
           type="email"
           autoComplete="email"
           required
@@ -111,6 +112,7 @@ export function Register() {
         />
         <Field
           label="Password"
+          className="h-10 md:text-base"
           type="password"
           autoComplete="new-password"
           required
@@ -148,7 +150,13 @@ export function Register() {
               {consentError}
             </p>
           ) : null}
-          <div className="text-muted-foreground grid gap-2 text-sm">
+          {/* The notice scrolls inside its own box rather than stretching the card past
+              the bottom of a laptop screen. It stays present, at a readable size, and
+              nothing is hidden behind an interaction — which is what the checkbox above
+              means by "below", and is the point of showing it on the screen where consent
+              is given. Bounded height also means the card does not grow the next time the
+              notice gains a paragraph. */}
+          <div className="text-muted-foreground grid max-h-28 gap-2 overflow-y-auto rounded-lg bg-background/40 p-3 text-sm [@media(min-height:880px)]:max-h-40">
             <p>
               Plantopia stores the photographs you upload, what you write, and
               the diagnoses it produces. Photographs and text are sent to
@@ -163,7 +171,7 @@ export function Register() {
           </div>
         </div>
 
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" className="h-10 text-base" disabled={busy}>
           {busy ? "Creating your account…" : "Create account"}
         </Button>
       </form>
