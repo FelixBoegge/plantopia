@@ -4,7 +4,7 @@
 
 Four lanes of housekeeping, grouped because they share a property: none of them changes
 what the application does for anybody using it. One lane removes a dead frontend's
-fingerprints, one removes dead code, one closes four small carried items, and one
+fingerprints, one removes dead code, one closes five small carried items, and one
 flattens the file with the most boilerplate in it. The pgvector migration and the Chroma
 removal that follows it are deliberately *not* here — see Out of scope.
 
@@ -117,7 +117,7 @@ enumerate — and that story is the reason the current scheme puts the owner in 
 handle, so it moves up into the module docstring, which already tells the first half of
 it. Deleting a function is not a reason to lose the argument for its replacement.
 
-## Lane 3 — four carried items
+## Lane 3 — five carried items
 
 **U3, downscaling uploads.** The substantive item. `max_upload_bytes` is 8 MB and
 `max_images_per_observation` is 4, so a single diagnosis can send 32 MB of photographs to
@@ -155,6 +155,31 @@ character and strip one trailing full stop.
 `settings.app_title` already exists and already defaults to `"Plantopia"`. The
 user-facing ones route through it. `core/config.py`'s own default is the one that stays a
 literal, being the definition.
+
+**Deleting a plant lands on an error screen.** Found by the owner on 2026-09-04, so it is
+not in the register yet. Removing a plant does navigate — `PlantDetail.tsx:148` already
+calls `navigate("/")` — and the error still wins, which makes this a bug rather than a
+missing feature.
+
+The cause is prefix matching. `keys.plants` is `["plants"]` and `keys.plant(id)` is
+`["plants", id]` (`web/src/app/queries.ts`), so `useRemovePlant`'s
+`invalidateQueries({ queryKey: keys.plants })` also matches the detail query of the plant
+just deleted. That query is still mounted, so it refetches, 404s — and a 404 is on
+`QueryProvider`'s permanent list, so it fails immediately without retrying — and
+`PlantDetail` renders "This plant could not be loaded".
+
+Two things then make the error stick rather than flash. `useRemovePlant`'s `onSuccess`
+*returns* the `invalidateQueries` promise instead of voiding it, and a returned promise is
+awaited before the `mutate`-level `onSuccess` runs — so the refetch, the 404 and the error
+render all complete *before* `navigate("/")` is reached. Compare `useRenamePlant`
+immediately above it, which writes `void queries.invalidateQueries(...)` deliberately.
+
+Fixed with `exact: true` on the list invalidation, so the detail query is never matched;
+`void` on it, so navigation is not queued behind a refetch; and `replace: true` on the
+navigation, so the back button does not return to a plant that no longer exists.
+Deliberately *not* fixed with `removeQueries` on the detail key: the observer is still
+mounted at that moment, so removing its query makes it refetch — the same 404 by a
+different route.
 
 **M54 is dropped, not deferred.** The item asks that the placeholder replacing cleared
 tool output name the tool it cleared. `[cleared]` is the default of LangChain's
