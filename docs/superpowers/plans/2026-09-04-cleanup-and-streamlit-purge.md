@@ -1068,6 +1068,38 @@ three places that must agree — `.github/workflows/ci.yml`, `web/.nvmrc`, `web/
 `engines` — and that this closes the open question that archived design deliberately left open,
 naming the file so a reader can find the argument rather than only its answer.
 
+- [ ] **Step 3d: Record four gaps found by reading the code, not planned for**
+
+Task 6 rewrote `docs/code-tour.md` against the actual source rather than against the old prose,
+and that turned up drift nobody had recorded. None of it is in scope to fix here; all of it is
+in scope to *write down*, because an unrecorded gap is the thing this register exists to prevent.
+Add each as a new row, dated 2026-09-04, in the section its audience belongs to. I verified the
+first two personally; verify the other two before writing them.
+
+1. **LangSmith tracing never runs in production.** `core/tracing.py::configure_tracing` has
+   exactly one caller — `eval/run_eval.py:227`. `api/main.py` never calls it, so setting
+   `PLANTOPIA_LANGSMITH_API_KEY` configures tracing for the evaluation harness and for nothing
+   else. A diagnosis served to an owner is not traced. The setting reads as though it switches
+   tracing on for the application, and it does not. **Affects a maintainer**, and it is the more
+   serious of the two: an observability feature that appears wired and is not.
+
+2. **`Differential.tsx:29` re-sorts the candidates the server ranked.**
+   `[...diagnosis.candidates].sort(...)` imposes the client's own order on a list the backend
+   already ordered. If the two rules ever disagree, the screen shows a different leading
+   candidate than the diagnosis recorded — and `eval/` scores the server's order, so no
+   measurement would see it. **Affects a user.**
+
+3. **Three Streamlit-era surfaces have no React equivalent** — the retrieval-sources view, the
+   tool-call detail view, and the cost badge. Confirm each against `web/src/` before recording
+   it; the point of the row is that the migration dropped them silently rather than deciding to.
+
+4. **`Differential.tsx` no longer carries the "nothing argues against it" caption** the Streamlit
+   view had. Confirm, then record as a copy regression if true.
+
+Write these as prose that argues, in the register's established voice: what is wrong, why it was
+not fixed now, and what fixing it would take. Do not strike them — they are newly opened, not
+resolved.
+
 - [ ] **Step 4: Verify the numbers**
 
 Every figure in the rows you wrote must be checkable from the repository. Confirm the 1568 cap, the 8 MB and 4-image limits, and Node 22 against the files before committing.
