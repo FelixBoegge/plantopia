@@ -30,22 +30,23 @@ specification written from that assignment — is no longer kept in the reposito
 
 ### 1.1 The layering
 
-Eight packages, with dependencies pointing one way. Nothing lower ever imports
-something higher.
+Seven Python packages, with dependencies pointing one way. Nothing lower ever imports
+something higher. The React SPA in `web/` sits outside this chain entirely — a separate
+process that talks to `api/` over HTTP and, for a running diagnosis, Server-Sent Events,
+rather than importing anything below it.
 
 ```
-app.py            Streamlit entry point — declares one page and runs it
-  └── ui/         bootstrap (wiring), pages (the wizard), components (rendering)
-       └── services/     DiagnosisService — the API the UI actually talks to
-            └── agent/   the state machine: graph, state, nodes, schemas, prompts
-                 ├── core/       config, model factories, embeddings, guards, images
-                 ├── knowledge/  corpus ingest and Chroma retrieval
-                 ├── tools/      weather, care profiles, web search
-                 └── data/       SQLite schema and repositories
+api/              FastAPI app factory — routers, request-scoped dependencies
+  └── services/   DiagnosisService and friends — the seam every route talks to
+       └── agent/   the state machine: graph, state, nodes, schemas, prompts
+            ├── core/       config, model factories, embeddings, guards, images
+            ├── knowledge/  corpus ingest and Chroma retrieval
+            ├── tools/      weather, care profiles, web search
+            └── data/       schema and repositories
 ```
 
 The important consequence is that `agent/` — where all the interesting logic lives —
-imports no Streamlit and opens no sockets. It can be exercised entirely in-process,
+imports no web framework and opens no sockets. It can be exercised entirely in-process,
 which is why 631 tests run in about 35 seconds with no network access.
 
 ### 1.2 `Deps`: the reason it is testable
@@ -96,27 +97,27 @@ Three details worth noticing:
 ### 1.3 How a request actually arrives
 
 ```
-app.py
-  └── st.navigation([...]).run()          declares the Diagnose page
-        └── ui/pages/diagnose.py           the wizard, driven by st.session_state
-              └── ui/bootstrap.get_service()   @st.cache_resource — built once
-                    └── DiagnosisService(deps, graph, upload_dir)
+POST /api/runs   (photographs + form fields, from web/'s upload screen)
+  └── api/routers/runs.py:start_run          stores the photos, returns 202 with a run to watch
+        └── services/run_service.py:RunService.start   writes the row, hands work to the pool
+              └── runs/executor.py                       a background thread builds Deps and the graph
+                    └── agent/wiring.py:build_deps        the composition root — abstract deps become concrete
 ```
 
-`ui/bootstrap.py` is the composition root — the one place where the abstract
-dependencies become concrete ones. It opens the SQLite connection, applies the schema,
-builds the Chroma vectorstore from the corpus, constructs the three model clients,
-assembles `Deps`, creates the checkpointer, compiles the graph, and hands back a
-`DiagnosisService`.
+`agent/wiring.py` is the composition root — the one place where the abstract
+dependencies become concrete ones. Each call opens a database session, constructs the
+three model clients, assembles `Deps`, and — only where a checkpointer is needed —
+builds one. The graph itself is compiled fresh by `build_diagnosis_graph` for every run;
+nothing about it is cached.
 
-It is wrapped in `@st.cache_resource`, so it runs **once per process**, not once per
-interaction. Streamlit re-executes the whole page script on every widget change, and
-without that decorator every click would re-embed the corpus.
-
-> **Consequence worth remembering:** because the graph is compiled inside the cached
-> function, editing a node module does not take effect in a running server. That is
-> why verifying the two bugfixes above required restarting Streamlit, not just saving
-> the file.
+What *is* cached, process-wide, is the corpus retriever: embedding the corpus and
+opening the Chroma collection is the expensive part of wiring, and none of it varies by
+request or by owner, so `_shared_retriever` is `@lru_cache`d. Built per call it would
+re-embed on every diagnosis and every chat message — slow, billable, and in tests a
+network call the suite forbids. A retired UI solved the same problem by caching its
+whole service object with `@st.cache_resource`; that object is gone along with it, and
+this is the narrower, FastAPI-era version of the same worry — caching only the one
+thing that is actually expensive to rebuild.
 
 Indexing itself is safe to repeat: every corpus `Document` gets a deterministic id
 (`doc_id::section`), so re-running against an existing persist directory is an upsert,
@@ -954,13 +955,12 @@ merely untidy one.
 
 `data/db.py` is short, and almost every line earns a comment explaining a concurrency
 hazard that would otherwise look like caution for its own sake. The connection is
-opened once, cached process-wide by `ui.bootstrap` (§1.3), and shared across every
-Streamlit session — which is what makes `check_same_thread=False` necessary and, on
-its own, insufficient:
+opened once, cached process-wide, and shared across every session of the retired UI —
+which is what makes `check_same_thread=False` necessary and, on its own, insufficient:
 
 ```python
-"""Streamlit reruns are serialised *within* one session, but two tabs against the
-same server are independent script threads that can genuinely overlap, so this
+"""The retired UI's reruns are serialised *within* one session, but two tabs against
+the same server are independent script threads that can genuinely overlap, so this
 flag alone only fixes *which* thread may use the connection, not how many may use
 it at once. ``transaction()`` below is what provides the latter guarantee."""
 ```
@@ -1120,78 +1120,88 @@ guard sees a species already set and leaves it alone.
 the service checks the one field guaranteed to be absent on it instead of catching an
 exception that was never going to be thrown.
 
-### 5.3 The wizard: two state machines sharing one identifier
+### 5.3 The wizard: an identifier that lives in the URL, not in memory
 
-`ui/pages/diagnose.py` runs its own three-stage state machine — `upload` →
-`questions` → `result` — held in `st.session_state.stage`. It is a different state
-machine from the graph's, and the only thing connecting them is `st.session_state.
-thread_id`, minted once with `uuid.uuid4().hex` and threaded through every
-`service.start`/`service.answer` call. Streamlit re-executes this entire script top
-to bottom on every widget interaction (§1.3); `session_state` is what survives that,
-and it is doing the job a class instance's attributes would do in a long-lived
-process.
+`web/src/screens/wizard/Wizard.tsx` renders one of two things depending on whether a
+run id is present in the URL's query string: `Upload`, if there is none yet, or
+`Watching`, once starting a run has returned one. That id is written into the address
+bar rather than kept in component state — the component's own docstring gives the
+reason: *"The run's identifier lives in the address bar. That is what makes a reload
+survivable and a link to a run shareable with oneself — and it is why this screen
+reads a status from the server rather than remembering one, because after a reload it
+has nothing to remember."*
 
-Both forms (`st.form("intake")`, `st.form("answers")`) exist to batch every widget's
-value into one submission rather than triggering a script rerun per keystroke — a
-Streamlit mechanic, not a project-specific choice, but worth naming because without it
-every character typed into `user_notes` would re-run this file from the top.
+A retired UI solved the same problem the other way round: a `thread_id`
+minted client-side with `uuid.uuid4().hex` and held in that framework's per-session
+state store, threaded through every `service.start`/`service.answer` call so a
+widget-triggered rerun of the whole page script did not lose track of which paused run
+it was watching. `Watching`
+plays the same role today, but the identifier now comes from the server — the `run_id`
+`POST /api/runs` returns — and it is the server, not the client, that maps it to the
+graph's own thread handle (`agent/threads.py`); nothing on the client mints or
+remembers one.
 
-The answers form is generic over `Question.kind` rather than hard-coding the two
-mandatory questions' widget types:
+There is no separate client-side state machine to keep in step with the graph's,
+either. `Watching` branches on the run's `status` and the live event stream (§8)
+rather than on a `stage` variable: questions render while `watched.questions` is set
+and the run is not yet over; a `cancelled`, `failed`, or rejected status renders a
+`Notice`; otherwise the differential renders once it arrives. The run record and the
+stream together *are* the state, so a reload just re-reads them instead of resuming a
+remembered `stage`.
 
-```python
-if question.kind == "choice":
-    answers[question.key] = st.radio(question.text, question.options, key=widget_key)
-elif question.kind == "boolean":
-    answers[question.key] = "yes" if st.checkbox(question.text, key=widget_key) else "no"
-else:
-    answers[question.key] = st.text_input(question.text, key=widget_key)
-```
+The retired UI's answers form was generic over `Question.kind` rather than
+hard-coding the two mandatory questions' widget types, picking `st.radio`,
+`st.checkbox`, or `st.text_input` per kind. `web/src/screens/wizard/Question.tsx`
+keeps that same genericity in its own vocabulary — a `<select>` for `choice` and
+`boolean` kinds (boolean's two options rendered as "Yes"/"No"), an `<input type="date">`
+for `date`, and a plain text `<input>` otherwise — so `select_questions` (§3b.4) can
+still mix mandatory and model-proposed questions freely without the form
+special-casing `WATERING_QUESTION` or `DRAINAGE_QUESTION`. `U4` — an unanswered
+boolean recorded indistinguishably from a deliberate "no" — is solved differently
+here: the select starts on a blank "Not sure" option, and only a key with an actual
+value is sent, so silence and a considered answer produce different payloads instead
+of the same string.
 
-This is what lets `select_questions` (§3b.4) mix mandatory and model-proposed
-questions freely — the page never special-cases `WATERING_QUESTION` or
-`DRAINAGE_QUESTION`, it renders whatever `Question.kind` says. The boolean branch is
-also where `U4` lives: an unchecked checkbox and a deliberately-answered "no" produce
-the identical string, so the page cannot tell "the owner said no" from "the owner
-didn't touch this control."
+The retired UI's exception handling doesn't carry over cleanly, because the problem it
+solved doesn't exist in this model: a bare `except Exception` around `service.answer`
+existed there to stop an unexpected late failure from crashing the whole page script
+and discarding a page's worth of in-session work, a risk inherent to re-executing one
+script top to bottom on every interaction. React does not re-execute the component
+tree on a failed mutation — `useAnswerRun`'s error surfaces on that hook alone, the
+rest of the screen's state is untouched, and there is nothing analogous left to guard
+against.
 
-**The two exception handlers either side of a `st.spinner` are deliberately
-different widths**, and the asymmetry is argued from the same place §3a.1's fail-open
-/ fail-closed split was: what has already happened by the time the failure occurs.
-`service.start` is wrapped narrowly — `UploadRejected`, `ValueError`, `RuntimeError` —
-because nothing expensive has happened yet if it fails; a narrow catch surfaces a
-specific, actionable message. `service.answer` is wrapped by a bare `except
-Exception`, and the error text explains why: *"Something went wrong while finishing
-this diagnosis, **after your photos were already analysed**."* By this point the
-vision calls, symptom extraction, and question generation are done and checkpointed;
-catching broadly here trades diagnostic specificity for making sure a late, unexpected
-failure degrades to a retryable error message instead of an uncaught exception
-crashing the whole script and discarding a page's worth of in-session work.
+`_reset()`'s job — starting over cleanly rather than reusing a stale identifier — is
+now just navigation: the "Diagnose another" button replaces the URL with `/diagnose`
+and drops the `run` query parameter, which is all `Wizard` needs to render `Upload`
+again with nothing left over from the previous run.
 
-`_reset()` is the only path that rotates `thread_id` and clears `questions`/`species`/
-`result` from session state, and it is wired only to the explicit "Diagnose another
-plant" button — never called from the `rejected` or `retake` branches, which is the UI
-half of `U7`.
+### 5.4 A retired UI's rendering trusted the schema's guarantees, and stated absence the way the prompts did
 
-### 5.4 Rendering trusts the schema's guarantees, and states absence the way the prompts do
+The retired UI's `differential.py` and `roadmap.py` components, both gone along with
+the rest of that UI, were thin, and what they leaned on is more interesting than what
+they drew —
+worth keeping for the reasoning, with a note on how the React rebuild in
+`web/src/screens/wizard/Differential.tsx` and `web/src/screens/plants/Roadmap.tsx`
+diverges from it.
 
-`ui/components/differential.py` and `roadmap.py` are thin, and what they lean on is
-more interesting than what they draw.
-
-`render_differential` labels exactly one card "(most likely)":
+`render_differential` labelled exactly one card "(most likely)":
 
 ```python
 st.subheader(heading if index else f"{heading} (most likely)")
 ```
 
-That `index == 0` check is only safe because of `Differential`'s validator from §2.2
+That `index == 0` check was only safe because of `Differential`'s validator from §2.2
 — *"candidates must be sorted by probability, descending"* — enforced at the schema
-layer with a repair retry, not at render time. The UI spends zero code re-verifying
-an order it is structurally guaranteed to receive; this is the payoff of §2.2's framing
+layer with a repair retry, not at render time. That UI spent zero code re-verifying an
+order it was structurally guaranteed to receive; this was the payoff of §2.2's framing
 that the schemas are "the specification, executable" arriving at the one place a
-human actually looks at the result.
+human actually looks at the result. `Differential.tsx` does not carry this forward as
+written: it re-sorts `candidates` by `probability` itself before rendering, trusting
+the validator less than its predecessor did, and it renders no "(most likely)" label
+at all — a plain percentage is the only thing distinguishing the leading candidate now.
 
-The empty-evidence case is handled the same way §3c.3 handled an empty retrieval
+The empty-evidence case was handled the same way §3c.3 handled an empty retrieval
 result — stated, not left blank:
 
 ```python
@@ -1202,45 +1212,42 @@ else:
     st.caption("Nothing observed argues against this.")
 ```
 
-An empty "Argues against it" column with no caption would read as the app having
+An empty "Argues against it" column with no caption would have read as the app having
 forgotten to check, rather than the model having found nothing — the same "silence is
 not neutral" lesson from §3c.3, applied to a UI reader instead of a model reader who
-might fabricate to fill the gap.
+might fabricate to fill the gap. `Differential.tsx` does not restate this lesson
+either: an empty `contradicting_evidence` list renders no heading and no caption, so
+that column is simply absent rather than explicitly empty. Whether that gap matters is
+a product question the rebuild has not yet answered; it is not covered here as a "the
+reasoning still holds" case, because it does not.
 
 `render_roadmap`'s caption — *"Least invasive first — most plant problems are caused
-by conditions"* — is a claim about ordering that, like the differential's "(most
-likely)" label, is true only because `Roadmap`'s tier-ordering validator (§2.2) made
-it true before this function ever ran.
+by conditions"* — was a claim about ordering that, like the differential's "(most
+likely)" label, was true only because `Roadmap`'s tier-ordering validator (§2.2) made
+it true before that function ever ran. `Roadmap.tsx` and the plan section inside
+`Differential.tsx` both still sort steps by `ordinal` before rendering — the same
+choice `Differential.tsx` made for candidates — rather than trusting the order the
+validator already guarantees.
 
-**The sources expander is where §1.5's "never merge the two score scales" rule
-becomes something a user can see the shape of, not just a rule enforced upstream:**
-text-path and image-path passages render under two separate captions, exactly as
-`_format_passages` fenced them under two separate headings for the model (§3c.3). But
-look at what actually gets a number attached:
+**The sources expander, where §1.5's "never merge the two score scales" rule became
+something a user could see the shape of, has no counterpart in the React frontend at
+all.** That UI rendered text-path and image-path passages under two separate
+captions, exactly as `_format_passages` fenced them under two separate headings for
+the model (§3c.3), and only the visual-match path — all Chroma cosine similarities, a
+comparable number — ever printed a score; `retrieved`, which mixes Chroma and Tavily
+scores after escalation (the exact seam `M4` names), was labelled by source instead of
+scored, so nobody could compare two incomparable percentages side by side because
+neither retrieval score nor the mixed list's provenance is currently surfaced to a
+user at all — a capability the retired UI had that the rebuild has not yet replaced.
 
-```python
-for passage in result.retrieved:
-    label = "web" if passage.doc_id.startswith("web:") else "knowledge base"
-    st.markdown(f"**{passage.doc_id}** — {passage.section} *({label})*")   # no score shown
-...
-for passage in result.visual_matches:
-    st.markdown(f"**{passage.doc_id}** — {passage.section} *(visual match, {passage.score:.0%})*")
-```
-
-`visual_matches` scores are all Chroma cosine similarities from one path, so showing
-one is showing a comparable number. `retrieved` mixes Chroma and Tavily scores after
-escalation — the exact seam `M4` names — and the page simply never prints that number
-at all, distinguishing web from corpus results by a text label instead. `M4`'s
-tolerance argument was that nothing *ranks* on the mixed list; this is the other half
-of that argument holding at the UI layer too: nothing *displays* the mixed number
-either, so the one place a user could have been misled by comparing two incomparable
-percentages never shows them side by side to compare.
-
-The final expander, "What the agent did", is the visible end of the `tools_used` and
-`errors` lists that have been accumulating since §3c.1 and threading through every
-node's `except StructuredOutputFailed` branch since §2.5 — this is where an owner can
-actually read `search_by_photograph` was skipped, or that `build_roadmap` failed
-quietly, rather than those facts staying internal to a trace nobody looks at.
+The retired UI's final expander, "What the agent did", was the visible end of the
+`tools_used` and `errors` lists that have been accumulating since §3c.1 and threading
+through every node's `except StructuredOutputFailed` branch since §2.5 — where an
+owner could read that `search_by_photograph` was skipped, or that `build_roadmap`
+failed quietly, rather than those facts staying internal to a trace nobody looks at.
+The React frontend has no equivalent view; that information still exists on
+`DiagnosisState` and is still logged, but nothing currently renders it for an owner to
+read.
 
 ---
 
@@ -1649,8 +1656,10 @@ def suggest_new_diagnosis(reason: str) -> str:
 `escalation` is a plain `dict` populated by closure, returned alongside the compiled
 agent as a `(agent, escalation)` pair — `_make_tools`'s docstring explains why it isn't
 an attribute on the tool list instead: "a plain `list` has no `__dict__`, so it cannot
-carry an extra attribute." `ui/pages/chat.py` (§7.5) checks this dict after `invoke`
-returns to decide whether to show the hand-off to the re-check flow.
+carry an extra attribute." `ChatService.send` (§7.3) checks this dict after `invoke`
+returns and reports it as `ChatTurn.escalated`, which is what today's timeline
+escalation entry (§7.5) is built from — the retired UI's chat page checked the same
+dict to decide whether to show its hand-off into the re-check flow.
 
 **The Critical bug the final whole-branch review found lived in one missing
 constructor argument.** `create_agent` takes a `checkpointer`, and until the fix wave,
@@ -1727,14 +1736,17 @@ table: `_extract_tool_calls` walks the messages produced after the newest
 `HumanMessage` (`_messages_from_this_turn`'s boundary), pairs each `AIMessage`'s
 requested calls with the matching `ToolMessage` by `tool_call_id`, and truncates any
 result past 500 characters — "the stored summary exists to show the owner what the
-agent consulted, not to be a second copy of it." `ui/pages/chat.py` renders this list
-in a `st.expander` (§7.5).
+agent consulted, not to be a second copy of it." The retired UI's chat page rendered
+this list in a collapsed disclosure widget, name, args and truncated result all shown
+(§7.5); `web/src/screens/chat/Chat.tsx` reads the same `tool_calls` field but shows
+less of it — a de-duplicated list of friendly source names (`sourceName`, keyed off
+each call's tool name), not the raw calls.
 
 ### 7.4 Services: the seam re-scoped for a re-check, and a bug about which steps count
 
 §5.2 named `DiagnosisService`'s job: `StartResult`/`FinalResult` are the entire
-vocabulary the UI is allowed to know, so no `Command`, checkpoint config, or
-`__interrupt__` sentinel ever crosses into `ui/`. Phase 2 adds one new entry point,
+vocabulary a caller is allowed to know, so no `Command`, checkpoint config, or
+`__interrupt__` sentinel ever crosses into the API layer. Phase 2 adds one new entry point,
 `start_recheck`, and it earns that boundary role the same way `start`/`answer` already
 did.
 
@@ -1766,8 +1778,9 @@ ruled out a rejection or a retake, the graph has already run to completion — t
 no third branch to handle. `_prepare_images` and `_stopped_at_the_guards` are shared
 `staticmethod`s specifically so this guarantee holds identically for both entry
 points: "a limit enforced in only one of them would be a hole." Thread-id rotation on
-a rejected/retake re-check — the `U7` fix for this second entry point — lives in
-`ui/pages/plant_detail.py`'s `_rotate_recheck_thread`, not here; §7.5 covers it.
+a rejected/retake re-check — the `U7` fix for this second entry point — was the
+retired UI's `plant_detail.py` page's job, not this service's; §7.5 covers it, and
+notes where that job lives today.
 
 **`FinalResult` grew two fields, both purely for rendering:**
 
@@ -1839,104 +1852,127 @@ repository write inside `transaction(...)` — `mark_roadmap_step` is also where
 fix (§7.1) actually surfaces to a user: a bad `step_id` now raises instead of
 no-op'ing, right at the point a UI button calls it.
 
-### 7.5 The UI: three pages, five components, and one shared reset
+### 7.5 The retired UI: three pages, five components, and one shared reset
 
-`ui/bootstrap.py` gains two more factories alongside `get_service()` (§5.1),
-following the exact same shape: `get_plant_service()` and `get_chat_service()` each
-open their own connection to the same database file and cache the result
-process-wide. This is the concrete site of §7.1's "three live connections" comment —
-reading it there first is worth doing before this section, because it's the reason a
-write through one service and a read through another can never race incorrectly.
+This section is kept as a historical record of Phase 2's original UI — every file it
+names is gone along with the rest of that framework — because the bugs it describes
+and the fixes for them are real lessons, not artifacts of the framework they happened
+in. A short note on where the equivalent behaviour lives today follows at the end.
 
-**My Plants** (`ui/pages/my_plants.py`) is the simplest page in the phase — a grid of
-`st.container(border=True)` cards, one `PlantSummary` each, showing a health badge
-(⚠️ the primary candidate's name, 🟢 "Healthy", or "No diagnosis yet") and a pending-step
-caption sourced straight from §7.4's scoped count. Clicking "View" does the one thing
-every page in this phase agrees on as the shared contract: it sets
-`st.session_state.selected_plant_id` and calls `st.switch_page`. Plant detail and Chat
-both read that same key rather than accepting a parameter, which is what lets Chat be
-reachable directly from the sidebar (not only via Plant detail's button) without
-losing track of which plant it's for.
+The retired UI's bootstrap module gained two more factories alongside the one §5.1
+covered, following the exact same shape: one for the plant service and one for the
+chat service, each opening its own connection to the same database file and caching
+the result process-wide. This was the concrete site of §7.1's "three live
+connections" comment — the reason a write through one service and a read through
+another could never race incorrectly.
 
-**Plant detail** (`ui/pages/plant_detail.py`) is the largest page, composing
-`render_timeline`, `render_roadmap_checklist`, `render_feedback_prompt` (only when
-`detail.feedback_due`), and its own small re-check wizard — a two-stage state machine
-(`"closed"` / `"upload"`) simpler than `diagnose.py`'s because a re-check never
-interrupts (§7.2, §7.4). Three details are worth slowing down for:
+**My Plants** was the simplest page in the phase — a grid of bordered cards, one
+`PlantSummary` each, showing a health badge (⚠️ the primary candidate's name, 🟢
+"Healthy", or "No diagnosis yet") and a pending-step caption sourced straight from
+§7.4's scoped count. Clicking "View" did the one thing every page in this phase
+agreed on as the shared contract: it set a `selected_plant_id` key in the framework's
+per-session state and switched page. Plant detail and Chat both read that same key
+rather than accepting a parameter, which is what let Chat be reachable directly from
+the sidebar (not only via Plant detail's button) without losing track of which plant
+it was for.
 
-- **Thread-id rotation is this entry point's own `U7` fix**, separate from the
-  wizard's. `diagnose.py` rotates a `uuid`; a re-check instead derives its thread id
+**Plant detail** was the largest page, composing a timeline render, a roadmap
+checklist render, a feedback prompt (only when `detail.feedback_due`), and its own
+small re-check wizard — a two-stage state machine (`"closed"` / `"upload"`) simpler
+than the main wizard's because a re-check never interrupts (§7.2, §7.4). Three details
+are worth keeping for what they taught, independent of the framework:
+
+- **Thread-id rotation was this entry point's own `U7` fix**, separate from the
+  wizard's. The main wizard rotated a `uuid`; a re-check instead derived its thread id
   from the plant and its latest diagnosis (`f"recheck-{plant_id}-{latest_diagnosis_id}-{attempt}"`)
-  because neither a rejection nor a retake writes a new diagnosis — so without an
-  explicit `recheck_attempt` counter incremented by `_rotate_recheck_thread()`, that
-  id would never change between attempts and a retry would resume the abandoned run's
+  because neither a rejection nor a retake wrote a new diagnosis — so without an
+  explicit `recheck_attempt` counter incremented on each retry, that id would never
+  have changed between attempts, and a retry would have resumed the abandoned run's
   checkpoint. This was found by the *whole-branch* review, not the task review for
   this page — the wizard's fix looked complete in isolation, and only reading both
   entry points side by side surfaced that the second one had the identical bug in a
-  different shape.
-- **A cross-plant leak, closed by the ownership marker at the top of the file:**
-  `recheck_stage`/`recheck_result`/`recheck_attempt` are bare session-state keys, not
-  scoped by plant id. `_recheck_owner_plant_id` records which plant they currently
-  belong to, and a mismatch on arrival clears them via `ui/components/_recheck_state.py`
-  — otherwise finishing a re-check on one plant and navigating to another, in the same
-  browser session, would show the first plant's stale re-check result on the second
+  different shape. It is also why the current `runs/` design (§1.3) mints a fresh
+  random thread id for every run, re-check included, rather than deriving one from
+  anything: a derived id is exactly the shape of bug this was.
+- **A cross-plant leak, closed by an ownership marker:** the re-check stage, result,
+  and attempt counter were bare session-state keys, not scoped by plant id. A
+  recorded "owner plant id" caught a mismatch on arrival and cleared them — otherwise
+  finishing a re-check on one plant and navigating to another, in the same browser
+  session, would have shown the first plant's stale re-check result on the second
   plant's page.
-- **The verdict renders with its underscore spaced out**, `result.verdict.replace('_',
-  ' ')` — deliberately not mapped through a lookup table of nicer prose, matching how
-  the README already describes the four verdicts (`improving`/`static`/`worsening`/
-  `new_problem`) rather than inventing a second vocabulary for the same four words.
+- **The verdict rendered with its underscore spaced out**, deliberately not mapped
+  through a lookup table of nicer prose, matching how the README already describes
+  the four verdicts (`improving`/`static`/`worsening`/`new_problem`) rather than
+  inventing a second vocabulary for the same four words.
 
-**Chat** (`ui/pages/chat.py`) renders history from `service.history(plant_id)`,
-showing each message's tool calls (if any) in a collapsed `st.expander` — §7.3's
-`_extract_tool_calls` output, one call per line with its name, args, and truncated
-result. The escalation handoff is the one piece of real cross-page state design in
-this phase: `_ESCALATION_KEY` is scoped by plant id
-(`"chat_escalation_plant_id"` → the plant it fired for, not a bare boolean), re-checked
-every turn so an escalation offer disappears the moment a later answer no longer
-warrants it, and its "Upload a new photo" button primes *three* of Plant detail's own
-session-state keys before switching pages — `selected_plant_id`, `recheck_stage`, and
-the `_recheck_owner_plant_id` marker — so Plant detail opens already at its upload
-form instead of behind its "Re-check this plant" button. It calls the same
-`clear_recheck_state()` Plant detail uses for the cross-plant leak above, for a
-concrete, previously-real reason spelled out in `_recheck_state.py`'s own docstring:
-an earlier version of this handoff popped `recheck_result` but not `recheck_attempt`,
-leaving a stale attempt counter for the next reset to trip over. Centralising the key
-list in one file is what makes that class of drift structurally harder to reintroduce.
+**Chat** rendered history from `service.history(plant_id)`, showing each message's
+tool calls (if any) in a collapsed disclosure widget — §7.3's `_extract_tool_calls`
+output, one call per line with its name, args, and truncated result. The escalation
+handoff was the one piece of real cross-page state design in this phase: the
+escalation key was scoped by plant id (the plant it fired for, not a bare boolean),
+re-checked every turn so an escalation offer disappeared the moment a later answer no
+longer warranted it, and its "Upload a new photo" button primed *three* of Plant
+detail's own session-state keys before switching pages, so Plant detail opened
+already at its upload form instead of behind its "Re-check this plant" button. It
+called the same state-clearing routine Plant detail used for the cross-plant leak
+above, for a concrete, previously-real reason: an earlier version of this handoff
+popped the re-check result but not the attempt counter, leaving a stale attempt
+counter for the next reset to trip over. Centralising the key list in one file was
+what made that class of drift structurally harder to reintroduce.
 
 **Five components**, three of them new:
 
-- `timeline.py` marks a re-check entry with a `🔁 Re-check` caption by correlating
-  `diagnosis.observation_id` back to `detail.observations` — `persist` (§7.1) records
-  `kind="recheck"` on the *observation*, not the diagnosis, so rendering the
-  distinction requires joining the two lists the page already has in memory rather
-  than adding a redundant column.
-- `roadmap_checklist.py` now imports `TIER_LABEL` from the new
-  `ui/components/_ipm_labels.py` instead of keeping its own copy — `roadmap.py`
-  (Phase 1's read-only render of a fresh `Roadmap`) had one too, keyed differently
-  (`IPMTier` vs `int`). `IPMTier` being an `IntEnum` is what let one dict, keyed by
-  the enum, serve both call sites without a second copy or a conversion.
-- `feedback.py` collects a real star rating via `st.feedback("stars")` (0-based,
-  shifted by one to satisfy the `CHECK (rating BETWEEN 1 AND 5)` column constraint)
-  and gives its yes/no/unclear/too_early radio a real accessibility label, hidden
-  visually under the subheader above it rather than left empty.
-- `_recheck_state.py` and `_ipm_labels.py` are the two underscore-prefixed,
-  page-external modules in this phase — not components that render anything
-  themselves, but shared constants/helpers two independent pages or components would
-  otherwise have kept drifting copies of.
+- The timeline render marked a re-check entry with a `🔁 Re-check` caption by
+  correlating `diagnosis.observation_id` back to `detail.observations` — `persist`
+  (§7.1) records `kind="recheck"` on the *observation*, not the diagnosis, so
+  rendering the distinction required joining the two lists the page already had in
+  memory rather than adding a redundant column.
+- The roadmap-checklist render imported a shared `TIER_LABEL` from a new helper
+  module instead of keeping its own copy — Phase 1's read-only roadmap render had one
+  too, keyed differently (`IPMTier` vs `int`). `IPMTier` being an `IntEnum` is what
+  let one dict, keyed by the enum, serve both call sites without a second copy or a
+  conversion.
+- The feedback component collected a real star rating (0-based, shifted by one to
+  satisfy the `CHECK (rating BETWEEN 1 AND 5)` column constraint) and gave its
+  yes/no/unclear/too_early radio a real accessibility label, hidden visually under
+  the subheader above it rather than left empty.
+- Two underscore-prefixed, page-external modules held the re-check state keys and the
+  IPM label lookup respectively — not components that rendered anything themselves,
+  but shared constants/helpers two independent pages or components would otherwise
+  have kept drifting copies of.
 
-**The build/config tail, for completeness:** `pyproject.toml` picked up two changes —
-`[tool.coverage.run] omit` now excludes `ui/pages/*` and `ui/components/*` alongside
-`ui/bootstrap.py`, which is `M1`'s resolution (§4.5): these files are genuinely tested,
-just under the `ui` pytest marker rather than the gated default run, and a marker
-folded into the default run turned out to be a structural dead end (deselected tests
-cannot move a coverage number the default run doesn't execute them under — tried and
-reverted before landing on the `omit` extension instead). `[tool.ruff] extend-exclude
-= ["*.md"]` stops `ruff format` from rewriting fenced Python code blocks embedded in
-plan and spec documents, discovered the hard way when an early task left three
-markdown files full of pure whitespace diffs. `.gitignore` gained a second checkpoint
+**The build/config tail, for completeness — and now itself historical:**
+`pyproject.toml` once excluded that retired UI's page and component modules from
+coverage, which was `M1`'s resolution (§4.5): those files were genuinely tested, just
+under a dedicated pytest marker rather than the gated default run, and folding that
+marker into the default run had turned out to be a structural dead end (deselected
+tests cannot move a coverage number the default run doesn't execute them under —
+tried and reverted before landing on the `omit` extension instead). None of that
+applies today: the marker and the `omit` entries for that framework are both gone, and
+`openspec/config.yaml`'s marker list now names only `integration` and `llm`.
+`[tool.ruff] extend-exclude = ["*.md"]` stops `ruff format` from rewriting fenced
+Python code blocks embedded in plan and spec documents, discovered the hard way when
+an early task left three markdown files full of pure whitespace diffs — that one is
+unrelated to the UI and still in force. `.gitignore` gained a second checkpoint
 pattern, `data/plantopia.db.chat-checkpoints*`, once the chat agent's own `SqliteSaver`
 file (§7.1, §7.3) started showing up as untracked — the original single pattern only
-matched the diagnosis graph's `.checkpoints` suffix.
+matched the diagnosis graph's `.checkpoints` suffix; both the pattern and the file it
+names are artifacts of the SQLite-era data layer §4.5 already flags as superseded.
+
+**Where the equivalent behaviour lives now:** the three pages are
+`web/src/screens/plants/Plants.tsx`, `web/src/screens/plants/PlantDetail.tsx`, and
+`web/src/screens/chat/Chat.tsx`/`ChatPage.tsx`. None of them hold a plant id in shared
+client-side state — `PlantDetail` and `Chat` both take it from the route (§5.3's
+"identifier in the URL" point applies here too), so the cross-page priming this
+section describes has no equivalent to prime. The escalation handoff is now a
+timeline entry ("Flagged for a fresh look") rendered by
+`web/src/screens/plants/Timeline.tsx` from `web/src/screens/plants/history.ts`'s
+`escalationsIn`, not an automatic jump into the upload form — a behaviour change from
+what `agent/chat_agent.py`'s `suggest_new_diagnosis` docstring still describes, worth
+noting as a small piece of drift between that comment and what the current frontend
+actually does. Thread-id rotation for a re-check is no longer a page's job at all: as
+the bullet above already notes, every run mints a fresh random thread id regardless of
+why it started.
 
 This closes the Phase 2 tour. Between §7.1 and §7.5, every new or changed file this
 phase touched has been walked at least once — the data layer, the graph extension, the
@@ -2041,22 +2077,23 @@ workspace lives on the EU instance (or a self-hosted deployment) sets
 `PLANTOPIA_LANGSMITH_ENDPOINT` to that host; everyone else leaves it unset and gets the
 SDK's default.
 
-**Where `configure_tracing` is called moved during review, for a reason worth recording.**
-It began inside `ui/bootstrap.py`'s `get_service()`. But `ui/pages/chat.py` reaches
-`get_chat_service()` and never touches `get_service()` at all, so a session that only
-ever chatted ran **entirely untraced** — including every chat model call, which is
-precisely the traffic someone enabling tracing wants to see. It now lives in `app.py`:
+**Where `configure_tracing` was called moved during review, for a reason worth
+recording.** In the retired UI it began inside the bootstrap module's diagnosis-service
+factory. But the chat page reached a separate chat-service factory and never touched
+that one at all, so a session that only ever chatted ran **entirely untraced** —
+including every chat model call, which is precisely the traffic someone enabling
+tracing wants to see. It moved to the one place every page's script ran through,
+wrapped in that framework's process-wide cache decorator so that re-executing the
+whole script on every widget interaction did not re-log the same "tracing
+configured" message on every click.
 
-```python
-@st.cache_resource
-def _configure_tracing_once() -> bool:
-```
-
-The decorator is doing real work. `app.py` re-executes top to bottom on *every*
-Streamlit rerun — every widget interaction on every page, not just navigation — so an
-undecorated call would fire and log on each one. `st.cache_resource` is what turns
-"called constantly" into "runs once", the same mechanism `ui/bootstrap.py`'s factories
-already rely on.
+Today `configure_tracing` is called from exactly one place: `eval/run_eval.py`, once
+per harness run. Nothing in the request path — the FastAPI app factory, the run
+worker, the chat service — calls it, so a live diagnosis or chat turn is not currently
+traced regardless of whether `PLANTOPIA_LANGSMITH_API_KEY` is set. Whether that is a
+gap worth closing or a deliberate scope narrowing (tracing as an evaluation-time tool
+rather than a production one) is not settled anywhere in this document; it is worth
+someone deciding on purpose.
 
 ### 8.2 Getting the collector into `persist` without splitting the write
 
@@ -2134,8 +2171,8 @@ One entry does legitimately survive: a session paused at the interrupt and then
 abandoned, because `answer()` may still arrive. The comment says so rather than claiming
 the dict cannot grow — an earlier draft claimed exactly that, and it was not true.
 
-`ui/components/cost_badge.py` is the visible end, and it is nine lines that mostly decide
-when *not* to render:
+The retired UI's cost badge component was the visible end, and it was nine lines that
+mostly decided when *not* to render:
 
 ```python
     if not token_usage:
@@ -2144,9 +2181,13 @@ when *not* to render:
 
 Every diagnosis written before this phase has `NULL` in both columns. A "0 tokens" badge
 would report those as free rather than as unmeasured — the same distinction `snapshot()`
-protects at the other end of the pipe. The badge appears in two places, on the Diagnose
-result view and per-diagnosis on the Plant detail timeline, and because the re-check
-graph reuses `persist`, re-checks acquired cost capture with no second wiring point.
+protects at the other end of the pipe. That badge appeared in two places, on the
+Diagnose result view and per-diagnosis on the Plant detail timeline, and because the
+re-check graph reuses `persist`, re-checks acquired cost capture with no second wiring
+point. `token_usage_json` and `cost_usd` are both still captured at write time;
+`cost_usd` alone is exposed today, on `DiagnosisOut` (`api/schemas.py`) — but nothing
+in `web/src` currently renders it. Another observability affordance the retired UI had
+that the rebuild has not yet replaced.
 
 One gap survives, recorded as `M18`: `persist` returns early when there is no
 differential, so a run that burned vision and reasoning tokens and then failed to produce
@@ -2371,8 +2412,9 @@ failures internally and only the NaN cells reveal them. `eval/report.py` renders
 ### 8.5 The CLI, the page, and what running it actually found
 
 `eval/run_eval.py` is the only thing in `eval/` that touches the network, and it is the
-only module in the package excluded from coverage — the same precedent `ui/bootstrap.py`
-set for real-infrastructure wiring, with everything beneath it unit-tested.
+only module in the package excluded from coverage — the same precedent the retired
+UI's bootstrap module set for real-infrastructure wiring, with everything beneath it
+unit-tested.
 
 Two details in it are cost decisions rather than style. `_run_one` opens
 `connect(":memory:")` per case, because `persist` writes a plant, an observation and a
@@ -2380,21 +2422,20 @@ diagnosis on every run and 68 runs would otherwise pour junk into `data/plantopi
 And `_retriever()`/`_corpus()` are `lru_cache`d, because re-embedding a 43-document
 corpus per case would dominate both runtime and spend.
 
-`ui/pages/evaluation.py` renders and never runs. A full evaluation is ~100 minutes of
-paid model calls, and Streamlit's rerun model makes long jobs awkward to hold — so the
-page reads the newest committed results file and stops:
-
-```python
-if results is None:
-    st.info(
-        "No evaluation has been run yet. Run `uv run python -m eval.run_eval` to "
-        "generate a report — it takes several minutes and makes real model calls."
-    )
-    st.stop()
-```
-
-The empty state is not hypothetical; it is what the page showed for most of this phase's
-development, and it is tested as its own case.
+The retired UI's evaluation page rendered and never ran. A full evaluation is ~100
+minutes of paid model calls, and that framework's script-rerun model made long jobs
+awkward to hold — so the page read the newest committed results file and stopped
+rather than offering a way to start one. `web/src/screens/Evaluation.tsx` keeps
+exactly that division of labour: its own docstring states it plainly, *"Renders a file
+somebody produced by running a command; it does not run anything. A harness run costs
+real money and takes minutes, which makes starting one a different kind of thing from
+reading a result."* It reads the same results through `useEvaluation`, shows the same
+empty-state message pointing at `uv run python -m eval.run_eval` when nothing has been
+measured yet, and — where the retired page rendered whatever fields it chose to —
+dumps the full JSON into a collapsed `<details>` disclosure rather than choosing a
+fixed set of fields to keep in step with the harness's own report format. The empty
+state is not hypothetical in either version; it is what a fresh clone shows, and it is
+tested as its own case on both.
 
 #### What two real runs established
 
@@ -2612,13 +2653,19 @@ both consumers and resolves to a `SELECT` on a separate connection. A failure th
 have cost the owner the very diagnosis the write path is so careful to protect. Both reads
 now degrade to `""`.
 
-`ui/components/profile_panel.py` is the other half of taking this seriously: every stored
-fact with its `source`, confidence and last-confirmed date, and a delete control. It is
-read-and-delete, not an editor. A system that accumulates inferences about a person and
-shows them nothing is a worse system than one that shows its working — and deleting is the
-owner's only correction mechanism, since reconciliation can supersede a fact only when the
-model contradicts it. One honest caveat is captioned there: `source` records a fact's
-**origin**, not its current standing, and never upgrades from `inferred` to `stated`.
+The retired UI had a dedicated profile panel component for the other half of taking
+this seriously: every stored fact with its `source`, confidence and last-confirmed
+date, and a delete control, read-and-delete rather than an editor. `Account.tsx`'s
+`LearnedFacts` section carries the same idea forward today, folded into the account
+screen rather than kept as its own page: each fact shows in words whether it was
+stated or worked out, when it was first noticed, and a fuzzy confidence label
+("fairly sure" / "moderately sure" / "not very sure") rather than the raw number, next
+to a "Forget this" button. A system that accumulates inferences about a person and
+shows them nothing is a worse system than one that shows its working — and deleting is
+the owner's only correction mechanism, since reconciliation can supersede a fact only
+when the model contradicts it. One honest caveat applied to both: `source` records a
+fact's **origin**, not its current standing, and never upgrades from `inferred` to
+`stated`.
 
 ### 9.4 Two gates, and what they actually proved
 

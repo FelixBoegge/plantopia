@@ -736,7 +736,7 @@ created per session and dropped afterwards, each test inside a transaction that 
 back. Mocking the database in a project whose subject is the database would produce tests
 that assert on the mock.
 
-**Nothing is tested outside the gated run any more.** The `ui` tier went with Streamlit,
+**Nothing is tested outside the gated run any more.** The `ui` tier went with the retired UI,
 and `api/` and `identity/` are measured in the default run, so the gate sees everything
 except the evaluation CLI and two one-shot migration tools — each omitted for being
 real-infrastructure wiring with nothing in it a test could assert that would not be a mock
@@ -822,7 +822,7 @@ keeps the comparison clean but leaves the current neutral figure unmeasured; an 
 is the cheapest thing to do next.
 
 Results are written to `eval/results/` as timestamped JSON and Markdown. The page that
-used to render them went with Streamlit; reading the newest file is the interface until
+used to render them went with the retired UI; reading the newest file is the interface until
 the React frontend has somewhere to put it.
 
 The harness runs as its own account — created on demand, unverified, with an unusable

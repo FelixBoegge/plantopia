@@ -5,24 +5,20 @@ context: |
   the species, asks the questions a photograph cannot answer, and returns a ranked
   differential diagnosis with an integrated-pest-management treatment plan.
 
-  ## Current stack (being migrated)
+  ## Stack
   Python 3.12, uv. LangGraph state machine for diagnosis (14 nodes, a mandatory
-  interrupt() for clarifying questions) plus a LangChain ReAct agent for chat.
-  Streamlit UI, SQLite domain data, Chroma vector store over a 43-document hand-authored
-  disorder corpus, LangGraph SQLite checkpointers. Every model call routes through
-  OpenRouter (gate / vision / reasoning / embedding tiers). Ragas evaluation harness over
-  a 28-case golden set; LangSmith tracing optional.
-
-  ## Target stack
-  FastAPI backend and a React + Vite + TypeScript + Tailwind/shadcn SPA, side by side at
-  the repository root as backend/ and frontend/. One Postgres holds domain tables, the
-  corpus in pgvector, and both LangGraph checkpointers. Own email/password auth with
-  argon2id and rotating JWTs, open self-registration, per-user quotas and a global spend
-  cap. Diagnoses run in the background with progress streamed over SSE across the
-  interrupt. Docker Compose locally; twelve-factor config; hosting decided at deploy time.
+  interrupt() for clarifying questions) plus a LangChain ReAct agent for chat. FastAPI
+  backend at the repository root with a React + Vite + TypeScript + Tailwind/shadcn SPA
+  in web/. One Postgres holds the domain tables and both LangGraph checkpointers. The
+  43-document disorder corpus is embedded in a Chroma store on disk, with a migrated
+  pgvector table standing unused beside it (M25). Own email/password auth with argon2id
+  and rotating JWTs, open self-registration, per-user quotas and a global spend cap.
+  Diagnoses run in the background with progress streamed over SSE across the interrupt.
+  Every model call routes through OpenRouter (gate / vision / reasoning / embedding
+  tiers). Ragas evaluation harness over a 28-case golden set; LangSmith tracing optional.
 
   ## Architectural rules
-  - Layering is ui/api -> services -> agent + data. Nothing skips the services boundary.
+  - Layering is api -> services -> agent + data. Nothing skips the services boundary.
   - Repositories take user_id as a required first parameter; tenancy is enforced there,
     never trusted to callers. Another user's row returns 404, never 403.
   - The data layer is synchronous. Repositories are injected into LangGraph nodes via
@@ -36,7 +32,7 @@ context: |
   pytest with a coverage gate at 85%. Tests make NO LLM calls, ever — models arrive
   through core/llm.py and are replaced with a scripted fake; HTTP is mocked with respx.
   Assert on structure and control flow, never on generated prose. Markers: integration,
-  ui, llm. The evaluation harness costs real money and is never run by tests or CI.
+  llm. The evaluation harness costs real money and is never run by tests or CI.
 
   ## Conventions
   - Conventional commits, lowercase subject, a body that explains why rather than what.
