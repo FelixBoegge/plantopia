@@ -226,6 +226,12 @@ class Settings(BaseSettings):
     stale_photograph_days: int = Field(default=7, ge=1, le=365)
     max_upload_bytes: int = Field(default=8 * 1024 * 1024, gt=0)
 
+    # **The long-edge cap applied to a stored photograph.** 1568 is the point beyond which
+    # the major vision models downscale server side anyway, so pixels above it are paid for
+    # and then discarded. A setting rather than a constant because every other limit
+    # governing an upload is one, and a reviewer changing one should find them together.
+    max_image_edge_px: int = Field(default=1568, gt=0)
+
     # How large a data export may grow before it is refused rather than built.
     #
     # The archive is assembled in memory, so this is a guard on the process rather than on

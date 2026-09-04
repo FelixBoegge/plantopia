@@ -70,6 +70,37 @@ def upright_bytes(data: bytes) -> bytes:
     return buffer.getvalue()
 
 
+def downscaled(data: bytes, *, max_edge: int) -> bytes:
+    """Cap an image's long edge, preserving its aspect ratio.
+
+    Returns ``data`` unchanged when it already fits, so the common case costs no
+    re-encode and loses no quality — the same bargain ``upright_bytes`` makes for a
+    photograph that needs no turning.
+
+    **Cost, not accuracy.** Four 8 MB photographs reach the vision model at full
+    resolution today, and the models downscale above this edge themselves, so the pixels
+    above it are billed and discarded. No measurement in this project can see the vision
+    layer (``M19``), so this deliberately claims nothing about what the model concludes.
+
+    Returns ``data`` unchanged when the bytes cannot be decoded: ``validate_upload`` is
+    the gate on what counts as an image, and this is not the place to start rejecting
+    uploads it let through.
+    """
+    try:
+        with Image.open(BytesIO(data)) as opened:
+            if max(opened.size) <= max_edge:
+                return data
+            image_format = opened.format
+            # `thumbnail` caps the long edge and keeps the ratio, in place.
+            copy = opened.copy()
+            copy.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+            buffer = BytesIO()
+            copy.save(buffer, format=image_format, quality=95)
+    except Exception:  # noqa: BLE001 — see the docstring: not this function's gate
+        return data
+    return buffer.getvalue()
+
+
 @dataclass(frozen=True, slots=True)
 class StoredPhotograph:
     """A stored photograph and whatever it declared before it was normalised.
@@ -90,11 +121,10 @@ def store_upload(
     The stored bytes and the bytes the model sees are the same upright bytes, so the
     grid and the diagnosis can never disagree about which way up a plant is.
 
-    **No downscaling.** Pillow is here to apply the orientation the photograph declares
-    and nothing else. Resizing would change what the vision model sees, and no
-    measurement in this project can see the vision layer (``M19``) — so the damage, if
-    there were any, would be invisible. It is recorded as separate work rather than
-    smuggled in with a storage change.
+    **Downscaled to ``max_image_edge_px``.** Pillow applies the declared orientation and
+    caps the long edge; nothing else. The cap is cost rather than accuracy — see
+    ``downscaled`` — and it runs after the metadata read for the reason this module's
+    docstring gives.
 
     Raises:
         UploadRejected: if validation fails.
@@ -109,6 +139,11 @@ def store_upload(
     # After validation, not before: the size limit governs what the owner submits,
     # and normalisation is our own transformation of an upload already accepted.
     data = upright_bytes(data)
+
+    # After `read_metadata`, which needs the bytes as they arrived, and beside
+    # `upright_bytes` for the same reason: both re-encode, and a re-encode is what
+    # destroys the metadata block.
+    data = downscaled(data, max_edge=settings.max_image_edge_px)
 
     # **And the position comes out of the file before the file is stored.** Coarsening the
     # number written to `observations` protects the column and does nothing about the
