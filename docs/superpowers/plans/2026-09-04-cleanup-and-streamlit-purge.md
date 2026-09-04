@@ -934,10 +934,25 @@ EOF
 
 **Files:**
 - Modify: `docs/known-limitations.md`
+- Modify: `openspec/specs/photo-storage/spec.md:50-54`
 
 - [ ] **Step 1: Strike the resolved rows**
 
-Following the file's convention — struck through and dated, never deleted. Strike `U3`, `U8`, `M13`, `M50`, `M52`. `M13` closes fully: the intake and chat-events occurrences go in Task 3 and the two error-copy ones in Task 7, so no hardcoded product name survives outside `core/config.py`'s own default. For each, add the date and what the fix cost, not just that it closed.
+Following the file's convention — struck through and dated, never deleted. Strike `U3`, `U8`, `M50`, `M52`.
+
+**`M13` does NOT close — amend it instead, with what was learned.** Its claim of "one
+occurrence" was wrong by an order of magnitude: there are six in Python and four more in
+TypeScript. Task 3 fixed `agent/nodes/intake.py` and Task 7 fixed the two in `api/errors.py`.
+The remaining four are `services/chat_events.py`'s `TOOL_NAMES`, and they are deliberately
+left, for a reason worth recording:
+
+`web/src/screens/chat/sources.ts` holds the same four strings as a static TypeScript literal,
+and `tests/api/test_source_names_agree.py` regex-parses that file to assert the two tables say
+the same thing — deliberately two tables, because they are in different languages and neither
+can import the other. Making the server's side read `app_title` would break that agreement
+against a client that has no settings concept at all. Closing this properly means serving the
+title to the client, not renaming a constant. So M13 is a *product-rename* task, not the
+naming tidy-up its row claims, and the row should say so. For each, add the date and what the fix cost, not just that it closed.
 
 - [ ] **Step 2: Record M54 as not achievable**
 
@@ -953,6 +968,41 @@ longer static string, which tells a model nothing more. Verified 2026-09-04.
 - [ ] **Step 3: Add the delete-plant bug as a resolved row**
 
 It was never carried, so it arrives struck: found and fixed on 2026-09-04, with the prefix-matching cause recorded — a future reader adding a query key needs to know that `keys.plants` is a prefix of `keys.plant(id)`.
+
+- [ ] **Step 3b: Correct the photo-storage spec, which now contradicts the code**
+
+Found during Task 2 rather than planned. `openspec/specs/photo-storage/spec.md:50-54` carries
+a requirement headed **"The model sees what the owner uploaded"** which states the system
+"SHALL deliver photographs to the vision model with their original pixel data intact, apart
+from applying the orientation the photograph itself declares. It SHALL NOT downscale,
+recompress or crop them."
+
+Task 2 makes the last sentence false. This is a live spec, not an archived one, and the
+project is spec-driven — a spec that contradicts shipped behaviour is worse than no spec,
+because the next change will be argued from it.
+
+Amend the requirement so it permits the cap and keeps everything else it was protecting:
+
+```
+### Requirement: The model sees what the owner photographed
+
+The system SHALL deliver photographs to the vision model with their subject and framing
+intact, applying the orientation the photograph itself declares and capping the long edge
+at a configured maximum. It SHALL NOT crop them, and it SHALL NOT recompress a photograph
+that already fits within that cap.
+
+The cap exists because the vision models downscale above it themselves, so pixels beyond it
+are billed and discarded. It is a cost bound, not a judgement about what the model can see:
+no measurement in this project reaches the vision layer (`M19`), so nothing here claims the
+cap leaves a diagnosis unchanged.
+```
+
+Leave the two paragraphs that follow — the ordering constraint about reading metadata from
+the bytes as uploaded — **exactly as they are**. Task 2 strengthens that constraint rather
+than weakening it, and the prose already argues it well.
+
+Do not touch the "Completing a diagnosis with large photographs" scenario above it: it is
+about persisted run state carrying no image bytes, which this change does not affect.
 
 - [ ] **Step 4: Verify the numbers**
 
