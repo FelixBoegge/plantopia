@@ -24,7 +24,7 @@ def rejection_message(what_it_is: str, *, app_title: str) -> str:
     mid-sentence — so its capital and its full stop both have to go, or the result reads
     "This looks like A screenshot of a web form…., not a plant." (``U8``, seen live).
     """
-    described = what_it_is.strip().rstrip(".")
+    described = what_it_is.strip().rstrip(".…")
     if described[:1].isupper() and not described[1:2].isupper():
         # Lowercased only when it looks like ordinary prose. "NASA logo" keeps its capitals.
         described = described[0].lower() + described[1:]

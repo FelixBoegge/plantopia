@@ -18,7 +18,7 @@ specification written from that assignment — is no longer kept in the reposito
    - [3b. Analysis and the human in the loop](#3b-the-pipeline-analysis-and-the-human-in-the-loop) — identification, symptoms, the clarifying-question interrupt
    - [3c. Enrichment, diagnosis, and persistence](#3c-the-pipeline-enrichment-diagnosis-and-persistence) — evidence gathering, the differential, contagion, the roadmap, the write
 4. [Knowledge, tools, and persistence](#4-knowledge-tools-and-persistence) — the corpus, the retriever, the standalone tools, the data layer
-5. [The UI](#5-the-ui-bootstrap-the-service-seam-and-rendering) — bootstrap, `DiagnosisService`, the wizard, rendering
+5. [The UI](#5-the-ui-wiring-the-service-seam-and-rendering) — the composition root, `DiagnosisService`, the wizard, rendering
 6. [Prompts, guards, and configuration](#6-prompts-guards-and-configuration) — what every model is actually told, and where every number comes from
 7. [Phase 2: plant profiles, re-check, and chat](#7-phase-2-plant-profiles-re-check-and-chat) — the tables, the second entry path, the chat agent, and the pages that surface them
 8. [Phase 3: observability, cost, and evaluation](#8-phase-3-observability-cost-and-evaluation) — one callback seam, and a harness that measures the pipeline against a golden set
@@ -47,7 +47,9 @@ api/              FastAPI app factory — routers, request-scoped dependencies
 
 The important consequence is that `agent/` — where all the interesting logic lives —
 imports no web framework and opens no sockets. It can be exercised entirely in-process,
-which is why 631 tests run in about 35 seconds with no network access.
+which is why 2126 tests run in about 4 minutes (248s measured) with no calls to an
+LLM — the suite does talk to a local Postgres database (`M26`), which is the one
+network dependency it no longer avoids.
 
 ### 1.2 `Deps`: the reason it is testable
 
@@ -490,8 +492,11 @@ The photographs themselves are 3 MB each — a phone camera's normal output — 
 not a pathological input. It is the ordinary case. Recorded as limitation M15; the fix is
 either to drop `images` from state once the last consumer is done with it, or to carry
 only `ref` and load bytes on demand, which trades the convenience described above for
-bounded storage. Note that limitation U3 (uploads are never downscaled) compounds this:
-halving the pixel dimensions would cut the checkpoint volume by roughly four.
+bounded storage. Limitation U3 — uploads are never downscaled — was resolved on
+2026-09-04: `core/images.py::downscaled` now caps a photograph's long edge at
+`max_image_edge_px` (1568px by default), so a phone camera's normal output is roughly
+halved in each dimension before it reaches this state, which is exactly the four-fold
+cut in checkpoint volume this paragraph was pointing at.
 
 ---
 
@@ -1005,25 +1010,28 @@ fields off the top candidate.
 
 ---
 
-## 5. The UI: bootstrap, the service seam, and rendering
+## 5. The UI: wiring, the service seam, and rendering
 
 Everything upstream of this section has been agent-internal. This is where a browser
 click actually turns into a graph invocation, and where the promise made in §1.2 —
 "the UI knows nothing about LangGraph" — is either kept or broken.
 
-### 5.1 `ui/bootstrap.py`: one function, every dependency
+### 5.1 `agent/wiring.py` and `api/dependencies.py`: the composition root, per request
 
-`get_service` is the composition root named in §1.3; reading it end to end now that
-every piece it wires has been toured individually, three things stand out that
-weren't visible from any single piece alone.
+`build_deps` is the composition root named in §1.3; reading it end to end alongside
+`api/dependencies.py`, which calls it on every request that needs the graph, three
+things stand out that weren't visible from any single piece alone.
 
 First, the `image_embedder` wiring is conditional on `settings.multimodal_embeddings`,
-not on whether an embedder *could* be constructed:
+not on whether an embedder *could* be constructed — this is the same logic §1.3 already
+pointed at, inside `agent/wiring.py::_retriever_for`:
 
 ```python
-# Wired only when the configured embedding model actually accepts images. Passing
-# it unconditionally would cost one doomed HTTP call per uploaded image on every
-# diagnosis; passing None disables the path cleanly in ChromaRetriever.
+image_embedder = (
+    ImageEmbedder(api_key=api_key, base_url=base_url, model=embedding_model)
+    if multimodal
+    else None
+)
 ```
 
 This is the setting `U2` records as defaulted to `False` — no multimodal embedding
@@ -1034,17 +1042,29 @@ circuiting before ever calling the retriever (§3c.1), and `assess_symptoms`'
 fallback path having "nothing to fall back to" (§3b.2). One boolean, set once here,
 is the reason the whole cross-modal side of the pipeline is currently dark.
 
-Second, the checkpointer gets its **own** connection to a **different** file —
-`str(settings.db_path) + ".checkpoints"` — via a second call to `connect()`, not a
-second use of the one already open for the repositories. That split is what makes the
-231 MB figure in `M15` legible as a separate, measurable thing: the application
-database and the checkpoint database are physically different files precisely so
-that "how much does a diagnosis cost in disk" and "how much has LangGraph's replay
-machinery accumulated" can be asked as two different questions.
+Second, the diagnosis graph and the chat agent now share **one** checkpointer
+(`agent/checkpoints.py::build_checkpointer`, `lru_cache`d on the database URL) backed
+by Postgres tables LangGraph manages itself, rather than each opening its own SQLite
+file the way a retired design once did. That old split is what made the 231 MB figure
+in `M15` legible as its own, measurable thing; the figure itself is gone along with
+the reason for it, because `M15`'s fix stopped carrying whole photographs as base64 in
+graph state — a checkpoint row now carries a blob key, not the bytes — so there is no
+separate checkpoint *file* left to grow, and the two graphs are told apart by a
+thread-id prefix (`agent/threads.py`) rather than by which connection they opened.
 
-Third, the whole function runs inside `@st.cache_resource` (§1.3), which is why it
-reads as a script rather than a class: there is exactly one call, at process start,
-and nothing here needs to guard against re-entry.
+Third, nothing here is cached the way a retired UI once cached its whole service
+object with a single process-wide singleton. `build_deps` builds fresh, on purpose:
+`api/dependencies.py::session_dep` opens one SQLAlchemy session per request and closes
+it in a `finally` once the response is done, and every service dependency in that file
+is built from that request's own session rather than reused across requests — a cached
+service would pin one owner's session into a process serving many. What *is* still
+cached process-wide is only what is genuinely expensive to rebuild: the connection
+pool underneath every session (`agent/wiring.py::_engine_for`), the corpus retriever
+(`_retriever_for`, keyed on the settings that determine it), and the checkpointer
+above. A model client is deliberately not one of them — `build_gate_model`,
+`build_vision_model` and `build_reasoning_model` are called fresh on every
+`build_deps`, because constructing a model client is cheap and caching one would risk
+holding stale credentials past a settings change.
 
 ### 5.2 `DiagnosisService`: the seam that keeps LangGraph out of the UI
 

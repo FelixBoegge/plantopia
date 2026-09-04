@@ -116,8 +116,8 @@ def store_upload(
 ) -> StoredPhotograph:
     """Validate an upload, read what it declares, store it, and return both.
 
-    The stored bytes and the bytes the model sees are the same upright bytes, so the
-    grid and the diagnosis can never disagree about which way up a plant is.
+    The stored bytes and the bytes the model sees are the same upright, capped bytes, so
+    the grid and the diagnosis can never disagree about which way up a plant is.
 
     **Downscaled to ``max_image_edge_px``.** Pillow applies the declared orientation and
     caps the long edge; nothing else. The cap is cost rather than accuracy — see

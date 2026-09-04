@@ -864,11 +864,12 @@ the shipped app never imports them.
   confirming test rather than the image
 - Chat token usage and cost are not tracked at all, so the saving from bounding the context
   is measurable in a test and invisible in production (`M17`)
-- Uploads are not downscaled before they reach the vision model. Storage is no longer the
-  reason to care — photographs live in the database once rather than in every checkpoint —
-  but a full-size image is still sent to the vision tier on every diagnosis, and that is
-  cost. Left alone deliberately: downscaling changes what the model sees, and nothing here
-  can measure the vision layer
+- Uploads are capped at 1568px on the long edge (`max_image_edge_px`) before they reach
+  the vision model — an image already inside the cap is returned unchanged and never
+  re-encoded. The cap is a cost bound, not a claim about accuracy: nothing in this project
+  measures the vision layer (`M19`), so this does not claim the cap leaves a diagnosis
+  unchanged, only that it stops paying for pixels above the size the model itself
+  downscales to
 - **The corpus is in two places and only one is used.** `corpus_chunks` holds all 301
   sections in pgvector, and retrieval still runs on Chroma. The move waits until the
   embedding model is chosen, since a different model means re-embedding anyway
