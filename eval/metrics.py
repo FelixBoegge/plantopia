@@ -228,8 +228,7 @@ def total_usage(runs: list[CaseRun]) -> UsageSnapshot | None:
     Mirrors ``UsageCollector.snapshot()``'s convention: ``None`` when no run
     recorded any usage at all, rather than a zeroed snapshot that would read as a
     free run. Cost is summed only from runs that reported one and is ``None`` if
-    none did — never a fabricated ``$0.00`` (consistent with
-    ``ui/components/cost_badge.py``).
+    none did — never a fabricated ``$0.00``.
     """
     usages = [run.usage for run in runs if run.usage is not None]
     if not usages:

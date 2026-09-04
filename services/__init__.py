@@ -1,1 +1,1 @@
-"""The orchestration layer between the Streamlit UI and the diagnosis agent."""
+"""The orchestration layer between the HTTP API and the diagnosis agent."""

@@ -24,7 +24,7 @@ test("registers, verifies and signs in", async ({ page }) => {
 
   // The link a person was actually sent, followed as sent. A test that minted its own token
   // would pass while every real link pointed somewhere that does not exist — which is
-  // exactly what shipped once, at a retired Streamlit port.
+  // exactly what shipped once, at a retired UI's port.
   const link = await linkSentTo(address, page);
   expect(link).toContain("/verify-email?token=");
 

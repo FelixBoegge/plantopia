@@ -1,6 +1,6 @@
-"""The orchestration boundary between Streamlit and the agent.
+"""The orchestration boundary between the API and the agent.
 
-The UI knows nothing about LangGraph, checkpointers, or resume commands. It calls
+Its caller knows nothing about LangGraph, checkpointers, or resume commands. It calls
 ``start``, renders questions, calls ``answer``, and renders the result.
 """
 

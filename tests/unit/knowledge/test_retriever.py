@@ -178,7 +178,7 @@ def test_rebuilding_a_persisted_vectorstore_does_not_duplicate_it(fixture_corpus
     """Re-running build_vectorstore against the same persist_directory must be a no-op
     upsert, not a fresh insert of every chunk under a new uuid.
 
-    Without a deterministic ``Document.id``, every ``streamlit run`` re-indexed (and
+    Without a deterministic ``Document.id``, every application start re-indexed (and
     therefore duplicated) the whole corpus, which silently degraded retrieval over
     time as the top-k filled up with copies of the same chunk.
     """

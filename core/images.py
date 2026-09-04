@@ -57,9 +57,7 @@ def upright_bytes(data: bytes) -> bytes:
                 return data
             image_format = opened.format
             # exif_transpose clears the tag it just honoured, so the result is not
-            # turned a second time by anything that reads EXIF later — including
-            # ui/components/plant_photo.py, which still needs to correct the
-            # photos uploaded before this function existed.
+            # turned a second time by anything that reads EXIF later.
             turned = ImageOps.exif_transpose(opened)
             buffer = BytesIO()
             # Re-encoded at the source format so the file extension, the media

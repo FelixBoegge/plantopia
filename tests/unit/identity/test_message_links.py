@@ -1,10 +1,9 @@
 """The links in emails point at pages that exist.
 
-Found the hard way: every verification and reset message pointed at
-`localhost:8501/verify` — Streamlit's port, months after Streamlit was retired, and a path
-the web client has never served. Nobody could have completed a registration through the
-interface, and a link in an email is unfixable once sent. Nobody can be told the address
-was wrong.
+Every verification and reset message once pointed at `localhost:8501/verify` — the port
+a retired UI served on, months after that UI was retired, and a path the web client has
+never served. Nobody could have completed a registration through the interface, and a link
+in an email is unfixable once sent. Nobody can be told the address was wrong.
 
 So the paths are checked against the client's own routing table rather than trusted.
 """
@@ -53,8 +52,8 @@ def test_the_already_registered_notice_points_somewhere_real():
 
 
 def test_the_default_address_is_not_a_service_that_was_retired():
-    """The old default outlived Streamlit by two changes, which is exactly how long the
-    links were broken."""
+    """The old default outlived the UI it pointed at by two changes, which is exactly how
+    long the links were broken."""
     from core.config import Settings
     from tests.secrets import TEST_JWT_SECRET
 

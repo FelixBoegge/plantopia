@@ -68,8 +68,8 @@ def test_origins_are_parsed_from_a_comma_separated_list():
 
 
 def test_each_request_gets_its_own_session(api_settings):
-    """Not cached process-wide the way Streamlit's are: a cached service would pin one
-    owner into a process serving many, and a session is not safe to share concurrently."""
+    """Never cached process-wide: a cached service would pin one owner into a process
+    serving many, and a session is not safe to share concurrently."""
     from fastapi import APIRouter
     from fastapi.testclient import TestClient
 

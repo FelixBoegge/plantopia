@@ -2,7 +2,7 @@
 
 ``langgraph dev`` reads ``langgraph.json``, imports the factories named there, and
 serves the compiled graphs over a local API; Studio renders that topology and can run
-threads against it. Both factories build the same objects the Streamlit app does, via
+threads against it. Both factories build the same objects the API does, via
 ``agent/wiring.py``, so what Studio shows is the graph that actually runs.
 
 Neither passes a checkpointer. The API server supplies its own persistence and rejects

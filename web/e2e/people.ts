@@ -7,7 +7,7 @@ import type { Page } from "@playwright/test";
  *
  * The verification link is read from the mail sink the API writes (`tests/e2e/mail.py`)
  * rather than minted from the database, because the link itself is a thing this project has
- * had wrong twice: once pointing at a retired Streamlit port, and once spent by the screen
+ * had wrong twice: once pointing at a retired UI's port, and once spent by the screen
  * before the person clicked it.
  */
 

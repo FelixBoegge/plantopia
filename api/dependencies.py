@@ -1,10 +1,9 @@
 """What a request is given: a session, an owner, and services built around them.
 
 **One session per request.** Opened when the request arrives, closed when the response is
-done. Not cached process-wide the way ``ui/bootstrap.py`` caches them — that is correct
-for Streamlit, which serves one owner from one process, and wrong here for two reasons: a
-cached service would pin an owner into a process serving many, and a single SQLAlchemy
-session is not safe to share across concurrent requests.
+done. Never cached process-wide, for two reasons: a cached service would pin one owner
+into a process serving many, and a single SQLAlchemy session is not safe to share across
+concurrent requests.
 
 **One place resolves the owner.** ``current_owner`` is the seam authentication replaces.
 It returns the seeded owner today; the next change replaces its body with a token check
