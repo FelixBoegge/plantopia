@@ -41,3 +41,6 @@ tests/e2e/.chroma/
 tests/e2e/mail.jsonl
 web/test-results/
 web/playwright-report/
+
+# Worktrees created for isolated task execution.
+.claude/worktrees/

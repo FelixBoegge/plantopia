@@ -4,7 +4,7 @@
 
 **Goal:** Remove every live trace of the retired Streamlit UI, delete one dead function, close five small carried items, and flatten `api/errors.py`'s repeated handlers — without changing what the application does.
 
-**Architecture:** Four independent lanes. Lanes 1 and 2 touch only comments, docstrings, configuration and one deletion, so the existing suite is the proof. Lane 3 contains the one behavioural change (upload downscaling) and one bug fix (the delete-plant redirect), both test-first. Lane 4 is a pure refactor of exception handlers under existing tests.
+**Architecture:** Four independent lanes. Lanes 1 and 2 touch only comments, docstrings, configuration and one deletion, so the existing suite is the proof. Lane 3 contains the one behavioural change (upload downscaling) and one bug fix (the delete-plant redirect), both test-first. Lane 4 threads settings into the error handlers under existing tests.
 
 **Tech Stack:** Python 3.12, uv, FastAPI, Pillow, pytest; React 19 + TypeScript, TanStack Query v5, Vitest.
 
@@ -420,7 +420,11 @@ Read lines 52-58 first and carry the rest of the existing wording across verbati
 
 - [ ] **Step 4: Route the other product names through the setting (M13)**
 
-`services/chat_events.py` lines 39-45 and `api/errors.py` lines 144 and 177 hardcode `"Plantopia"`. Each becomes `settings.app_title`.
+`services/chat_events.py` lines 39-45 hardcode `"Plantopia"`. Each becomes `settings.app_title`.
+
+**`api/errors.py` is deliberately NOT in this task.** Its two occurrences are handled by
+Task 7, which rewrites those exact lines and threads `settings` into `register`. Editing
+them here as well would mean touching the file twice and colliding with that task.
 
 Check how each site reaches settings before editing: `api/errors.py`'s handlers take `(request, exc)` and may have no settings to hand. **If a handler cannot reach settings without threading a new dependency through it, leave that occurrence alone** and note it in the commit body — `M13` is a naming tidy-up and is not worth a new dependency injection path. `core/config.py`'s own default stays a literal; it is the definition.
 
@@ -802,146 +806,122 @@ EOF
 
 ---
 
-### Task 7: Flatten `api/errors.py`
+### Task 7: Read the product name from settings in `api/errors.py`
+
+**The table refactor this task originally specified is cancelled.** Measured against the
+real file rather than the plan's estimate: of 21 handlers only **8** are pure
+`status + type + title + static detail`. Thirteen genuinely need code — `UploadRejected`,
+`MissingAnswerError`, `RunConflictError`, `QuotaExceededError`, `DailyCapReachedError`,
+`ExportTooLargeError`, `ConfirmationError`, `PasswordChangeError` and `ValueError` all read
+the exception; `QueueFullError` and `RateLimitedError` set a `Retry-After` header; and the
+`Exception` catch-all logs with a documented `exc_info=exc` that must not be disturbed.
+
+Collapsing the remaining 8 would occupy ~96 lines as a dataclass, a registration loop and
+8 rows, against the ~89 they occupy today — a **net gain of about 7 lines** — and would
+leave the file with *two* patterns instead of one, so a new failure would have two places
+it might belong. That is the opposite of the uniformity the refactor was for. Dropped.
+
+What remains is the part the owner asked for directly.
 
 **Files:**
-- Modify: `api/errors.py`
-- Test: existing `tests/api/` — no new tests
+- Modify: `api/errors.py` — `register`'s signature and two `detail` strings
+- Modify: `api/main.py:43`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `problem(...)` unchanged; `register(app)` unchanged. A new module-level `_SIMPLE: tuple[Problem, ...]` is internal.
+- Produces: **`register(app: FastAPI, settings: Settings) -> None`**. `api/main.py:43` is its
+  only caller — `tests/api/test_error_shape.py` and `test_refusal_types.py` import only the
+  `TYPE_*` constants (verified), so no test breaks.
 
-- [ ] **Step 1: Establish the baseline**
+- [ ] **Step 1: Record the baseline**
 
 ```bash
-uv run pytest tests/api/ -v 2>&1 | tail -5 && wc -l api/errors.py
+uv run pytest tests/api/ -v 2>&1 | tail -5
 ```
 
-Record the pass count and the line count (393). Both are the before-figures for the commit body.
+Note the pass count. It must be identical at the end.
 
-- [ ] **Step 2: Add the table and the registration loop**
+- [ ] **Step 2: Take settings at registration**
 
-Keep `problem()` and the `TYPE_*` constants exactly as they are — **no `type` URI may change**, they are a client contract that `web/src/api/problems.ts` branches on.
+In `api/errors.py`, add `from core.config import Settings` to the imports and change:
 
 ```python
-@dataclass(frozen=True, slots=True)
-class Problem:
-    """One failure that needs no more than a status, a type and a sentence.
+def register(app: FastAPI, settings: Settings) -> None:
+    """Install the handlers that turn exceptions into problem details.
 
-    The ``why`` field is not rendered. It is here because the reasoning behind a status
-    code is the most valuable thing in this module and it must not be lost to a table —
-    "404, never 403" is a security decision, not a formatting one.
+    Takes settings rather than calling ``get_settings()`` inside a handler, and the
+    difference is not stylistic: ``get_settings`` is ``lru_cache``d, so a handler calling it
+    would read the process-wide singleton and quietly ignore the settings a test passed to
+    ``create_app``. Closing over what the factory was given is the only version that stays
+    truthful under an injected configuration.
     """
-
-    exception: type[Exception]
-    status_code: int
-    type_: str
-    title: str
-    detail: str
-    why: str
-
-
-_SIMPLE: tuple[Problem, ...] = (
-    Problem(
-        exception=RecordNotFoundError,
-        status_code=status.HTTP_404_NOT_FOUND,
-        type_=TYPE_NOT_FOUND,
-        title="Not found",
-        detail="No such resource.",
-        why=(
-            "404, never 403. The repositories already refuse another owner's record; "
-            "this is the half that stops the status code undoing that refusal. A 403 "
-            "asserts the thing exists and is being withheld, which tells a stranger it "
-            "exists."
-        ),
-    ),
-    # ... one row per simple handler, each carrying its existing docstring as `why`
-)
 ```
 
-and inside `register`:
+Every handler is already nested inside `register`, so all of them can see `settings` through
+the closure with no further plumbing.
+
+- [ ] **Step 3: Use `app_title` in the two messages**
+
+Both occurrences are in handlers that stay explicit, so neither needs a placeholder
+mechanism. `QueueFullError`:
 
 ```python
-    for entry in _SIMPLE:
-
-        def _handler(request: Request, exc: Exception, entry: Problem = entry) -> JSONResponse:
-            return problem(
-                status_code=entry.status_code,
-                type_=entry.type_,
-                title=entry.title,
-                detail=entry.detail,
-            )
-
-        app.add_exception_handler(entry.exception, _handler)
+            detail=f"{settings.app_title} is working through a queue. Try again in a minute.",
 ```
 
-`entry: Problem = entry` is load-bearing: a closure over the loop variable would give every handler the last row's values. This is the classic late-binding bug and the reason a naive table refactor breaks silently rather than loudly.
-
-- [ ] **Step 3: Move only the simple handlers**
-
-Convert a handler to a row **only if** its body is a single `problem(...)` call using no attribute of `exc` and setting no header. Approximately 13 qualify.
-
-**These 8 stay as explicit handlers** — read each and leave it alone:
-- `UploadRejected` — uses `exc.reason`
-- `MissingAnswerError` — passes `keys=exc.keys`
-- `QuotaExceededError` — three extras from `exc`
-- `DailyCapReachedError` — `resets_at=exc.resets_at.isoformat()`
-- `RateLimitedError` — sets a `Retry-After` response header
-- `RequestValidationError` — maps `exc.errors()`
-- the two handlers around line 301 that read `exc.field`
-
-- [ ] **Step 4: Run the API tests**
-
-```bash
-uv run pytest tests/api/ -v
-```
-
-Expected: the **same** pass count as Step 1, with no failures. A refactor that changes a status code or a `type` shows up here.
-
-- [ ] **Step 5: Prove every problem type still resolves**
-
-Add one guard test to `tests/api/test_errors.py` (or wherever the module's tests live) — cheap insurance against a row silently registering the wrong exception:
+`DailyCapReachedError`:
 
 ```python
-def test_every_registered_problem_type_is_unique_and_declared():
-    """A table makes a copy-paste of the wrong TYPE_ constant invisible. This sees it."""
-    from api import errors
-
-    types_ = [entry.type_ for entry in errors._SIMPLE]
-
-    assert len(types_) == len(set(types_))
-    declared = {value for name, value in vars(errors).items() if name.startswith("TYPE_")}
-    assert set(types_) <= declared
+            detail=f"{settings.app_title} has reached its spending limit for today. Try again tomorrow.",
 ```
 
-- [ ] **Step 6: Full suite, lint, commit**
+Leave `api/main.py`'s `FastAPI(title="Plantopia", ...)` alone — that is the OpenAPI document's
+title, not user-facing copy, and `core/config.py`'s own default stays a literal because it is
+the definition.
 
-```bash
-uv run pytest && uv run ruff check api/ && uv run ruff format api/ && wc -l api/errors.py
+- [ ] **Step 4: Update the caller**
+
+`api/main.py:43`:
+
+```python
+    errors.register(app, settings)
 ```
 
+`create_app` already has `settings` in scope on the line above.
+
+- [ ] **Step 5: Run the tests**
+
 ```bash
-git add api/errors.py tests/api/
+uv run pytest tests/api/ -v && uv run pytest
+```
+
+Expected: the **same** pass count as Step 1. A missed caller shows up as a `TypeError` at app
+construction, which fails loudly rather than subtly.
+
+- [ ] **Step 6: Lint and commit**
+
+```bash
+uv run ruff check api/ && uv run ruff format api/
+git add api/errors.py api/main.py
 git commit -m "$(cat <<'EOF'
-refactor: collapse the simple problem handlers into a table
+refactor: read the product name from settings in the error copy
 
-Thirteen of twenty-one handlers were the same six lines with different
-constants. They become rows; the registration loop installs them.
+The busy and daily-cap messages hardcoded "Plantopia" while settings.app_title
+already existed. register() now takes settings and the nested handlers close
+over them.
 
-Eight stay as explicit handlers because they need code: UploadRejected and
-MissingAnswerError read the exception, the two quota handlers add extras,
-RateLimitedError sets a Retry-After header, and RequestValidationError maps a
-list.
+Passed in rather than fetched: get_settings is lru_cached, so a handler calling
+it would read the process singleton and ignore the settings a test passes to
+create_app. api/main.py is its only caller -- the two error tests import only
+the TYPE_ constants.
 
-The rationale is not dropped. Each row carries a `why` that is never rendered,
-because "404, never 403 -- a 403 asserts the thing exists and is being
-withheld, which tells a stranger it exists" is a security decision and the
-most valuable content in this file.
+The table refactor planned for this file is dropped. Only 8 of 21 handlers are
+simple enough to become rows: thirteen read the exception, set a Retry-After
+header, or log with a documented exc_info. Collapsing the remaining 8 measured
+at about 7 lines *added*, and would leave two patterns in one file so a new
+failure had two places it might belong.
 
-No type URI changes: web/src/api/problems.ts branches on them, so they are as
-much a contract as the status codes. The default argument in the loop's closure
-is load-bearing -- without it every handler would answer with the last row.
+Closes M13.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
@@ -957,7 +937,7 @@ EOF
 
 - [ ] **Step 1: Strike the resolved rows**
 
-Following the file's convention — struck through and dated, never deleted. Strike `U3`, `U8`, `M13`, `M50`, `M52`. For each, add the date and what the fix cost, not just that it closed.
+Following the file's convention — struck through and dated, never deleted. Strike `U3`, `U8`, `M13`, `M50`, `M52`. `M13` closes fully: the intake and chat-events occurrences go in Task 3 and the two error-copy ones in Task 7, so no hardcoded product name survives outside `core/config.py`'s own default. For each, add the date and what the fix cost, not just that it closed.
 
 - [ ] **Step 2: Record M54 as not achievable**
 
@@ -1006,7 +986,7 @@ EOF
 
 ## Self-Review
 
-**Spec coverage.** Lane 1 (Streamlit) → Tasks 5 and 6. Lane 2 (dead code) → Task 4. Lane 3's five items → Task 2 (U3), Task 3 (U8, M13, M52), Task 1 (delete-plant); M54's non-fix → Task 8. Lane 4 (`api/errors.py`) → Task 7. Testing section → each task's own run steps. Tier 3 protection → Global Constraints and Task 6 Step 6. No spec section is unimplemented.
+**Spec coverage.** Lane 1 (Streamlit) → Tasks 5 and 6. Lane 2 (dead code) → Task 4. Lane 3's five items → Task 2 (U3), Task 3 (U8, M13, M52), Task 1 (delete-plant); M54's non-fix → Task 8. Lane 4 (`api/errors.py`) → Task 7, reduced to the settings threading after measurement falsified the refactor's premise (see that task's preamble). Testing section → each task's own run steps. Tier 3 protection → Global Constraints and Task 6 Step 6. No spec section is unimplemented.
 
 **Ordering.** Task 1 is first because it is the only live user-facing bug. Tasks 5 and 6 are late because they are the widest diffs and the least risky, so a conflict with them is cheap. Task 8 is last because it records the rest.
 
