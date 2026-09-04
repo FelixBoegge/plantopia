@@ -724,27 +724,40 @@ git rm -r .streamlit
 
 - [ ] **Step 2: Rewrite `openspec/config.yaml`'s stack description**
 
-The highest-value edit in the lane: this file is loaded as context into every OpenSpec change, and currently briefs each one that the *current* stack is Streamlit + SQLite + Chroma with FastAPI/React as the *target*. Replace the two `## Current stack (being migrated)` and `## Target stack` sections with one:
+The highest-value edit in the lane: this file is loaded as context into every OpenSpec change,
+and it currently briefs each one that the *current* stack is Streamlit + SQLite + Chroma with
+FastAPI/React as the *target*. Replace the two `## Current stack (being migrated)` and
+`## Target stack` sections with one:
 
 ```yaml
   ## Stack
   Python 3.12, uv. LangGraph state machine for diagnosis (14 nodes, a mandatory
   interrupt() for clarifying questions) plus a LangChain ReAct agent for chat. FastAPI
   backend at the repository root with a React + Vite + TypeScript + Tailwind/shadcn SPA
-  in web/. One Postgres holds domain tables, the corpus in pgvector, and both LangGraph
-  checkpointers. Own email/password auth with argon2id and rotating JWTs, open
-  self-registration, per-user quotas and a global spend cap. Diagnoses run in the
-  background with progress streamed over SSE across the interrupt. Every model call
-  routes through OpenRouter (gate / vision / reasoning / embedding tiers). Ragas
-  evaluation harness over a 28-case golden set; LangSmith tracing optional.
+  in web/. One Postgres holds the domain tables and both LangGraph checkpointers. The
+  43-document disorder corpus is embedded in a Chroma store on disk, with a migrated
+  pgvector table standing unused beside it (M25). Own email/password auth with argon2id
+  and rotating JWTs, open self-registration, per-user quotas and a global spend cap.
+  Diagnoses run in the background with progress streamed over SSE across the interrupt.
+  Every model call routes through OpenRouter (gate / vision / reasoning / embedding
+  tiers). Ragas evaluation harness over a 28-case golden set; LangSmith tracing optional.
 ```
 
 Three further corrections in the same file:
 - `Layering is ui/api -> services -> agent + data` → `Layering is api -> services -> agent + data`.
 - `Markers: integration, ui, llm` → `Markers: integration, llm` — `pyproject.toml` defines only those two.
-- The layout claim: it describes `backend/` and `frontend/`, which was never built. The rewrite above says "at the repository root" and `web/`, which is what exists.
+- The layout claim: it describes `backend/` and `frontend/`, which was never built. The block
+  above says "at the repository root" and `web/`, which is what exists.
 
-**Leave the Chroma wording alone if any remains outside the block you replaced** — Task B rewrites it again, and one owner per sentence avoids a conflict. The block above already says pgvector because that is what the config *should* say once B lands; if A ships alone, this is the one sentence that runs ahead of the code. Note that in the commit body.
+**On the corpus sentence, and why it says Chroma.** An earlier draft of this step wrote "the
+corpus in pgvector", on the reasoning that a later change would make it true. That was wrong and
+is corrected above. Retrieval still runs on Chroma today; the pgvector move is a separate change,
+deferred until the owner's data wipe, and it may not land for some time. Writing "pgvector" now
+would put a false statement into the one file that briefs every future OpenSpec change —
+precisely the defect this task exists to remove, committed to spare a later change one diff. The
+pgvector change owns that sentence when it lands, and its own plan already updates this file. Two
+changes touching one sentence in sequence is ordinary; one of them lying about the present to
+save the other an edit is not.
 
 - [ ] **Step 3: `.env.example`**
 
@@ -764,19 +777,44 @@ grep -n -i 'streamlit\|8501\|ui/components\|ui/pages' docs/code-tour.md
 
 For each: if it describes the architecture *now*, rewrite it to the API/React reality. If it narrates history ("this used to..."), reword to "a retired UI" and keep the tense. Do not delete whole passages that explain why something is shaped as it is — that reasoning is the file's value.
 
-- [ ] **Step 6: Verify the purge**
+- [ ] **Step 6: Verify the purge — by file set, not by count**
+
+The count this step originally specified (264) is **wrong and is withdrawn**. Two reasons, both
+instructive: it was measured before this change's own spec and plan existed, and those documents
+necessarily contain the word "Streamlit" 89 times — a plan about purging Streamlit must name it.
+The number also moved depending on whether the pattern included `st.session_state` and
+`st.rerun`. A count was never the real assertion.
+
+The real assertion is *which files* may still contain a match. Run:
 
 ```bash
-git ls-files | while read -r f; do grep -ohE 'streamlit|Streamlit|8501|ui/components|ui/pages' "$f" 2>/dev/null; done | wc -l
+python -c "
+import subprocess, re
+files = subprocess.run(['git','ls-files'], capture_output=True, text=True).stdout.split()
+pat = re.compile(r'streamlit|Streamlit|8501|ui/components|ui/pages|st[.]session_state|st[.]rerun')
+for f in files:
+    try: t = open(f, encoding='utf-8', errors='ignore').read()
+    except Exception: continue
+    n = len(pat.findall(t))
+    if n: print(f'{n:5} {f}')
+"
 ```
 
-Expected: **264** — 258 in Tier 3 historical records plus 6 `8501`-in-hash coincidences in `uv.lock`. Then confirm the remainder is only Tier 3 and `uv.lock`:
+Every file listed must fall into exactly one of these four categories. **Anything else is a
+failure of this task:**
 
-```bash
-git ls-files | while read -r f; do c=$(grep -ocE 'streamlit|Streamlit|8501|ui/components' "$f" 2>/dev/null); [ "$c" != "0" ] && echo "$c $f"; done
-```
+1. **Tier 3 historical records** — `docs/plans/*.md`, `docs/superpowers/specs/2026-08-*.md`,
+   `openspec/changes/archive/**`, `project_brief_*.md`, `docs/known-limitations.md`.
+2. **This change's own documents** — `docs/superpowers/{plans,specs}/2026-09-04-*`. They describe
+   the purge and cannot avoid naming the thing purged.
+3. **`uv.lock`** — 6 matches, every one the literal string `8501` inside a content hash. Confirm
+   with `grep -c -i streamlit uv.lock`, which must print `0`.
+4. **`tests/unit/identity/test_message_links.py`** — exactly 2 matches: the module docstring's
+   historical note, and the live `assert "8501" not in settings.app_url` guard.
 
-Expected files: `uv.lock`, `docs/plans/*`, `docs/superpowers/specs/*`, `docs/known-limitations.md`, `openspec/changes/archive/*`, `project_brief_*.md`. **Nothing else.**
+No `.py`, `.ts` or `.tsx` file outside category 4 may match at all. Confirm separately with a
+search over those extensions that excludes `node_modules`, `.venv` and `__pycache__`; expect no
+output.
 
 - [ ] **Step 7: Run the suites and commit**
 
