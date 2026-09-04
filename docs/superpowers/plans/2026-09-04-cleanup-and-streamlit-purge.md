@@ -670,8 +670,13 @@ Expected: everything PASSES, unchanged. This is the proof the lane is inert.
 
 - [ ] **Step 7: Commit**
 
+**Stage explicitly. Never `git add -A`** — this worktree carries the plan document and the
+SDD workspace, and a blanket add sweeps in whatever the controller has in flight. List the
+files you actually edited:
+
 ```bash
-git add -A
+git add services/__init__.py services/diagnosis_service.py api/__init__.py api/dependencies.py         agent/wiring.py agent/studio.py core/images.py         eval/run_eval.py eval/metrics.py eval/report.py         tests/api/test_app_shape.py tests/unit/eval/test_report.py tests/unit/eval/test_metrics.py         tests/unit/identity/test_message_links.py tests/e2e/mail.py         tests/unit/knowledge/test_retriever.py web/e2e/people.ts web/e2e/account.spec.ts
+git status --short          # confirm nothing unexpected is staged before committing
 git commit -m "$(cat <<'EOF'
 docs: stop describing a Streamlit UI that was retired months ago
 
@@ -777,7 +782,10 @@ Expected files: `uv.lock`, `docs/plans/*`, `docs/superpowers/specs/*`, `docs/kno
 
 ```bash
 uv run pytest && cd web && npx tsc -b && npm test
-git add -A
+# Explicit staging. Never `git add -A`: the plan document and SDD workspace live here too.
+# .streamlit removal is already staged by `git rm -r`, so it needs no `git add`.
+git add openspec/config.yaml .env.example README.md docs/code-tour.md
+git status --short          # confirm nothing unexpected is staged before committing
 git commit -m "$(cat <<'EOF'
 docs: delete the retired UI's config, and brief OpenSpec on the real stack
 
@@ -1004,6 +1012,24 @@ than weakening it, and the prose already argues it well.
 Do not touch the "Completing a diagnosis with large photographs" scenario above it: it is
 about persisted run state carrying no image bytes, which this change does not affect.
 
+- [ ] **Step 3c: Note what M52 answered, without editing the archive**
+
+Found during Task 3. `openspec/changes/archive/2026-09-01-add-continuous-integration/design.md`
+contains four passages that M52 falsifies: its Context calls the Node version "unpinned: no
+`engines`, no `.nvmrc`, no `volta`" (`:36`); a section calls the CI-only pin accepted drift; a
+Risks entry says the pin "drifts from local where nothing is pinned"; and an Open Question asks
+"**Whether to pin the Node version in the repository** rather than only in CI" (`:140`).
+
+**Do not edit that file.** It is in `openspec/changes/archive/`, a dated record of what was
+true on 2026-09-01, and Tier 3 is untouchable by this change's own rules — the whole point of
+that ruling is that a later change answering an earlier design's open question is not licence
+to rewrite the earlier design.
+
+Record it in the register instead. `M52`'s struck row should say that the pin now exists in
+three places that must agree — `.github/workflows/ci.yml`, `web/.nvmrc`, `web/package.json`'s
+`engines` — and that this closes the open question that archived design deliberately left open,
+naming the file so a reader can find the argument rather than only its answer.
+
 - [ ] **Step 4: Verify the numbers**
 
 Every figure in the rows you wrote must be checkable from the repository. Confirm the 1568 cap, the 8 MB and 4-image limits, and Node 22 against the files before committing.
@@ -1011,7 +1037,8 @@ Every figure in the rows you wrote must be checkable from the repository. Confir
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/known-limitations.md
+git add docs/known-limitations.md openspec/specs/photo-storage/spec.md
+git status --short          # confirm nothing unexpected is staged
 git commit -m "$(cat <<'EOF'
 docs: strike five carried items, and record one that cannot be done
 
