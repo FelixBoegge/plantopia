@@ -209,6 +209,11 @@ migrated and are tested, and nothing consumes them; retrieval still runs on Chro
 needs the embedding model chosen, fresh embeddings and a new evaluation baseline — none of
 which belongs in a change whose defining property is that it moves no numbers.
 
+Designed separately on 2026-09-04, once the embedding-model question was settled by
+keeping the current model: see `2026-09-04-pgvector-retrieval-design.md`. That change
+rewrites `openspec/config.yaml`'s stack description again, so this one leaves the Chroma
+sentence in it alone and corrects only the Streamlit half.
+
 **The large modules.** `data/models.py` (544 lines), `agent/schemas.py` (473) and
 `services/run_service.py` (404) are the biggest files in the project. Splitting them was
 considered and declined for this change: it is import churn across many callers, and
