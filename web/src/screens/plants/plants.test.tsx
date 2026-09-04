@@ -458,4 +458,48 @@ describe("renaming and removing", () => {
       screen.getByRole("button", { name: "Remove this plant" }),
     ).toBeInTheDocument();
   });
+
+  it("returns to the plants overview after a plant is removed", async () => {
+    // The detail query and the list query share a prefix, so a prefix invalidation
+    // refetches the plant that was just deleted -- which 404s, same as the real API would,
+    // instead of leaving it alone once the observer is about to be navigated away from.
+    signedIn();
+    let removed = false;
+    let detailRequestsAfterRemoval = 0;
+    server.use(
+      http.delete(`/api/v1/plants/${BASIL.id}`, () => {
+        removed = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.get(`/api/v1/plants/${BASIL.id}`, () => {
+        if (!removed) return HttpResponse.json(DETAIL);
+        detailRequestsAfterRemoval += 1;
+        return HttpResponse.json(
+          { type: PROBLEM.notFound, title: "Not found", status: 404 },
+          { status: 404 },
+        );
+      }),
+      http.get(`/api/v1/plants/${BASIL.id}/messages`, () =>
+        HttpResponse.json([]),
+      ),
+    );
+    withPlants([]);
+
+    render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Remove this plant" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Yes, remove it" }),
+    );
+
+    expect(await screen.findByText("Nothing here yet.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("This plant could not be loaded"),
+    ).not.toBeInTheDocument();
+    // The regression: a prefix invalidation of the list also matches the just-deleted
+    // plant's still-mounted detail query, refetching it needlessly (and, on the real API,
+    // straight into a 404) rather than leaving it alone on the way out.
+    expect(detailRequestsAfterRemoval).toBe(0);
+  });
 });
