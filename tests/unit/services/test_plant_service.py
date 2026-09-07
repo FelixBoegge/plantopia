@@ -8,6 +8,7 @@ from services.plant_service import PlantDetail, PlantService, PlantSummary
 
 
 def _service(owner, db, now, forget_conversation=None) -> PlantService:
+    from data.repositories.corpus import CorpusRepository
     from data.repositories.diagnoses import DiagnosisRepository
     from data.repositories.feedback import FeedbackRepository
     from data.repositories.observations import ObservationRepository
@@ -21,6 +22,7 @@ def _service(owner, db, now, forget_conversation=None) -> PlantService:
         diagnoses=DiagnosisRepository(db),
         roadmap=RoadmapRepository(db),
         feedback=FeedbackRepository(db),
+        corpus=CorpusRepository(db),
         blobs=PostgresBlobStore(db),
         now=now,
         forget_conversation=forget_conversation,

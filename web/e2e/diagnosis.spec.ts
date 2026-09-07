@@ -12,15 +12,23 @@ import { signUp } from "./people";
  * broken here in ways a green suite reported as working.
  */
 
-const PHOTOGRAPH = resolve(import.meta.dirname, "../../test_pics/20260810_105048.jpg");
+const PHOTOGRAPH = resolve(
+  import.meta.dirname,
+  "../../test_pics/20260810_105048.jpg",
+);
 
-test("runs a diagnosis through the questions to a differential", async ({ page }) => {
+test("runs a diagnosis through the questions to a differential", async ({
+  page,
+}) => {
   await signUp(page, "diagnosis");
 
   // Scoped to the header: the empty plants screen offers the same link, and a test that
   // clicked "whichever" would silently stop covering the header the day the empty state
   // changed.
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
@@ -33,11 +41,15 @@ test("runs a diagnosis through the questions to a differential", async ({ page }
 
   // The interrupt. The graph stops inside a node and waits; nothing about the connection
   // says so, which is why the run's state has to.
-  await expect(page.getByRole("heading", { name: "A couple of questions" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "A couple of questions" }),
+  ).toBeVisible();
   await expect(page.getByLabel(/How often do you water/)).toBeVisible();
 
   // Focus is here, not wherever the last step left it.
-  await expect(page.getByRole("heading", { name: "A couple of questions" })).toBeFocused();
+  await expect(
+    page.getByRole("heading", { name: "A couple of questions" }),
+  ).toBeFocused();
 
   await page.getByLabel(/How often do you water/).fill("About twice a week");
   await page.getByLabel(/drainage holes/i).selectOption({ index: 1 });
@@ -48,11 +60,19 @@ test("runs a diagnosis through the questions to a differential", async ({ page }
   await expect(page.getByText("Checking the photographs")).toBeVisible();
   await expect(page.getByText("Weighing the evidence")).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "What this looks like" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "What this looks like" }),
+  ).toBeVisible({
     timeout: 60_000,
   });
-  await expect(page.getByText("Overwatering")).toBeVisible();
-  await expect(page.getByText("Nitrogen deficiency")).toBeVisible();
+  // Scoped to the differential, not asserted against the whole page. The result now also
+  // lists the reference material it consulted, and a corpus passage about overwatering
+  // names the disorder too — so bare `getByText("Overwatering")` matches four elements and
+  // stops discriminating between "the candidate is ranked here" and "the word appears
+  // somewhere". Naming the list is what makes the assertion mean what it says.
+  const differential = page.getByRole("list", { name: "Ranked candidates" });
+  await expect(differential.getByText("Overwatering")).toBeVisible();
+  await expect(differential.getByText("Nitrogen deficiency")).toBeVisible();
 
   // Severity in words, never in colour alone.
   await expect(page.getByText("Act this week")).toBeVisible();
@@ -61,7 +81,9 @@ test("runs a diagnosis through the questions to a differential", async ({ page }
   await expect(page.getByText(/Stop watering until/)).toBeVisible();
 });
 
-test("shows the finished diagnosis on the plant it created", async ({ page }) => {
+test("shows the finished diagnosis on the plant it created", async ({
+  page,
+}) => {
   // The run creates the plant when it was not given one, and which plant that was is
   // something the client cannot work out for itself — it used to have to guess by
   // timestamp.
@@ -70,7 +92,10 @@ test("shows the finished diagnosis on the plant it created", async ({ page }) =>
   // Scoped to the header: the empty plants screen offers the same link, and a test that
   // clicked "whichever" would silently stop covering the header the day the empty state
   // changed.
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
@@ -97,7 +122,9 @@ test("shows the finished diagnosis on the plant it created", async ({ page }) =>
   await expect(page.getByText(/points at the roots/)).toBeVisible();
   await expect(page.getByText("Act this week")).toBeVisible();
   await expect(page.getByText(/Stop watering until/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "See the full differential" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "See the full differential" }),
+  ).toBeVisible();
 });
 
 test("asks which plant it is when the methods disagree, and takes the answer", async ({
@@ -110,11 +137,16 @@ test("asks which plant it is when the methods disagree, and takes the answer", a
   // walks through.
   await signUp(page, "chooses");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
-  await expect(page.getByRole("heading", { name: "Which plant is this?" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "Which plant is this?" }),
+  ).toBeVisible({
     timeout: 60_000,
   });
 
@@ -123,7 +155,9 @@ test("asks which plant it is when the methods disagree, and takes the answer", a
   // One, not two: the specialist's response carried two candidates and only the leading
   // one is offered, which is what stopped this screen showing three rows with two of them
   // reading identically.
-  await expect(page.getByText(/Matched against a plant database/)).toHaveCount(1);
+  await expect(page.getByText(/Matched against a plant database/)).toHaveCount(
+    1,
+  );
   await expect(page.getByText("Holy basil")).toHaveCount(0);
   await expect(page.getByText(/powered by Pl@ntNet/i)).toBeVisible();
 
@@ -136,7 +170,9 @@ test("asks which plant it is when the methods disagree, and takes the answer", a
   await page.getByLabel(/How often do you water/).fill("Twice a week");
   await page.getByRole("button", { name: "Carry on" }).click();
 
-  await expect(page.getByRole("heading", { name: "What this looks like" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "What this looks like" }),
+  ).toBeVisible({
     timeout: 60_000,
   });
 });
@@ -144,12 +180,17 @@ test("asks which plant it is when the methods disagree, and takes the answer", a
 test("carries a typed species through to the choice", async ({ page }) => {
   await signUp(page, "typed");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByLabel("Do you know what it is?").fill("Ocimum tenuiflorum");
   await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
-  await expect(page.getByRole("heading", { name: "Which plant is this?" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "Which plant is this?" }),
+  ).toBeVisible({
     timeout: 60_000,
   });
 
@@ -166,7 +207,10 @@ test("a plant's history reads as one sequence", async ({ page }) => {
   // is reachable from the event that produced it.
   await signUp(page, "history");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("button", { name: "Start the diagnosis" }).click();
 
@@ -191,22 +235,33 @@ test("a plant's history reads as one sequence", async ({ page }) => {
   // browser and "10 August 2026" under the component tests. A test that pinned one of those
   // would be pinning where it happened to run.
   await expect(history.locator('time[datetime^="2026-08-10"]')).toBeVisible();
-  await expect(history.getByText(/date the photograph was uploaded/)).toHaveCount(0);
+  await expect(
+    history.getByText(/date the photograph was uploaded/),
+  ).toHaveCount(0);
 
   // The diagnosis is on the timeline and reachable from it. Named differently from the
   // current-verdict link above so the two are not two identical links to one page.
-  await expect(history.getByRole("link", { name: "See this diagnosis" })).toBeVisible();
+  await expect(
+    history.getByRole("link", { name: "See this diagnosis" }),
+  ).toBeVisible();
   await history.getByRole("link", { name: "See this diagnosis" }).click();
-  await expect(page.getByRole("heading", { name: "What this looks like" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "What this looks like" }),
+  ).toBeVisible();
 });
 
-test("an outdoor plant's weather is readable without seeing the chart", async ({ page }) => {
+test("an outdoor plant's weather is readable without seeing the chart", async ({
+  page,
+}) => {
   // The chart is decorative by construction; the table beside it is what carries the values.
   // A browser is where that distinction is worth checking, because it is the one place the
   // real DOM and the real styles are both present.
   await signUp(page, "history-weather");
 
-  await page.getByRole("navigation").getByRole("link", { name: "Diagnose a plant" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Diagnose a plant" })
+    .click();
   await page.getByLabel("Upload images").setInputFiles(PHOTOGRAPH);
   await page.getByRole("radio", { name: "Outdoors" }).check();
   await page.getByRole("button", { name: "Start the diagnosis" }).click();

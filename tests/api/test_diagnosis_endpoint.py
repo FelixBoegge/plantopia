@@ -4,10 +4,12 @@ The run reports an identifier when it completes. If that identifier cannot be re
 client has been handed a receipt rather than a result.
 """
 
+from agent.schemas import Passage
 from core.ids import new_id
 from data.repositories.runs import RunRepository
 from runs import steps
 from tests.accounts import NOW
+from tests.api.conftest import _differential
 from tests.runs import make_run
 
 
@@ -194,3 +196,102 @@ def test_a_diagnosis_with_no_recorded_activity_is_an_empty_list(client, seeded):
 
 def test_the_activity_of_an_unknown_diagnosis_is_absent(client):
     assert client.get(f"/api/v1/diagnoses/{new_id()}/activity").status_code == 404
+
+
+class TestWhatTheResultShowsAboutItself:
+    """The evidence a diagnosis drew on, and what it cost to produce.
+
+    Both were recorded from the first diagnosis ever written and neither reached a client
+    (`U23`). `retrieved_refs_json` has always held the consulted passages;
+    `diagnoses.cost_usd` and `token_usage_json` have always held the spend.
+
+    The cost is only worth showing as of `U26`, fixed the same day these arrived: until
+    then the record carried the finishing pass alone and understated an interrupted
+    diagnosis by about 17%.
+    """
+
+    @staticmethod
+    def _diagnosis(db, owner, seeded, *, retrieved, usage=None, cost=None):
+        from data.repositories.diagnoses import DiagnosisRepository
+
+        diagnosis_id = DiagnosisRepository(db).create(
+            owner,
+            observation_id=seeded["observation_id"],
+            plant_id=seeded["plant_id"],
+            differential=_differential(),
+            contagion=None,
+            retrieved=retrieved,
+            model="test-model",
+            token_usage=usage,
+            cost_usd=cost,
+            now=NOW,
+        )
+        db.commit()
+        return diagnosis_id
+
+    def test_it_lists_what_it_consulted(self, client, db, owner, seeded, corpus_retriever):
+        """Named from the corpus, not from the slug: `botrytis` is "Botrytis (grey mould)"."""
+        found = self._diagnosis(
+            db,
+            owner,
+            seeded,
+            retrieved=[
+                Passage(doc_id="botrytis", section="Symptoms", text="…", score=0.6),
+                Passage(doc_id="web:rhs.org.uk", section="Calathea care", text="…", score=0.4),
+            ],
+        )
+
+        sources = client.get(f"/api/v1/diagnoses/{found}").json()["diagnosis"]["sources"]
+
+        assert [(s["name"], s["origin"]) for s in sources] == [
+            ("Botrytis (grey mould)", "knowledge_base"),
+            ("rhs.org.uk", "web"),
+        ]
+
+    def test_it_carries_no_score(self, client, db, owner, seeded, corpus_retriever):
+        """`M4`: corpus cosine scores and Tavily relevance scores share this list and are
+        not comparable. Publishing either as a number invites comparing them."""
+        found = self._diagnosis(
+            db,
+            owner,
+            seeded,
+            retrieved=[Passage(doc_id="botrytis", section="Symptoms", text="…", score=0.6)],
+        )
+
+        source = client.get(f"/api/v1/diagnoses/{found}").json()["diagnosis"]["sources"][0]
+
+        assert "score" not in source
+        assert "text" not in source
+
+    def test_it_carries_the_tokens_and_the_cost(self, client, db, owner, seeded):
+        found = self._diagnosis(
+            db,
+            owner,
+            seeded,
+            retrieved=[],
+            usage={"prompt_tokens": 11482, "completion_tokens": 1464, "total_tokens": 12946},
+            cost=0.0293021,
+        )
+
+        body = client.get(f"/api/v1/diagnoses/{found}").json()["diagnosis"]
+
+        assert body["token_usage"] == {
+            "prompt_tokens": 11482,
+            "completion_tokens": 1464,
+            "total_tokens": 12946,
+        }
+        assert body["cost_usd"] == 0.0293021
+
+    def test_an_unmeasured_diagnosis_says_so_rather_than_reporting_zero(
+        self, client, db, owner, seeded
+    ):
+        """`M18`: a failed run records no cost at all, and a diagnosis from before any of
+        this was recorded has none either. Null is the honest answer; 0 would claim it was
+        measured and free."""
+        found = self._diagnosis(db, owner, seeded, retrieved=[])
+
+        body = client.get(f"/api/v1/diagnoses/{found}").json()["diagnosis"]
+
+        assert body["cost_usd"] is None
+        assert body["token_usage"] is None
+        assert body["sources"] == []

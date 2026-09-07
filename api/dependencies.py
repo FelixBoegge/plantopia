@@ -26,6 +26,7 @@ from api import rate_limit
 from core.blobs import BlobStore, PostgresBlobStore
 from core.config import Settings, get_settings
 from core.mail import Mailer, build_mailer
+from data.repositories.corpus import CorpusRepository
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.errors import RecordNotFoundError
 from data.repositories.feedback import FeedbackRepository
@@ -144,6 +145,7 @@ def plant_service(session: SessionDep, owner: OwnerDep, settings: SettingsDep) -
         diagnoses=DiagnosisRepository(session),
         roadmap=RoadmapRepository(session),
         feedback=FeedbackRepository(session),
+        corpus=CorpusRepository(session),
         blobs=PostgresBlobStore(session),
         now=now_utc,
         forget_conversation=lambda thread_id: checkpoints.delete_thread(

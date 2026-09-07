@@ -5,6 +5,8 @@ consequence of a column existing. Every function is total: given a record it ret
 response, and it never reaches back into the database.
 """
 
+from collections.abc import Sequence
+
 from api.schemas import (
     CandidateOut,
     DiagnosisOut,
@@ -16,6 +18,8 @@ from api.schemas import (
     ProfileFactOut,
     RoadmapStepOut,
     RunOut,
+    SourceOut,
+    TokenUsageOut,
 )
 from data.repositories.diagnoses import DiagnosisRecord
 from data.repositories.messages import MessageRecord
@@ -23,7 +27,7 @@ from data.repositories.observations import ObservationRecord
 from data.repositories.plants import PlantRecord
 from data.repositories.profile import ProfileFact
 from data.repositories.roadmap import RoadmapStepRecord
-from services.plant_service import PlantDetail, PlantSummary
+from services.plant_service import PlantDetail, PlantSummary, Source
 
 
 def plant(record: PlantRecord) -> PlantOut:
@@ -39,12 +43,17 @@ def plant(record: PlantRecord) -> PlantOut:
     )
 
 
-def diagnosis(record: DiagnosisRecord) -> DiagnosisOut:
+def diagnosis(record: DiagnosisRecord, sources: Sequence[Source] = ()) -> DiagnosisOut:
     """The differential, flattened.
 
     Candidates are lifted out of the stored JSON rather than passed through it: a client
     should not have to know that a differential is serialised, and the stored blob carries
     fields the API has no reason to publish.
+
+    ``sources`` is passed in rather than read from ``record.retrieved`` here, even though
+    the passages are on the record: naming a disorder takes a query, and this function is
+    pure. It defaults to empty so a caller with no use for them — or no session to look
+    them up with — is not obliged to produce any.
     """
     return DiagnosisOut(
         id=record.id,
@@ -53,6 +62,11 @@ def diagnosis(record: DiagnosisRecord) -> DiagnosisOut:
         species_method=record.species_method,
         progress_verdict=record.progress_verdict,
         species_confirmed=record.species_confirmed,
+        token_usage=(TokenUsageOut(**record.token_usage) if record.token_usage else None),
+        sources=[
+            SourceOut(name=source.name, section=source.section, origin=source.origin)
+            for source in sources
+        ],
         is_healthy=record.differential.is_healthy,
         reasoning=record.differential.reasoning,
         candidates=[
