@@ -20,6 +20,7 @@ from fastapi import FastAPI
 
 from api import errors
 from core.config import Settings, get_settings
+from core.tracing import configure_tracing
 from runs import sweeper
 from runs.bus import bus
 
@@ -32,6 +33,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     settings = settings or get_settings()
     _configure_logging(settings)
+
+    # Before anything can be traced. Like logging, this is a process-level side effect
+    # rather than something the application holds: LangChain's tracer reads the process
+    # environment rather than taking a callback, which is the property LangSmith was
+    # chosen for — every node, tool call, retrieval and model call appears in a trace with
+    # no wiring. A no-op absent a key, so a fresh clone is unaffected.
+    #
+    # It belongs here because this is the only entry point the application has. It lived
+    # solely in `eval/run_eval.py`, which meant the harness was traced and the running
+    # application was not — the one place a trace would have been read from.
+    configure_tracing(settings)
+
     app = FastAPI(
         title="Plantopia",
         version="1",

@@ -1,5 +1,10 @@
-"""The shape of the application itself: versioning, CORS, and request scope."""
+"""The shape of the application itself: versioning, CORS, tracing and request scope."""
 
+import os
+
+import pytest
+
+from api.main import create_app
 from core.config import Settings
 from tests.secrets import TEST_JWT_SECRET
 
@@ -8,6 +13,60 @@ def _settings(**overrides) -> Settings:
     return Settings(
         _env_file=None, openrouter_api_key="sk-test", jwt_secret=TEST_JWT_SECRET, **overrides
     )
+
+
+class TestTracing:
+    """Whether anything the application does reaches LangSmith.
+
+    It did not. `core/tracing.configure_tracing` existed, was tested, and had exactly one
+    caller — `eval/run_eval.py` — so the harness was traced and the application was not.
+    `PLANTOPIA_LANGSMITH_TRACING=true` in `.env` did nothing either: there is no such
+    `Settings` field, and LangChain reads the unprefixed `LANGSMITH_TRACING`.
+
+    Enabling it *is* setting those environment variables, because LangChain's tracer reads
+    the process environment rather than taking a callback — which is the property LangSmith
+    was chosen for. So that is what these assert on.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_langsmith_env(self, monkeypatch):
+        """`monkeypatch` only reverts keys it has touched, and `configure_tracing` writes
+        `os.environ` directly. Registering the four here makes monkeypatch adopt them, so
+        teardown restores the session regardless of what the application wrote —
+        `tests/unit/core/test_tracing.py` guards itself the same way and says why.
+        """
+        for key in (
+            "LANGSMITH_TRACING",
+            "LANGSMITH_API_KEY",
+            "LANGSMITH_PROJECT",
+            "LANGSMITH_ENDPOINT",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+    def test_building_the_app_enables_tracing_when_a_key_is_configured(self):
+        create_app(_settings(langsmith_api_key="ls-test", langsmith_project="plantopia-test"))
+
+        assert os.environ["LANGSMITH_TRACING"] == "true"
+        assert os.environ["LANGSMITH_API_KEY"] == "ls-test"
+        assert os.environ["LANGSMITH_PROJECT"] == "plantopia-test"
+
+    def test_building_the_app_leaves_tracing_off_without_a_key(self):
+        """A fresh clone with no LangSmith account must run unchanged (spec §2.4)."""
+        create_app(_settings())
+
+        assert "LANGSMITH_TRACING" not in os.environ
+
+    def test_a_regional_endpoint_is_passed_through(self):
+        """An EU-workspace key 403s against the default US host, and tracing then uploads
+        nowhere while reporting itself enabled."""
+        create_app(
+            _settings(
+                langsmith_api_key="ls-test",
+                langsmith_endpoint="https://eu.api.smith.langchain.com",
+            )
+        )
+
+        assert os.environ["LANGSMITH_ENDPOINT"] == "https://eu.api.smith.langchain.com"
 
 
 def test_every_route_is_served_beneath_the_version_prefix(client):
