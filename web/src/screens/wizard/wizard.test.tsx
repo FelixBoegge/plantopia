@@ -154,9 +154,7 @@ describe("starting a diagnosis", () => {
 
     render(<AppRoutes />, { route: "/diagnose" });
 
-    expect(
-      await screen.findByLabelText("Upload images"),
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Upload images")).toBeInTheDocument();
   });
 
   it("shows a card naming each image once it has been chosen", async () => {
@@ -377,7 +375,6 @@ describe("watching it work", () => {
     expect(activity.parentElement?.firstElementChild).toBe(activity);
   });
 
-
   it("shows each step as it arrives", async () => {
     signedIn();
     watching([STEP]);
@@ -412,9 +409,13 @@ describe("watching it work", () => {
 
     render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
 
-    expect(
-      await screen.findByText(/Working…|Reconnecting…/),
-    ).toBeInTheDocument();
+    // The spinner rather than the copy, because the copy depends on whether the stream is
+    // connected and the spinner does not — it is shown for both, being the one signal that
+    // means "still working" in either state. This assertion read `/Working…|Reconnecting…/`
+    // and went on passing when "Working…" became "Processing", by matching the other
+    // branch: it was covering the reconnect path and calling it the happy one.
+    expect(await screen.findByTestId("processing-spinner")).toBeInTheDocument();
+    expect(screen.getByText(/Processing|Reconnecting…/)).toBeInTheDocument();
   });
 
   it("announces progress to a reader who cannot see it", async () => {
@@ -572,11 +573,18 @@ describe("the result", () => {
 
     const headings = await screen.findAllByRole("heading", { level: 3 });
     expect(headings.length).toBeGreaterThan(0);
-    const names = screen
-      .getAllByText(/Overwatering|Underwatering/)
-      .map((n) => n.textContent);
-    expect(names[0]).toBe("Overwatering");
-    expect(names).toContain("Underwatering");
+
+    // Both candidates, in the order the API served them — which this fixture deliberately
+    // lists by ascending probability. It used to assert Overwatering first, and that was
+    // only true because the client re-sorted: the assertion was pinning `Differential`'s
+    // own opinion about ranking rather than the server's (`U22`). The screen now shows
+    // what the diagnosis recorded, so a divergence between the two would be visible here
+    // instead of invisible everywhere.
+    const names = Array.from(
+      screen.getByRole("list", { name: "Ranked candidates" }).children,
+    ).map((card) => card.textContent ?? "");
+    expect(names[0]).toContain("Underwatering");
+    expect(names[1]).toContain("Overwatering");
   });
 
   it("shows what argues each way", async () => {

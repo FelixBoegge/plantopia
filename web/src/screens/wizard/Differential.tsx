@@ -26,10 +26,6 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
     heading.current?.focus();
   }, []);
 
-  const ranked = [...diagnosis.candidates].sort(
-    (a, b) => b.probability - a.probability,
-  );
-
   return (
     <section aria-labelledby="differential" className="grid gap-4">
       <h2
@@ -48,12 +44,18 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
 
       <p>{diagnosis.reasoning}</p>
 
-      {/* Named, so that "the candidate is ranked here" is assertable as distinct from "the
+      {/* **Rendered in the order the API returned, never re-sorted here** (`U22`). The
+          `diagnose` node ranks the differential and `eval/` scores that ranking; a second
+          sort on the client was a second opinion about which candidate leads, in the one
+          place no measurement can see. The two rules agreed, so nothing was ever observed
+          to move — which is exactly what made it worth removing rather than watching.
+
+          Named, so that "the candidate is ranked here" is assertable as distinct from "the
           word appears on the page" — the consulted-material list below names disorders
           too. A list with a name is also easier to move between when navigating by
           landmark. */}
       <ol aria-label="Ranked candidates" className="grid gap-4">
-        {ranked.map((candidate) => (
+        {diagnosis.candidates.map((candidate) => (
           <li key={candidate.disorder_id}>
             <Card>
               <CardHeader>

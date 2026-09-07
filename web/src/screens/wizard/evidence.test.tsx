@@ -221,3 +221,51 @@ describe("a candidate nothing argues against", () => {
     expect(screen.queryByText("What points to it")).not.toBeInTheDocument();
   });
 });
+
+describe("the order the candidates are shown in", () => {
+  /** Ascending probability, so re-sorting would be visible and preserving would not. */
+  const AS_SERVED = detail({
+    candidates: [
+      {
+        ...DIAGNOSIS.candidates[0],
+        disorder_id: "underwatering",
+        name: "Underwatering",
+        probability: 0.21,
+      },
+      {
+        ...DIAGNOSIS.candidates[0],
+        disorder_id: "overwatering",
+        name: "Overwatering",
+        probability: 0.62,
+      },
+    ],
+  } as never);
+
+  /** The cards, and not the evidence bullets inside them. `getAllByRole("listitem")` walks
+   *  into the nested lists too, which counts four items for two candidates. */
+  function cards(): string[] {
+    const list = screen.getByRole("list", { name: "Ranked candidates" });
+    return Array.from(list.children).map((card) => card.textContent ?? "");
+  }
+
+  it("is the order the API gave them", () => {
+    // `U22`. The client used to impose its own `sort` by probability on a list the
+    // `diagnose` node had already ordered. The two rules agreed in practice, so nothing was
+    // ever seen to move — but if they diverged the screen would show a different leading
+    // candidate than the diagnosis recorded, and `eval/` scores the server's order, so no
+    // measurement could have caught it. Deleting the sort is the decision: the server ranks.
+    render(<Differential detail={AS_SERVED} />);
+
+    expect(cards()[0]).toContain("Underwatering");
+    expect(cards()[1]).toContain("Overwatering");
+  });
+
+  it("still shows every candidate rather than naming one", () => {
+    // The property the ranking exists to serve, and the reason this is a list at all: the
+    // leading candidate is often right and not always, and the tail of a differential is
+    // measurably less stable than its head.
+    render(<Differential detail={AS_SERVED} />);
+
+    expect(cards()).toHaveLength(2);
+  });
+});
