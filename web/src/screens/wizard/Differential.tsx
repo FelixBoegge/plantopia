@@ -88,7 +88,21 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
                       ))}
                     </ul>
                   </div>
-                ) : null}
+                ) : (
+                  /* Stated, not left as a gap (`U24`). The retired Streamlit view captioned
+                     this case and the migration dropped it, so the one absence worth
+                     calling out became indistinguishable from every other — a reader saw
+                     a space where a line had said the question was asked and the answer
+                     was none.
+
+                     Deliberately asymmetric with "What points to it", which has no such
+                     fallback and must not gain one: a candidate with nothing against it is
+                     ordinary, and one with nothing *for* it is strange. Captioning that
+                     would dress a defect up as a finding. */
+                  <p className="text-muted-foreground">
+                    Nothing observed argues against this.
+                  </p>
+                )}
 
                 {candidate.distinguishing_test ? (
                   <div>

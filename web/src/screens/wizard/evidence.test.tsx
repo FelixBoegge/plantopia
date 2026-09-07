@@ -177,3 +177,47 @@ describe("what the diagnosis cost", () => {
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
   });
 });
+
+describe("a candidate nothing argues against", () => {
+  const NOTHING_AGAINST = /nothing observed argues against this/i;
+
+  function candidate(fields: Record<string, unknown>) {
+    return detail({
+      candidates: [{ ...DIAGNOSIS.candidates[0], ...fields }],
+    } as never);
+  }
+
+  it("says so, rather than leaving a gap", () => {
+    // `U24`. The retired Streamlit view captioned this case explicitly; React rendered the
+    // whole block only when the list was non-empty, so the one case it called out became
+    // silent like every other absence. A reader saw a space where a line had said the
+    // question was asked and the answer was none.
+    render(<Differential detail={candidate({ contradicting_evidence: [] })} />);
+
+    expect(screen.getByText(NOTHING_AGAINST)).toBeInTheDocument();
+  });
+
+  it("says nothing of the sort when something does argue against it", () => {
+    render(
+      <Differential
+        detail={candidate({ contradicting_evidence: ["the roots are firm"] })}
+      />,
+    );
+
+    expect(screen.getByText("the roots are firm")).toBeInTheDocument();
+    expect(screen.queryByText(NOTHING_AGAINST)).not.toBeInTheDocument();
+  });
+
+  it("has no counterpart for missing supporting evidence, deliberately", () => {
+    // The asymmetry is the point, and it is why this is one caption and not two. A
+    // candidate with nothing arguing against it is ordinary and worth stating; a candidate
+    // with nothing arguing *for* it is strange, and captioning it would dress a defect up
+    // as a finding.
+    render(<Differential detail={candidate({ supporting_evidence: [] })} />);
+
+    expect(
+      screen.queryByText(/nothing.*points to (it|this)/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("What points to it")).not.toBeInTheDocument();
+  });
+});
