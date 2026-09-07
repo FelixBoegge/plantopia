@@ -46,12 +46,18 @@ export function AppHeader() {
         <Link to="/" className="underline-offset-4 hover:underline">
           My plants
         </Link>
-        {account?.role === "admin" ? (
+        {/* Shown on the server's answer, never on the role beside it. `account.role` is
+            right here and the rule derived from it was not: comparing it to "admin" was a
+            second copy of an authorization rule, and it went on hiding this link after a
+            deployment opened the page to members — the page reachable, the way to it
+            invisible. `may_read_evaluations` is computed with the same function the
+            endpoint refuses by, so a link shown is a link that works. */}
+        {account?.may_read_evaluations ? (
           <Link
             to="/admin/evaluation"
             className="underline-offset-4 hover:underline"
           >
-            Evaluation
+            RAG Evaluation Report
           </Link>
         ) : null}
         <Link to="/account" className="underline-offset-4 hover:underline">

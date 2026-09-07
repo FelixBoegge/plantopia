@@ -27,6 +27,7 @@ function account(overrides: Record<string, unknown> = {}) {
     runs_used: 2,
     runs_allowed: 20,
     allowance_resets_at: "2026-04-01T00:00:00Z",
+    may_read_evaluations: false,
     ...overrides,
   };
 }
@@ -187,6 +188,8 @@ describe("what has been learned", () => {
 });
 
 describe("the evaluation screen", () => {
+  const REPORT = "RAG Evaluation Report";
+
   it("is not offered to an account that cannot reach it", async () => {
     signedIn();
     server.use(http.get("/api/v1/plants", () => HttpResponse.json([])));
@@ -194,9 +197,42 @@ describe("the evaluation screen", () => {
     render(<AppRoutes />, { route: "/" });
     await screen.findByRole("heading", { name: "Your plants" });
 
-    expect(
-      screen.queryByRole("link", { name: "Evaluation" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: REPORT })).not.toBeInTheDocument();
+  });
+
+  it("is offered to an account the server says may reach it", async () => {
+    // The server's answer, not the role. `AppHeader` used to compare `role` to "admin"
+    // itself, which is a second copy of an authorization rule — and it was already wrong:
+    // once a deployment could open the page to members, the page was reachable and the
+    // navigation went on hiding the link. A member with the capability is exactly that
+    // case, and is why this asserts on a member rather than an admin.
+    signedIn(account({ may_read_evaluations: true }));
+    server.use(http.get("/api/v1/plants", () => HttpResponse.json([])));
+
+    render(<AppRoutes />, { route: "/" });
+    await screen.findByRole("heading", { name: "Your plants" });
+
+    expect(await screen.findByRole("link", { name: REPORT })).toHaveAttribute(
+      "href",
+      "/admin/evaluation",
+    );
+  });
+
+  it("sits between My plants and Account", async () => {
+    // Position asserted rather than left to the eye. The bar is the only place this route
+    // is discoverable, and "somewhere in the nav" is not the same as findable.
+    signedIn(account({ may_read_evaluations: true }));
+    server.use(http.get("/api/v1/plants", () => HttpResponse.json([])));
+
+    render(<AppRoutes />, { route: "/" });
+    await screen.findByRole("heading", { name: "Your plants" });
+
+    const names = screen
+      .getAllByRole("link")
+      .map((link) => link.textContent?.trim());
+
+    expect(names.indexOf(REPORT)).toBe(names.indexOf("My plants") + 1);
+    expect(names.indexOf("Account")).toBe(names.indexOf(REPORT) + 1);
   });
 
   it("shows what a refused account is shown", async () => {
