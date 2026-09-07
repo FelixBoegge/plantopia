@@ -24,16 +24,33 @@ logger = logging.getLogger(__name__)
 
 
 def _usage_from(config: RunnableConfig | None) -> UsageSnapshot | None:
-    """The run's usage so far, or ``None`` when no collector was wired.
+    """What this diagnosis cost — every pass of it, not only the one that got here.
 
-    ``None`` is the normal case for unit tests and for any caller that has not
-    opted in, so this must never raise. By the time this node runs, every model
-    call in the run has completed, so the snapshot is final.
+    ``None`` is the normal case for unit tests and for any caller that has not opted in,
+    so this must never raise.
+
+    **Two passes, two collectors.** A run stops at the clarifying-question interrupt and
+    resumes in a new worker thread with a new ``UsageCollector``, and this node runs in
+    the pass that *finishes*. The collector therefore holds that pass alone, while the
+    vision and gate calls — the expensive ones — all happened before the pause.
+    ``carried_usage`` is what the pause banked on the run
+    (``runs.partial_usage_json``), and adding it here is the same sum
+    ``runs/worker.py::_total_spend`` makes for the ledger, so the record and the ledger
+    agree about one run.
+
+    The docstring this replaces called the snapshot "final" because every model call in
+    the run had completed. That was true of the pass and never of the run — the same
+    wrong invariant that made ``U25`` undercharge the ledger, inherited one layer up.
     """
     if not config:
         return None
-    collector = (config.get("configurable") or {}).get("usage_collector")
-    return collector.snapshot() if collector is not None else None
+    configurable = config.get("configurable") or {}
+    collector = configurable.get("usage_collector")
+    carried = configurable.get("carried_usage")
+    snapshot = collector.snapshot() if collector is not None else None
+    if snapshot is None:
+        return carried
+    return snapshot.plus(carried)
 
 
 # When nobody named the plant and nothing identified it either. Deliberately plain: it

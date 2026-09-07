@@ -144,7 +144,19 @@ def _drive(
     graph = (build_graph or _real_graph)(session=session, user_id=user_id, settings=settings)
 
     config = {
-        "configurable": {"thread_id": thread_id, "usage_collector": collector},
+        "configurable": {
+            "thread_id": thread_id,
+            "usage_collector": collector,
+            # What earlier passes of this run already spent. ``agent/nodes/persist`` adds
+            # it to this pass's snapshot, so the diagnosis record covers the whole run —
+            # the same sum ``_total_spend`` makes for the ledger below. Read here rather
+            # than in the node because the node has no run id, and passed through the
+            # config because the record is written inside the graph's own transaction.
+            #
+            # ``None`` on a first pass and on any run that never paused, which is the
+            # ordinary case for a re-check.
+            "carried_usage": runs.partial_usage_of(run_id),
+        },
         "callbacks": [collector],
     }
     payload = Command(resume=resume) if resume is not None else initial_state
