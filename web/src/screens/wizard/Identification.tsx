@@ -14,6 +14,10 @@ import type { SpeciesCandidate } from "@/api/types";
  * the names of the two systems involved do not. The attribution Pl@ntNet's terms require
  * appears below, on this same surface, whenever one of its results is on screen.
  *
+ * The agreement case is the one exception, and names Pl@ntNet. Two methods sharing no
+ * mechanism and reaching the same answer is the strongest thing this step can say, and
+ * "a plant database" left an owner unable to tell that from a single check. See `EVIDENCE`.
+ *
  * Nothing here is required. Somebody who does not know can leave it alone, and the run
  * proceeds on the leading candidate — recorded as unconfirmed, so a wrong diagnosis stays
  * attributable afterwards.
@@ -24,7 +28,21 @@ const EVIDENCE: Record<SpeciesCandidate["method"], string> = {
   typed: "What you told us",
   vision: "Read from your photo",
   plantnet: "Matched against a plant database",
-  agreed: "Your photo and a plant database agree",
+  // Names Pl@ntNet, where the other three do not name anything. A deliberate exception to
+  // the rule above rather than an erosion of it: "a plant database" left an owner unable to
+  // tell one check from two, and agreement between two methods that share no mechanism is
+  // the strongest signal this step has — it is *why* the confidence beside it reads high,
+  // so it earns the words. Naming the service costs nothing here either, its attribution
+  // already being on this surface whenever one of its results is.
+  //
+  // Safe from inconsistency by construction: `identify._merged` collapses agreement into
+  // this single candidate, so `agreed` never appears beside `vision` or `plantnet` and no
+  // list ever describes the same source two ways. `agreed` shows only with `typed`, or
+  // alone.
+  //
+  // Still "your photo" rather than "the vision model": the owner took the photograph, and
+  // which model read it is not a fact they can weigh.
+  agreed: "Your photo and Pl@ntNet's database independently agree",
 };
 
 /**
@@ -44,7 +62,8 @@ export function confidenceText(confidence: number): string {
 /** Whether anything on screen came from the service that must be credited. */
 function creditsPlantnet(candidates: SpeciesCandidate[]): boolean {
   return candidates.some(
-    (candidate) => candidate.method === "plantnet" || candidate.method === "agreed",
+    (candidate) =>
+      candidate.method === "plantnet" || candidate.method === "agreed",
   );
 }
 
@@ -69,12 +88,17 @@ export function Identification({
       <p className="text-muted-foreground text-sm">
         {/* Said plainly rather than implied by a preselected option. Somebody who does not
             know which is right should be able to tell that not knowing is allowed. */}
-        These do not agree. Pick the one you think is right, or leave it as it is.
+        These do not agree. Pick the one you think is right, or leave it as it
+        is.
       </p>
 
       {/* A radiogroup rather than a listbox: one choice from a few, all visible, each with
           two lines of explanation that a select element cannot show. */}
-      <div role="radiogroup" aria-labelledby="identification" className="grid gap-2">
+      <div
+        role="radiogroup"
+        aria-labelledby="identification"
+        className="grid gap-2"
+      >
         {candidates.map((candidate) => {
           const selected = candidate === chosen;
           return (

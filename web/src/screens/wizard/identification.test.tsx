@@ -60,7 +60,9 @@ const AGREED = {
 const STEP = `id: 1\nevent: step\ndata: {"step":"checking","description":"Checking the photographs"}\n\n`;
 
 function pause(candidates: unknown[] | null): string {
-  const block = candidates ? `,"identification":${JSON.stringify(candidates)}` : "";
+  const block = candidates
+    ? `,"identification":${JSON.stringify(candidates)}`
+    : "";
   return (
     `id: 2\nevent: questions\ndata: {"questions":[` +
     `{"key":"watering","text":"How often do you water it?","kind":"text","options":[]}` +
@@ -70,7 +72,9 @@ function pause(candidates: unknown[] | null): string {
 
 function watching(frames: string[]) {
   server.use(
-    http.post("/api/v1/auth/refresh", () => HttpResponse.json({ access_token: "fresh" })),
+    http.post("/api/v1/auth/refresh", () =>
+      HttpResponse.json({ access_token: "fresh" }),
+    ),
     http.get("/api/v1/me", () => HttpResponse.json(ACCOUNT)),
     http.get("/api/v1/plants", () => HttpResponse.json([])),
     http.get(`/api/v1/runs/${RUN}`, () =>
@@ -117,7 +121,9 @@ describe("when the methods disagree", () => {
     open();
 
     expect(await screen.findByText(/Read from your photo/)).toBeInTheDocument();
-    expect(screen.getByText(/Matched against a plant database/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Matched against a plant database/),
+    ).toBeInTheDocument();
   });
 
   it("says how sure each one is in words", async () => {
@@ -176,6 +182,22 @@ describe("when the methods disagree", () => {
     expect(await screen.findByText(/powered by Pl@ntNet/i)).toBeInTheDocument();
   });
 
+  it("says the two methods agreed, and names the one that can be named", async () => {
+    // The strongest signal this step has, and the copy said the least about it: "a plant
+    // database" gave an owner no way to tell one check from two. Agreement is worth
+    // spelling out because it is *why* the confidence beside it is high — two methods that
+    // do not share a mechanism reached the same answer.
+    watching([STEP, pause([TYPED, AGREED])]);
+
+    open();
+
+    expect(
+      await screen.findByText(
+        /Your photo and Pl@ntNet's database independently agree, very confident/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("credits it when the agreement includes it", async () => {
     watching([STEP, pause([TYPED, AGREED])]);
 
@@ -221,7 +243,9 @@ describe("when they agree", () => {
 
     open();
 
-    expect(await screen.findByLabelText("How often do you water it?")).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("How often do you water it?"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -275,7 +299,9 @@ describe("submitting", () => {
 
     const sent = await sentBy(async () => {
       open();
-      await userEvent.click(await screen.findByRole("radio", { name: /Thai basil/ }));
+      await userEvent.click(
+        await screen.findByRole("radio", { name: /Thai basil/ }),
+      );
       await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
     });
 
@@ -290,11 +316,16 @@ describe("submitting", () => {
 
     const sent = await sentBy(async () => {
       open();
-      await userEvent.click(await screen.findByRole("radio", { name: /Holy basil/ }));
+      await userEvent.click(
+        await screen.findByRole("radio", { name: /Holy basil/ }),
+      );
       await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
     });
 
-    expect(sent.species).toMatchObject({ common_name: "Holy basil", method: "typed" });
+    expect(sent.species).toMatchObject({
+      common_name: "Holy basil",
+      method: "typed",
+    });
   });
 });
 
