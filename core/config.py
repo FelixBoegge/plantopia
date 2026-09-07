@@ -106,6 +106,20 @@ class Settings(BaseSettings):
     # reading and writing different directories.
     eval_results_path: Path = Path("eval/results")
 
+    # Whether an ordinary member may read those results. **Temporary, and off by default.**
+    #
+    # The evaluation page is admin-only because harness numbers are internal. For the
+    # capstone review it has to be reachable by a reviewer who registers an ordinary
+    # account, and that is a property of this deployment rather than of the rule — so it
+    # lives here instead of in ``identity/roles.may_read_evaluations``. Written as a code
+    # change it would have to be remembered and reverted, and an opened resource is the
+    # worst thing to leave to memory; as configuration, a deployment that says nothing
+    # inherits the closed state. ``docs/deployment-readiness.md`` carries the re-lock.
+    #
+    # An unknown role is still refused either way. This widens the rule to members, not to
+    # everybody.
+    evaluation_open_to_members: bool = False
+
     # The HTTP interface. Every route is served beneath the prefix, so a later
     # incompatible version can exist alongside this one rather than replacing it under a
     # running client.

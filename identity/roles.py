@@ -18,11 +18,24 @@ ADMIN = "admin"
 ROLES = frozenset({MEMBER, ADMIN})
 
 
-def may_read_evaluations(role: str) -> bool:
+def may_read_evaluations(role: str, *, open_to_members: bool = False) -> bool:
     """Whether an account may see the harness's results.
 
-    Unknown roles are refused. A role nobody recognises is not a reason to grant access —
-    and the only way to acquire one is a manual database edit or a migration that went
-    wrong, neither of which should widen what anybody can see.
+    Unknown roles are refused, in both states. A role nobody recognises is not a reason to
+    grant access — and the only way to acquire one is a manual database edit or a migration
+    that went wrong, neither of which should widen what anybody can see.
+
+    ``open_to_members`` is **temporary**, and carried by configuration rather than written
+    into this rule. The capstone reviewer registers an ordinary account and has to be able
+    to reach the numbers; wiring that as a code change would mean remembering to revert it
+    before a deployment, and the thing most likely to be forgotten is the thing that opens
+    a protected resource. As configuration, the secure state is what a deployment inherits
+    by saying nothing, and re-locking is deleting a line from `.env`.
+    ``docs/deployment-readiness.md`` carries the task either way.
+
+    Defaulted rather than required so that every existing caller and test keeps asking the
+    deployed question — which is the one worth being the default.
     """
-    return role == ADMIN
+    if role == ADMIN:
+        return True
+    return open_to_members and role in ROLES
