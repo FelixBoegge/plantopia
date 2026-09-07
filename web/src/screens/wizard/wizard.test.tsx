@@ -507,6 +507,57 @@ describe("when it asks something", () => {
     expect(await screen.findByTestId("processing-spinner")).toBeInTheDocument();
   });
 
+  it("locks the answers once they are sent", async () => {
+    // The pause is over and the run has them. An editable field after that is an
+    // invitation to change an answer the agent is already reasoning from, and the submit
+    // button re-enabled on success let somebody send a second time into a run that is no
+    // longer awaiting any — which the API refuses, correctly, with an error the person did
+    // nothing to deserve.
+    signedIn();
+    watching([STEP, QUESTIONS], run({ status: "awaiting_answers" }));
+    server.use(
+      http.post(`/api/v1/runs/${RUN}/answers`, () =>
+        HttpResponse.json(run({ status: "queued" })),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    const watering = await screen.findByLabelText("How often do you water it?");
+    await userEvent.type(watering, "every other day");
+    await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
+
+    await waitFor(() => expect(watering).toBeDisabled());
+    expect(
+      screen.queryByRole("button", { name: "Carry on" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still shows what was answered after locking", async () => {
+    // Locked, not hidden. What somebody told it is part of reading the result that comes
+    // back, and taking it off the screen the moment it is sent would answer a question
+    // nobody asked.
+    signedIn();
+    watching([STEP, QUESTIONS], run({ status: "awaiting_answers" }));
+    server.use(
+      http.post(`/api/v1/runs/${RUN}/answers`, () =>
+        HttpResponse.json(run({ status: "queued" })),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    await userEvent.type(
+      await screen.findByLabelText("How often do you water it?"),
+      "every other day",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("How often do you water it?")).toHaveValue(
+        "every other day",
+      ),
+    );
+  });
+
   it("sends the answers", async () => {
     signedIn();
     let sent: unknown = null;

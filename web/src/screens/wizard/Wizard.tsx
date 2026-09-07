@@ -212,6 +212,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
               identification={watched.identification}
               staleAfterDays={watched.staleAfterDays}
               busy={answer.isPending}
+              locked={answer.isSuccess}
               failure={answer.error}
               onAnswer={(answers, species) =>
                 answer.mutate({ answers, species })

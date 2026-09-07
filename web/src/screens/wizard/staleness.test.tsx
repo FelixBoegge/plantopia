@@ -49,7 +49,9 @@ describe("how old is too old", () => {
     // exactly who needs an answer.
     render(<Staleness captured="2026-08-01" threshold={7} today={TODAY} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(/upload one taken today/i);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /upload one taken today/i,
+    );
     expect(screen.getByRole("status")).not.toHaveTextContent(/cannot|refuse/i);
   });
 
@@ -99,6 +101,7 @@ describe("the warning at the pause", () => {
         staleAfterDays={7}
         onAnswer={() => {}}
         busy={false}
+        locked={false}
         failure={null}
       />,
     );
@@ -147,6 +150,7 @@ describe("the warning at the pause", () => {
           sent = true;
         }}
         busy={false}
+        locked={false}
         failure={null}
       />,
     );

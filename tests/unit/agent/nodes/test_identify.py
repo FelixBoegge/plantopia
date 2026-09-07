@@ -262,6 +262,57 @@ class TestWhatTheTwoMethodsProduce:
         assert result["candidates"][0].method is SpeciesMethod.AGREED
         assert result["candidates"][0].confidence == pytest.approx(0.91)
 
+    def test_a_hybrid_marker_written_two_ways_is_still_one_plant(self, make_deps, sample_images):
+        """Found in use, on a strawberry.
+
+        `Fragaria × ananassa` is a hybrid, and the × is U+00D7 MULTIPLICATION SIGN — which
+        is what Pl@ntNet returns and what the botanical convention requires. The vision
+        model writes the ASCII letter `x`. Casefolding does not bring those together, so
+        two spellings of one plant were offered as a disagreement: the owner saw "Garden
+        strawberry" twice, identically, and was asked to choose between them.
+        """
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel(
+                [_seen("Garden strawberry", "Fragaria x ananassa", 0.86)]
+            ),
+            identify_species=lambda _: [
+                _candidate("Garden Strawberry", "Fragaria × ananassa", 0.42)
+            ],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert len(result["candidates"]) == 1
+        assert result["candidates"][0].method is SpeciesMethod.AGREED
+
+    def test_a_hybrid_marker_against_the_epithet_is_still_one_plant(self, make_deps, sample_images):
+        """`Fragaria ×ananassa` with no space is also correct botanically, and is the other
+        way the sign turns up."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel(
+                [_seen("Garden strawberry", "Fragaria x ananassa", 0.86)]
+            ),
+            identify_species=lambda _: [
+                _candidate("Garden Strawberry", "Fragaria ×ananassa", 0.42)
+            ],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert len(result["candidates"]) == 1
+
+    def test_a_name_whose_own_letters_include_x_is_left_alone(self, make_deps, sample_images):
+        """The marker is a standalone token, never any `x`. `Salix` and `Phoenix` end in
+        one, and stripping it would make unrelated willows agree with each other."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen("White willow", "Salix alba", 0.8)]),
+            identify_species=lambda _: [_candidate("Crack willow", "Salix fragilis", 0.7)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert len(result["candidates"]) == 2
+
     def test_agreement_is_decided_on_the_scientific_name(self, make_deps, sample_images):
         """Two different plants share the common name "Mini monstera" in the recorded
         response. A common-name comparison would call them the same plant."""
@@ -428,6 +479,25 @@ class TestWhenSomebodyTypedTheSpecies:
             SpeciesMethod.VISION,
             SpeciesMethod.PLANTNET,
         ]
+
+    def test_a_typed_hybrid_written_with_an_ascii_x_is_not_offered_twice(
+        self, make_deps, sample_images
+    ):
+        """The same character that made the two methods disagree. Somebody typing a hybrid
+        will use the letter on their keyboard, not U+00D7."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel(
+                [_seen("Garden strawberry", "Fragaria × ananassa", 0.86)]
+            ),
+            identify_species=lambda _: [],
+        )
+
+        result = make_identify_plant(deps)(
+            _state(sample_images, stated_species="Fragaria x ananassa")
+        )
+
+        assert len(result["candidates"]) == 1
+        assert result["candidates"][0].method is SpeciesMethod.TYPED
 
     def test_a_method_that_agrees_with_it_is_not_offered_twice(self, make_deps, sample_images):
         """Choosing between a thing and itself is not a choice."""

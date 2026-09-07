@@ -220,11 +220,15 @@ def _matches_typed(stated: str, candidate: SpeciesCandidate) -> bool:
     hides a candidate that agreed anyway, and a missed match shows a choice between two
     spellings of the same plant. Neither produces a wrong diagnosis; a strict comparison
     would produce the second one constantly.
+
+    The hybrid marker is normalised the same way it is for two methods, and for the same
+    reason: somebody typing a hybrid uses the letter on their keyboard, and Pl@ntNet
+    returns the multiplication sign.
     """
-    typed = stated.casefold().strip()
-    names = {candidate.common_name.casefold()}
+    typed = _without_hybrid_markers(stated)
+    names = {_without_hybrid_markers(candidate.common_name)}
     if candidate.scientific_name:
-        names.add(candidate.scientific_name.casefold())
+        names.add(_without_hybrid_markers(candidate.scientific_name))
     return typed in names
 
 
@@ -263,10 +267,46 @@ def _merged(vision: SpeciesCandidate, found: list[SpeciesCandidate]) -> list[Spe
     return [vision, *found]
 
 
+# The hybrid marker, in every form the two methods write it. Botanical convention is
+# U+00D7 MULTIPLICATION SIGN — `Fragaria × ananassa` — which is what Pl@ntNet returns; a
+# language model writes the ASCII letter `x`. `+` is the graft-hybrid marker, included for
+# the same reason rather than because it has been seen.
+_HYBRID_MARKERS = frozenset({"x", "×", "+"})
+
+
+def _without_hybrid_markers(name: str) -> str:
+    """A name reduced to the words that identify the plant.
+
+    Two spellings of one hybrid were offered to an owner as a disagreement — "Garden
+    strawberry / Fragaria x ananassa" beside "Garden Strawberry / Fragaria × ananassa",
+    the same plant twice, differing in one character no reader would notice. Casefolding
+    does not bring `x` and `×` together, so the comparison called them different plants.
+
+    **Only a standalone marker is dropped, never any `x`.** `Salix`, `Phoenix` and `Larix`
+    end in one, and stripping letters would make unrelated willows agree with each other.
+    A leading `×` attached to the epithet is stripped, because `Fragaria ×ananassa` is also
+    correct — but a leading ASCII `x` is not, since `Xanthium` is a genus.
+    """
+    words = [
+        word.removeprefix("×").removeprefix("+")
+        for word in name.casefold().split()
+        if word not in _HYBRID_MARKERS
+    ]
+    return " ".join(word for word in words if word)
+
+
 def _same_plant(one: SpeciesCandidate, other: SpeciesCandidate) -> bool:
+    """Whether two candidates name the same plant.
+
+    On the scientific name where both have one, because that is what makes two spellings
+    comparable — the recorded fixture has two different plants sharing the common name
+    "Mini monstera".
+    """
     if one.scientific_name and other.scientific_name:
-        return one.scientific_name.casefold() == other.scientific_name.casefold()
-    return one.common_name.casefold() == other.common_name.casefold()
+        return _without_hybrid_markers(one.scientific_name) == _without_hybrid_markers(
+            other.scientific_name
+        )
+    return _without_hybrid_markers(one.common_name) == _without_hybrid_markers(other.common_name)
 
 
 __all__ = ["ImageOrgan", "UNKNOWN_SPECIES", "make_identify_plant"]
