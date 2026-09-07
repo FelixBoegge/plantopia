@@ -10,7 +10,7 @@ import logging
 
 from agent.deps import Deps
 from agent.nodes.intake import NodeFn
-from agent.schemas import CareOrigin, LoadedImage
+from agent.schemas import CareOrigin
 from agent.state import DiagnosisState
 from tools.knowledge import build_symptom_queries, search_plant_knowledge
 from tools.web_search import should_escalate
@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 WEATHER_DAYS_BACK = 21
 KNOWLEDGE_RESULTS = 6
-VISUAL_RESULTS = 4
 
 
 def make_enrich(deps: Deps) -> NodeFn:
@@ -29,18 +28,13 @@ def make_enrich(deps: Deps) -> NodeFn:
         tools_used: list[str] = []
 
         passages = _retrieve(deps, state, tools_used)
-        visual = _retrieve_by_image(deps, state, tools_used)
         weather = fetch_weather(deps, state, tools_used)
         care_text = _care_baseline(deps, state, tools_used)
 
-        # The escalation gate reads the TEXT path only. Cross-modal scores sit on a
-        # lower scale, so including them would open the gate on nearly every
-        # diagnosis and buy a web search we do not need (spec §10.4).
         passages, escalated = _maybe_escalate(deps, state, passages, tools_used)
 
         return {
             "retrieved": passages,
-            "visual_matches": visual,
             "weather": weather,
             "care_baseline_text": care_text,
             "escalated_to_web": escalated,
@@ -68,54 +62,6 @@ def _retrieve(deps: Deps, state: DiagnosisState, tools_used: list[str]) -> list:
     return search_plant_knowledge(
         deps.retriever, queries, k=KNOWLEDGE_RESULTS, hypotheses=state.hypotheses
     )
-
-
-def _retrieve_by_image(deps: Deps, state: DiagnosisState, tools_used: list[str]) -> list:
-    """Retrieve by embedding the photographs directly (spec §10.4).
-
-    This path does not depend on ``assess_symptoms``. The text path searches for a
-    *description* of the symptoms, so it inherits any mistake the vision model made
-    writing that description; this path bypasses it. The two fail independently,
-    which is the entire reason for running both.
-
-    Weak matches are dropped rather than shown. A cross-modal score near the floor
-    means the photograph did not resemble anything in the corpus, and passing that to
-    the diagnose prompt as 'evidence' would be worse than passing nothing.
-    """
-    if not state.images:
-        return []
-
-    # Asked of the retriever rather than of settings: what matters is whether this
-    # search can happen, not why. Reporting it as a tool used when no image embedder
-    # is wired tells the owner a second opinion was sought that never was.
-    if not deps.retriever.supports_image_search:
-        return []
-
-    # Bytes are resolved here, at the one node that needs them, and go no further.
-    # A photograph missing from the store drops out of the visual search rather than
-    # failing the diagnosis: this path is corroboration, and the text path stands on
-    # its own. The vision call treats the same absence as fatal, because there it is.
-    loaded = []
-    for image in state.images:
-        data = deps.blobs.get(deps.user_id, image.ref)
-        if data is None:
-            logger.warning("photograph %s is not in the store; skipping it", image.ref)
-            continue
-        loaded.append(LoadedImage(data=data, media_type=image.media_type))
-    if not loaded:
-        return []
-
-    tools_used.append("search_by_photograph")
-    matches = deps.retriever.search_by_image(loaded, k=VISUAL_RESULTS)
-    kept = [p for p in matches if p.score >= deps.settings.image_match_threshold]
-
-    if matches and not kept:
-        logger.info(
-            "dropped %d visual matches below the %.2f threshold",
-            len(matches),
-            deps.settings.image_match_threshold,
-        )
-    return kept
 
 
 def fetch_weather(deps: Deps, state: DiagnosisState, tools_used: list[str]):

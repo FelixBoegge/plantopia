@@ -1,10 +1,10 @@
 """Corpus retrieval over pgvector.
 
-**Nothing uses this yet.** Retrieval runs on ``ChromaRetriever``; the move waits until
-the embedding model is chosen, because a different model means re-embedding the corpus
-anyway (``docs/known-limitations.md``, M25). This implements the same ``Retriever``
-Protocol and shares the same merge logic (``knowledge.merging``), so wiring it in later
-is a construction change rather than a rewrite.
+**The only retrieval path**, as of 2026-09-07. It implements the ``Retriever`` Protocol
+in ``knowledge/retriever.py``, which is now that module's entire contents — the shape the
+nodes depend on, so that the store could change underneath them without a rewrite, which
+is what happened. The merge logic in ``knowledge.merging`` was extracted to be shared with
+``ChromaRetriever``; it has no second implementation to share with any more.
 
 **Scores.** LangChain's Chroma wrapper reports relevance as ``1.0 - cosine_distance``.
 pgvector's ``<=>`` *is* cosine distance, so ``1 - (embedding <=> query)`` is the same
@@ -24,7 +24,7 @@ from langchain_core.embeddings import Embeddings
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from agent.schemas import LoadedImage, Passage
+from agent.schemas import Passage
 from data.models import CorpusChunk
 from knowledge.merging import PER_DOC_SECTIONS, keep_best, ranked
 
@@ -133,23 +133,3 @@ class PgVectorRetriever:
             rows = self._session.scalars(select(CorpusChunk.doc_id).distinct()).all()
             self._doc_ids = tuple(sorted(rows))
         return self._doc_ids
-
-    @property
-    def supports_image_search(self) -> bool:
-        """Always false while no embedding model that accepts images is reachable.
-
-        Reported rather than silently returning text results: the enrich node asks this
-        before searching, and skipping the call is what keeps ``search_by_photograph``
-        out of the tools it reports as used. Telling the owner a second opinion was
-        sought that never was is worse than not seeking it.
-        """
-        return False
-
-    def search_by_image(self, images: Sequence[LoadedImage], k: int) -> list[Passage]:
-        """Nothing, for as long as ``supports_image_search`` is false.
-
-        Kept rather than dropped because the Protocol declares it and the enrich node's
-        skip-path is tested against it. When a multimodal embedder becomes reachable
-        (``U2``), this is where it goes.
-        """
-        return []

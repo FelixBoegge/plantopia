@@ -34,6 +34,7 @@ from eval.metrics import accuracy, near_misses, stability, total_usage
 from eval.profiles import load_profile
 from eval.ragas_metrics import evaluate_runs, judge_embeddings, judge_llm
 from eval.report import render_report
+from knowledge.pgvector_retriever import PgVectorRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,7 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
 
     A fresh in-memory SQLite per case: ``persist`` writes a plant, an observation
     and a diagnosis on every run, and thirty cases times five repeats would
-    otherwise pour ~180 junk plants into ``data/plantopia.db``. Chroma is built
-    once at module import (``_retriever()``) because re-embedding the corpus per
-    case would dominate both runtime and cost.
+    otherwise pour ~180 junk plants into ``data/plantopia.db``.
 
     ``profile_block`` is the same rendered block for every case in a run — a
     profile describes the owner, not any one case (spec §4.3) — bound into a
@@ -103,7 +102,7 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
         gate_model=gate,
         vision_model=vision,
         chat_model=build_reasoning_model(),
-        retriever=_retriever(),
+        retriever=_retriever(session),
         blobs=PostgresBlobStore(session),
         plants=PlantRepository(session),
         observations=ObservationRepository(session),
@@ -149,29 +148,27 @@ def _run_one(case: GoldenCase, suffix: object, profile_block: str) -> CaseRun:
 def _corpus():
     """The parsed corpus, loaded once for the whole run.
 
-    Shared by ``_retriever`` (which embeds it) and ``main`` (which passes it to
-    ``evaluate_runs`` to build Ragas' ``reference`` field), so it is parsed from
-    disk exactly once rather than once per consumer.
+    One consumer now — ``main``, which passes it to ``evaluate_runs`` to build Ragas'
+    ``reference`` field. It used to be two: ``_retriever`` parsed the same corpus in order
+    to embed it into Chroma, and retrieval reads its vectors from Postgres now. The cache
+    stays because parsing 43 documents per Ragas call would still be waste.
     """
     from knowledge.ingest import load_corpus
 
     return load_corpus(get_settings().corpus_path)
 
 
-@lru_cache(maxsize=1)
-def _retriever():
-    """The real corpus retriever, built once for the whole run."""
-    from knowledge.retriever import ChromaRetriever, build_vectorstore
+def _retriever(session):
+    """The corpus retriever for one case, over the vectors already in Postgres.
 
-    settings = get_settings()
-    vectorstore = build_vectorstore(
-        chunks=_corpus(),
-        embeddings=build_embeddings(),
-        persist_directory=settings.chroma_path,
-    )
-    # No image embedder: golden cases carry no photographs, so the cross-modal
-    # path has nothing to embed even when multimodal_embeddings is on.
-    return ChromaRetriever(vectorstore, None)
+    Takes the case's session and is **not** cached, which is the whole difference from
+    what stood here. The old version was ``lru_cache(maxsize=1)`` because building it
+    meant embedding 301 sections into Chroma, and doing that per case would have
+    dominated a run's cost and runtime. Reading vectors that are already stored costs
+    nothing, so there is nothing to amortise — and a cached retriever now holds a
+    session, which must not outlive the case that opened it.
+    """
+    return PgVectorRetriever(session, build_embeddings())
 
 
 def _run_main_set(cases: list[GoldenCase], profile_block: str) -> tuple[list[CaseRun], list[str]]:

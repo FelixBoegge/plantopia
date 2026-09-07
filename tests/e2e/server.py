@@ -24,7 +24,6 @@ mechanism, so E402 is disabled for the file rather than silenced line by line.
 import os
 import sys
 from pathlib import Path
-from shutil import rmtree
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -111,10 +110,6 @@ def settings() -> Settings:
         jwt_secret="e2e-jwt-secret-long-enough-to-be-accepted-by-the-settings",
         database_url=configured.set(database=DATABASE).render_as_string(hide_password=False),
         app_url="http://localhost:5173",
-        # Its own Chroma directory, and not the development one: a browser run embeds the
-        # corpus with hashing embeddings, and those vectors must never end up in a
-        # collection a real run then searches.
-        chroma_path=Path(__file__).resolve().parent / ".chroma",
         # Every browser test registers, verifies and signs in, and all of them arrive from
         # one address — so the default of ten attempts per five minutes is spent about three
         # tests in, and everything after it fails for a reason that has nothing to do with
@@ -138,10 +133,8 @@ def exports() -> Settings:
     os.environ["PLANTOPIA_APP_URL"] = configured.app_url
     # The run worker builds its own `Settings` from the environment rather than being handed
     # the app's, so anything omitted here silently falls back to the development default.
-    # Omitting this one opened the *development* Chroma collection and tried to upsert
-    # 256-dimension hashing vectors into a 1536-dimension space — which fails, loudly, and
-    # only after a run has already been started.
-    os.environ["PLANTOPIA_CHROMA_PATH"] = str(configured.chroma_path)
+    # `PLANTOPIA_DATABASE_URL` above is what now keeps the corpus separate: the vectors live
+    # in this run's own database, so there is no longer a store on disk to point elsewhere.
     os.environ["PLANTOPIA_AUTH_RATE_LIMIT"] = str(configured.auth_rate_limit)
 
     # **Every third-party credential blanked, by name.**
@@ -205,14 +198,47 @@ def migrate() -> None:
     command.upgrade(config, "head")
 
 
-def _forget_chroma(path: Path) -> None:
-    """Delete the browser run's vector store, for the same reason the database is dropped.
+def _seed_corpus(configured: Settings) -> None:
+    """Embed the corpus into this run's database, offline.
 
-    A collection left by an earlier run was embedded by an earlier corpus. Reusing it makes
-    a retrieval test pass or fail on something no longer in the repository.
+    Retrieval reads `corpus_chunks`, and `recreate()` leaves it empty — so without this a
+    browser diagnosis retrieves nothing and the run reports having found no reference
+    material. This replaces deleting a Chroma directory: the vectors are rows in this
+    run's own database now, dropped with it rather than left on disk.
+
+    `HashingEmbeddings` for the same reason the models are scripted — a browser run must
+    not call a provider. Its vectors are the corpus column's width, so they store as they
+    are.
     """
-    if path.exists():
-        rmtree(path)
+    from agent.wiring import open_session
+    from data.models import CorpusChunk
+    from knowledge.ingest import chunk_text, load_corpus
+    from tests.fakes.embeddings import HashingEmbeddings
+
+    chunks = load_corpus(configured.corpus_path)
+    texts = [chunk_text(chunk) for chunk in chunks]
+    vectors = HashingEmbeddings().embed_documents(texts)
+
+    session = open_session(configured)
+    try:
+        session.add_all(
+            [
+                CorpusChunk(
+                    doc_id=chunk.doc_id,
+                    section=chunk.section,
+                    name=chunk.name,
+                    content=text,
+                    category=chunk.category,
+                    transmissible=chunk.transmissible,
+                    severity=chunk.severity,
+                    embedding=vector,
+                )
+                for chunk, text, vector in zip(chunks, texts, vectors, strict=True)
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
 
 
 def main() -> int:
@@ -222,9 +248,10 @@ def main() -> int:
 
     configured = exports()
     forget_mail()
-    _forget_chroma(configured.chroma_path)
     recreate()
     migrate()
+    # After migrate: the table has to exist before rows can go into it.
+    _seed_corpus(configured)
 
     uvicorn.run(create_app(configured), host="127.0.0.1", port=PORT, log_level="info")
     return 0

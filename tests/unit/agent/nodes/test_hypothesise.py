@@ -45,16 +45,16 @@ def test_named_disorders_land_on_state(make_deps, sample_images):
     assert result["hypotheses"] == ["nitrogen-deficiency", "overwatering"]
 
 
-def test_the_prompt_offers_the_corpus_ids(make_deps, sample_images, chroma_retriever):
+def test_the_prompt_offers_the_corpus_ids(make_deps, sample_images, corpus_retriever):
     """The model must pick from real ids or the lookup finds nothing, so the list of
     what exists has to be in the prompt."""
     chat = ScriptedStructuredModel([Hypotheses(doc_ids=["root-rot"], reasoning="x")])
-    deps = make_deps(chat_model=chat, retriever=chroma_retriever)
+    deps = make_deps(chat_model=chat, retriever=corpus_retriever)
 
     make_hypothesise(deps)(_state(sample_images))
 
     prompt = "\n".join(str(m.content) for m in chat.prompts[0])
-    for doc_id in chroma_retriever.known_doc_ids():
+    for doc_id in corpus_retriever.known_doc_ids():
         assert doc_id in prompt
 
 

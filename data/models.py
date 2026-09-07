@@ -388,13 +388,14 @@ class CorpusChunk(Base):
     Reference data, not a record: the corpus is the same for everyone, so this table
     has no owner and no cascade. It is keyed by ``(doc_id, section)`` rather than by a
     generated identifier because that pair *is* the identity — it is what
-    ``sections_for`` looks a passage up by, and what the Chroma ids it replaces encoded
-    as ``doc_id::section``.
+    ``sections_for`` looks a passage up by, and the only way a caller names a passage it
+    has not already retrieved.
 
     **No index on ``embedding``.** 301 rows is a sub-millisecond sequential scan, and
-    an approximate index (HNSW) can reorder results by construction — which would make
-    the parity gate unable to attribute a difference to the new SQL rather than to the
-    index. Add one if the corpus ever grows by an order of magnitude.
+    an approximate index (HNSW) can reorder results by construction. That ambiguity was
+    unaffordable while the comparison against Chroma was still to be made, and buys
+    nothing at this size now that it has been. Add one if the corpus ever grows by an
+    order of magnitude.
     """
 
     __tablename__ = "corpus_chunks"

@@ -40,7 +40,7 @@ api/              FastAPI app factory — routers, request-scoped dependencies
   └── services/   DiagnosisService and friends — the seam every route talks to
        └── agent/   the state machine: graph, state, nodes, schemas, prompts
             ├── core/       config, model factories, embeddings, guards, images
-            ├── knowledge/  corpus ingest and Chroma retrieval
+            ├── knowledge/  corpus ingest and pgvector retrieval
             ├── tools/      weather, care profiles, web search
             └── data/       schema and repositories
 ```
@@ -112,12 +112,16 @@ three model clients, assembles `Deps`, and — only where a checkpointer is need
 builds one. The graph itself is compiled fresh by `build_diagnosis_graph` for every run;
 nothing about it is cached.
 
-What *is* cached, process-wide, is the corpus retriever: embedding the corpus and
-opening the Chroma collection is the expensive part of wiring, and none of it varies by
-request or by owner, so `_shared_retriever` is `@lru_cache`d. Built per call it would
-re-embed on every diagnosis and every chat message — slow, billable, and in tests a
-network call the suite forbids. A retired UI solved the same problem by caching its
-whole service object with `@st.cache_resource`; that object is gone along with it, and
+The corpus retriever is *not* cached, and that is a change worth understanding. It used
+to be: embedding the corpus and opening the Chroma collection was the expensive part of
+wiring, none of it varied by request or by owner, and built per call it would have
+re-embedded on every diagnosis and every chat message — slow, billable, and in tests a
+network call the suite forbids. `PgVectorRetriever` reads vectors already in Postgres, so
+there is nothing left to amortise; and it holds the request's `Session`, which is exactly
+what a process-wide cache must not hold, for the reason `api/dependencies.py` opens with.
+Removing the cache was therefore a correctness fix as much as a simplification. A retired
+UI solved the old problem by caching its whole service object with `@st.cache_resource`;
+that object is gone along with it, and
 this is the narrower, FastAPI-era version of the same worry — caching only the one
 thing that is actually expensive to rebuild.
 
@@ -878,33 +882,36 @@ Chunk identity is built for idempotent re-ingestion: `build_vectorstore` gives e
 `Document` the id `f"{chunk.doc_id}::{chunk.section}"` (§1.3 already noted the
 consequence — restarting the app upserts the corpus instead of duplicating it).
 
-### 4.2 The retriever is a `Protocol`, and its two methods fail differently on purpose
+### 4.2 The retriever is a `Protocol`, and that is why the store could be replaced
 
 `knowledge/retriever.py` defines `Retriever` as a `Protocol` rather than an abstract
 base class — the same shape `Deps` uses for its callables, applied here to something
-with more than one method. `ChromaRetriever` is the only implementation, but tests
+with more than one method. `PgVectorRetriever` is the only implementation, and tests
 substitute a fake without inheriting from anything.
 
-The protocol's docstring on `supports_image_search` is worth reading closely, because
-it draws a distinction that took a live-run bug to surface (§3c.1, and defect 2 in
-[`known-limitations.md`](known-limitations.md#first-live-run)):
+**The Protocol earned its keep on 2026-09-07.** The corpus had lived in a Chroma store
+on disk and, since 2026-08-25, redundantly in a pgvector table nothing read (`M25`).
+Switching over changed `build_deps` by one line and no node at all, because the nodes
+had only ever depended on this shape. `knowledge/retriever.py` is now the Protocol and
+nothing else; the module that had been called `retriever.py` because it *contained* a
+retriever now holds only the description of one.
 
-```python
-"""Whether the cross-modal path is wired at all.
+It also shrank from five members to three. `supports_image_search` and `search_by_image`
+described the cross-modal path — embedding a photograph into the corpus's own vector
+space — and went with Chroma, because no reachable embedding model can supply it
+(`U2`). That is worth noticing as a design point rather than a deletion: a Protocol
+member that no implementation can satisfy honestly is not an extension point, and this
+one had a false-hope cost the sections below record (§3c.1, §5.1).
 
-Distinct from ``search_by_image`` returning nothing: this says the search
-cannot happen, not that it happened and found nothing."""
-```
-
-`search` and `search_by_image` share one merge strategy (`_keep_best` /
-`_ranked`): across every query issued, keep the highest-scoring passage per
-`(doc_id, section)` key, then return the top `k` by score. Multi-query retrieval
-means a symptom described two different ways can both surface the same passage, and
-the merge collapses that into one entry rather than two near-duplicates competing for
-the `k` slots — but it also means the two search paths *can* share this logic while
-still being forbidden from sharing a result list with each other (§1.5, §3c.2): the
-prohibition is about combining scores across modalities, not about the dedup
-mechanism itself.
+The three that remain share one merge strategy (`knowledge/merging.py`: `keep_best` /
+`ranked`): across every query issued, keep the highest-scoring passage per
+`(doc_id, section)` key, then return the top `k` by score. Multi-query retrieval means
+a symptom described two different ways can both surface the same passage, and the merge
+collapses that into one entry rather than two near-duplicates competing for the `k`
+slots. That merge was extracted so both retrievers could share it, which is what made
+the comparison between them answerable: with the ranking held constant, any difference
+had to be in the query. There was none — 0 of 87 golden-set queries differed at any
+rank — and that result is what licensed deleting Chroma without an evaluation run.
 
 ### 4.3 Tools: three shapes of "this can't run", none of them an exception
 
@@ -947,7 +954,7 @@ web_passages = deps.web_search(query)
 return [*passages, *web_passages], True
 ```
 
-Tavily's relevance scores and Chroma's cosine scores both land in `state.retrieved` as
+Tavily's relevance scores and pgvector's cosine scores both land in `state.retrieved` as
 one list. `M4` records this explicitly and explains why it is tolerated: unlike the
 text/image split (§1.5), which is a live invariant the diagnose prompt depends on,
 this merge happens *after* the escalation decision is already made, nothing
@@ -1022,25 +1029,29 @@ click actually turns into a graph invocation, and where the promise made in §1.
 `api/dependencies.py`, which calls it on every request that needs the graph, three
 things stand out that weren't visible from any single piece alone.
 
-First, the `image_embedder` wiring is conditional on `settings.multimodal_embeddings`,
-not on whether an embedder *could* be constructed — this is the same logic §1.3 already
-pointed at, inside `agent/wiring.py::_retriever_for`:
+First, the retriever is built per request and holds that request's `Session`:
 
 ```python
-image_embedder = (
-    ImageEmbedder(api_key=api_key, base_url=base_url, model=embedding_model)
-    if multimodal
-    else None
-)
+retriever = PgVectorRetriever(session, build_embeddings())
 ```
 
-This is the setting `U2` records as defaulted to `False` — no multimodal embedding
-model is reachable on the restricted key this project runs against — and it is the
-root cause pulling on threads in three earlier sections: `ChromaRetriever.
-supports_image_search` returning `False` (§4.2), `enrich._retrieve_by_image` short-
-circuiting before ever calling the retriever (§3c.1), and `assess_symptoms`'
-fallback path having "nothing to fall back to" (§3b.2). One boolean, set once here,
-is the reason the whole cross-modal side of the pipeline is currently dark.
+Which is the opposite of what stood here until 2026-09-07, and the reversal is
+instructive. Building a retriever used to mean loading the corpus and embedding 301
+sections into Chroma, so it was `@lru_cache`d process-wide on six scalar fields. Reading
+vectors that are already in Postgres costs nothing, so there is nothing to amortise —
+and a cache is now the one place this object must not live, because a cached `Session`
+would pin one owner into a process serving many and is not safe to share across
+concurrent requests. The same argument `api/dependencies.py` opens with, arriving at the
+retriever last.
+
+What also disappeared here was a conditional `image_embedder`, wired on
+`settings.multimodal_embeddings` rather than on whether an embedder could be
+constructed. That boolean was the root cause pulling on threads in three earlier
+sections, and following it was how the cross-modal path came to be removed rather than
+left dark: it defaulted to `False` because no multimodal embedding model is reachable on
+the restricted key this project runs against (`U2`), so the path had never once run.
+`assess_symptoms`' fallback path having "nothing to fall back to" (§3b.2) is what
+remains of it — a fallback whose alternative was deleted rather than fixed.
 
 Second, the diagnosis graph and the chat agent now share **one** checkpointer
 (`agent/checkpoints.py::build_checkpointer`, `lru_cache`d on the database URL) backed
@@ -1253,8 +1264,8 @@ validator already guarantees.
 something a user could see the shape of, has no counterpart in the React frontend at
 all.** That UI rendered text-path and image-path passages under two separate
 captions, exactly as `_format_passages` fenced them under two separate headings for
-the model (§3c.3), and only the visual-match path — all Chroma cosine similarities, a
-comparable number — ever printed a score; `retrieved`, which mixes Chroma and Tavily
+the model (§3c.3), and only the visual-match path — all cosine similarities from one
+store, a comparable number — ever printed a score; `retrieved`, which mixes corpus and Tavily
 scores after escalation (the exact seam `M4` names), was labelled by source instead of
 scored, so nobody could compare two incomparable percentages side by side because
 neither retrieval score nor the mixed list's provenance is currently surfaced to a

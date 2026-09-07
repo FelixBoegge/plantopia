@@ -870,9 +870,6 @@ the shipped app never imports them.
   measures the vision layer (`M19`), so this does not claim the cap leaves a diagnosis
   unchanged, only that it stops paying for pixels above the size the model itself
   downscales to
-- **The corpus is in two places and only one is used.** `corpus_chunks` holds all 301
-  sections in pgvector, and retrieval still runs on Chroma. The move waits until the
-  embedding model is chosen, since a different model means re-embedding anyway
 
 A fuller accounting — every gap raised in review, why it was carried, and what fixing it
 would take — is in [`docs/known-limitations.md`](docs/known-limitations.md).

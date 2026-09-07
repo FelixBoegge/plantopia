@@ -92,9 +92,6 @@ def build_embeddings() -> Embeddings:
     a provider-prefixed OpenRouter slug like ``openai/text-embedding-3-small`` is not a
     name tiktoken recognises. Disabling it sends the text through unmodified, which is
     what we want — corpus sections are well under any context limit.
-
-    For embedding *images* see ``core.embeddings.ImageEmbedder``: LangChain's
-    embeddings interface is text-only, so the multimodal call is made directly.
     """
     settings = get_settings()
     return OpenAIEmbeddings(

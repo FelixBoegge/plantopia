@@ -1,10 +1,10 @@
 """How retrieved passages are merged and ranked.
 
-Extracted out of ``ChromaRetriever`` so the pgvector implementation can *share* it
-rather than reproduce it. That matters for the parity gate: with the merge held
-constant, any difference between the two retrievers is a difference in the query, which
-is the thing being replaced. A second copy of this logic would put a second candidate
-explanation into every failure.
+Extracted out of ``ChromaRetriever`` so the pgvector implementation could *share* it
+rather than reproduce it, which is what made the comparison between the two answerable:
+with the merge held constant, any difference had to be in the query. It found none — 0 of
+87 golden-set queries differed at any rank — and Chroma was deleted, so this is now the
+only ranking logic there is rather than the shared half of two.
 """
 
 from agent.schemas import Passage

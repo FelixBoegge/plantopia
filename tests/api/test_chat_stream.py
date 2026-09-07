@@ -49,7 +49,7 @@ NOW_MARKER = "stream"
 def chat(client, db, owner, make_deps, now):
     """A chat service with a scripted agent, wired into the application.
 
-    The real dependency builds model clients and a Chroma collection; every test here is
+    The real dependency builds model clients and an embeddings client; every test here is
     about what the endpoint does with a reply, not about producing one.
     """
 

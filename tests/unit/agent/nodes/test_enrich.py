@@ -33,22 +33,23 @@ class _Spy:
 
 
 class _StubRetriever:
+    """The three-member ``Retriever`` Protocol, recording what it was asked.
+
+    It had five members and an image interface until the cross-modal path was removed
+    with Chroma (``U2``).
+    """
+
     def __init__(
         self,
         passages: list[Passage],
-        image_passages: list[Passage] | None = None,
-        supports_image_search: bool = True,
         discriminators: list[Passage] | None = None,
     ):
         self.passages = passages
-        self.image_passages = image_passages or []
-        self.supports_image_search = supports_image_search
-        # What sections_for returns. Empty by default: most tests here are about the
-        # image path, weather and escalation, and care nothing for the look-alikes
-        # sections search_plant_knowledge appends to the shortlist.
+        # What sections_for returns. Empty by default: most tests here are about weather
+        # and escalation, and care nothing for the look-alikes sections
+        # search_plant_knowledge appends to the shortlist.
         self.discriminators = discriminators or []
         self.queries: list[list[str]] = []
-        self.image_calls: list[int] = []
         self.section_calls: list[tuple[list[str], list[str]]] = []
         self.section_filters: list[list[str] | None] = []
 
@@ -61,9 +62,8 @@ class _StubRetriever:
         self.section_calls.append((list(doc_ids), list(sections)))
         return self.discriminators
 
-    def search_by_image(self, images, k):
-        self.image_calls.append(len(images))
-        return self.image_passages[:k]
+    def known_doc_ids(self):
+        return tuple(sorted({p.doc_id for p in (*self.passages, *self.discriminators)}))
 
 
 def _passage(score: float, doc_id: str = "root-rot") -> Passage:
@@ -121,117 +121,6 @@ class TestRetrieval:
         result = make_enrich(deps)(_state(sample_images, symptoms=None))
         assert retriever.queries == []
         assert result["retrieved"] == []
-
-
-class TestImagePath:
-    """Cross-modal retrieval, and the separation it requires (spec §10.4)."""
-
-    def _settings(self, **overrides) -> Settings:
-        defaults = {
-            "openrouter_api_key": "sk-test",
-            "retrieval_score_threshold": 0.35,
-            "species_confidence_threshold": 0.5,
-            "image_match_threshold": 0.45,
-        }
-        return Settings(**{**defaults, **overrides}, _env_file=None)
-
-    def test_the_photographs_are_embedded_and_searched(self, make_deps, sample_images):
-        retriever = _StubRetriever([_passage(0.9)], [_passage(0.8, "spider-mites")])
-        deps = make_deps(retriever=retriever, settings=self._settings())
-        make_enrich(deps)(_state(sample_images))
-        assert retriever.image_calls == [len(sample_images)]
-
-    def test_visual_matches_land_in_their_own_field(self, make_deps, sample_images):
-        visual = _passage(0.8, "spider-mites")
-        deps = make_deps(
-            retriever=_StubRetriever([_passage(0.9)], [visual]), settings=self._settings()
-        )
-        result = make_enrich(deps)(_state(sample_images))
-        assert result["visual_matches"] == [visual]
-
-    def test_visual_matches_are_never_merged_into_retrieved(self, make_deps, sample_images):
-        """Scores from the two paths are on different scales — merging corrupts ranking."""
-        visual = _passage(0.8, "spider-mites")
-        deps = make_deps(
-            retriever=_StubRetriever([_passage(0.9)], [visual]), settings=self._settings()
-        )
-        result = make_enrich(deps)(_state(sample_images))
-        assert visual not in result["retrieved"]
-
-    def test_weak_visual_matches_are_dropped(self, make_deps, sample_images):
-        deps = make_deps(
-            retriever=_StubRetriever([_passage(0.9)], [_passage(0.1, "spider-mites")]),
-            settings=self._settings(image_match_threshold=0.45),
-        )
-        assert make_enrich(deps)(_state(sample_images))["visual_matches"] == []
-
-    def test_the_threshold_is_inclusive(self, make_deps, sample_images):
-        deps = make_deps(
-            retriever=_StubRetriever([_passage(0.9)], [_passage(0.45, "spider-mites")]),
-            settings=self._settings(image_match_threshold=0.45),
-        )
-        assert make_enrich(deps)(_state(sample_images))["visual_matches"]
-
-    def test_a_weak_visual_match_does_not_open_the_escalation_gate(self, make_deps, sample_images):
-        """The gate reads text scores only, or it would fire on every diagnosis."""
-        search = _Spy([])
-        deps = make_deps(
-            retriever=_StubRetriever([_passage(0.9)], [_passage(0.05, "spider-mites")]),
-            web_search=search,
-            settings=self._settings(),
-        )
-        result = make_enrich(deps)(_state(sample_images))
-        assert search.calls == []
-        assert result["escalated_to_web"] is False
-
-    def test_a_strong_visual_match_does_not_suppress_escalation(self, make_deps, sample_images):
-        """Equally, a good visual match must not mask weak text retrieval."""
-        search = _Spy([])
-        deps = make_deps(
-            retriever=_StubRetriever([_passage(0.05)], [_passage(0.95, "spider-mites")]),
-            web_search=search,
-            settings=self._settings(),
-        )
-        assert make_enrich(deps)(_state(sample_images))["escalated_to_web"] is True
-
-    def test_an_empty_image_path_leaves_the_text_path_untouched(self, make_deps, sample_images):
-        deps = make_deps(retriever=_StubRetriever([_passage(0.9)], []), settings=self._settings())
-        result = make_enrich(deps)(_state(sample_images))
-        assert result["visual_matches"] == []
-        assert result["retrieved"]
-
-    def test_the_image_tool_is_recorded(self, make_deps, sample_images):
-        deps = make_deps(
-            retriever=_StubRetriever([_passage(0.9)], [_passage(0.8)]),
-            settings=self._settings(),
-        )
-        assert "search_by_photograph" in make_enrich(deps)(_state(sample_images))["tools_used"]
-
-    def test_the_image_tool_is_not_recorded_when_the_retriever_cannot_do_it(
-        self, make_deps, sample_images
-    ):
-        """No multimodal embedding model is reachable on a restricted key, so the
-        retriever is built without an image embedder. Recording the tool anyway told
-        the first live run's user that a search happened which structurally could not."""
-        retriever = _StubRetriever([_passage(0.9)], supports_image_search=False)
-        deps = make_deps(retriever=retriever, settings=self._settings())
-        assert "search_by_photograph" not in make_enrich(deps)(_state(sample_images))["tools_used"]
-
-    def test_no_image_search_is_attempted_when_the_retriever_cannot_do_it(
-        self, make_deps, sample_images
-    ):
-        retriever = _StubRetriever([_passage(0.9)], supports_image_search=False)
-        deps = make_deps(retriever=retriever, settings=self._settings())
-        make_enrich(deps)(_state(sample_images))
-        assert retriever.image_calls == []
-
-    def test_the_image_path_runs_even_without_extracted_symptoms(self, make_deps, sample_images):
-        """Its whole value is not depending on the symptom description."""
-        retriever = _StubRetriever([_passage(0.9)], [_passage(0.8, "spider-mites")])
-        deps = make_deps(retriever=retriever, settings=self._settings())
-        result = make_enrich(deps)(_state(sample_images, symptoms=None))
-        assert retriever.queries == []
-        assert result["visual_matches"]
 
 
 class TestWeather:

@@ -107,7 +107,7 @@ def load_corpus(corpus_dir: Path) -> list[Chunk]:
 def chunk_text(chunk: Chunk) -> str:
     """The text that gets embedded for a chunk.
 
-    One definition, used by both the Chroma builder and the pgvector ingestion. A
+    One definition, used by the ingestion and by every test that embeds a corpus. A
     second copy that drifted by a character would produce different vectors, and the
     corpus would quietly stop matching what the parity fixture recorded.
     """

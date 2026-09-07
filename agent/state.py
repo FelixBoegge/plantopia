@@ -103,7 +103,6 @@ class DiagnosisState(BaseModel):
     # Enrichment — the two retrieval paths are kept separate on purpose. Their scores
     # are not comparable, so they must never be merged into one ranked list (§10.4).
     retrieved: list[Passage] = Field(default_factory=list)
-    visual_matches: list[Passage] = Field(default_factory=list)
     weather: WeatherSummary | None = None
     care_baseline_text: str | None = None
     escalated_to_web: bool = False

@@ -8,7 +8,8 @@ threads against it. Both factories build the same objects the API does, via
 Neither passes a checkpointer. The API server supplies its own persistence and rejects
 a graph that arrives with one already attached — which is also why these are factories
 rather than module-level graphs: building at import time would run the whole
-dependency wiring (models, Chroma, the database) merely to import the module.
+dependency wiring (models, the database, a connection pool) merely to import the
+module.
 
 Two graphs rather than one nested diagram: the diagnosis pipeline is a fixed
 ``StateGraph``, and chat is an independently compiled ReAct loop with its own
@@ -37,8 +38,15 @@ logger = logging.getLogger(__name__)
 def _deps() -> Deps:
     """The wiring, built once for the life of the dev server.
 
-    Cached because the server calls a factory per request: without this, every glance
-    at the graph would re-open the database and re-embed the corpus.
+    Cached because the server calls a factory per request, and every glance at the graph
+    would otherwise open a fresh connection pool. It once also re-embedded the whole
+    corpus, which is what made the cache urgent rather than merely tidy; retrieval reads
+    vectors out of Postgres now, so what is left is the pool.
+
+    Pinning one owner into the cache is right here and wrong in the application: this
+    server serves the harness owner alone, whereas `build_deps` is called per request by
+    a process serving many — which is why the retriever there is built per request and
+    not cached.
     """
     owner = harness_owner_id(open_session(get_settings()))
     profile = build_profile_service(user_id=owner)
@@ -50,7 +58,7 @@ async def _wiring() -> Deps:
 
     Both factories are async and offload for one reason: the dev server calls them
     from its event loop and watches for blocking calls, and this wiring is thoroughly
-    blocking — a connection pool, Chroma, an embeddings request. Left inline it trips
+    blocking — opening a connection pool and reading the corpus. Left inline it trips
     the server's blocking-call detector and the graph fails to load at all, which
     ``langgraph dev --allow-blocking`` would paper over rather than fix. A SQLAlchemy
     session is not shared across threads, and the pool hands each caller its own

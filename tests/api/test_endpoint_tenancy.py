@@ -57,7 +57,7 @@ def as_other_owner(client, db, other_owner, api_settings, make_deps):
 
     The token is real and the owner is resolved from it. The chat service is still
     substituted, and not for convenience: the real dependency builds model clients and a
-    Chroma collection, which would embed the corpus over the network. Every request here is
+    embeddings client, and reaches a corpus this test never seeds. Every request here is
     refused long before it reaches a model, but a dependency is built before a handler runs.
     """
     from langgraph.checkpoint.memory import MemorySaver
