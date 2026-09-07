@@ -15,8 +15,10 @@ row rather than accumulating duplicates. That matters because this is a deployme
 step, and a deployment step that is unsafe to repeat is a deployment step someone will
 eventually repeat.
 
-Makes no model calls. The vectors come from ``knowledge.export_chroma``, which is the
-whole reason the parity gate can compare exactly rather than approximately.
+**This makes model calls.** One embedding request per batch, for 301 sections — about
+$0.0005. It embeds the corpus itself rather than copying vectors from anywhere else; the
+export that once seeded them from Chroma, and the parity gate it fed, were deleted in
+``ddcea71``.
 """
 
 import argparse
