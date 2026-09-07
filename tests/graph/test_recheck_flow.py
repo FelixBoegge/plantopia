@@ -67,11 +67,11 @@ def _revised_roadmap() -> Roadmap:
 
 
 def _state(images, plant_id, *, species: SpeciesGuess | None = _IDENTIFIED) -> DiagnosisState:
-    """A re-check's starting state, as ``DiagnosisService.start_recheck`` builds it.
+    """A re-check's starting state, as ``RunService.state_for`` builds it.
 
-    ``species`` is populated by default because ``start_recheck`` populates it from the
-    plant record — pass ``None`` for the plant whose first diagnosis never managed to
-    identify it, which is the case that must still visit ``identify_plant``.
+    ``species`` is populated by default because ``state_for`` inherits it from the plant
+    record — pass ``None`` for the plant whose first diagnosis never managed to identify
+    it, which is the case that must still visit ``identify_plant``.
     """
     return DiagnosisState(
         images=images,

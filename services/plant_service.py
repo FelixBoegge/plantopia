@@ -1,7 +1,8 @@
 """Orchestration for the plant-profile pages: My Plants and Plant detail.
 
-Follows the same rule as ``services/diagnosis_service.py``: the UI calls this and
-nothing lower — no repository, and no direct SQL, in ``ui/``.
+Follows the layer's rule: a router calls this and nothing lower. No repository and no SQL
+reach ``api/``, so tenancy stays enforced in one place rather than at every call site that
+remembered to ask for it.
 """
 
 from collections.abc import Callable
@@ -72,7 +73,12 @@ class PlantService:
 
     @property
     def user_id(self) -> UUID:
-        """Whose service this is — see DiagnosisService.user_id."""
+        """Whose service this is.
+
+        Exposed because a caller holding a service should never have to carry the owner
+        alongside it: two sources for one fact is how a request ends up reading one
+        owner's plants under another owner's identity.
+        """
         return self._user_id
 
     def list_plants(self) -> list[PlantSummary]:
