@@ -114,6 +114,37 @@ def test_reuses_an_existing_plant(owner, make_deps, sample_images, db, now):
     assert db.scalar(select(func.count()).select_from(Plant)) == 1
 
 
+def test_the_plant_keeps_both_names(make_deps, sample_images, db):
+    """The binomial as well as the common name.
+
+    `species` has always held the common name, and there was no column for the scientific
+    one — so what the vision model identified and Pl@ntNet corroborated was discarded, and
+    every plant displayed its own name twice.
+    """
+    deps = make_deps()
+    result = make_persist(deps)(_state(sample_images))
+
+    row = db.get(Plant, result["plant_id"])
+    assert row.species == "Basil"
+    assert row.species_scientific == "Ocimum basilicum"
+
+
+def test_a_species_with_no_binomial_stores_none_rather_than_the_common_name(
+    make_deps, sample_images, db
+):
+    """A model can name a plant without offering a binomial. Repeating the common name in
+    the scientific field is what produced two identical lines in the first place."""
+    from agent.schemas import SpeciesGuess
+
+    deps = make_deps()
+    named_only = SpeciesGuess(common_name="Basil", scientific_name=None, confidence=0.9)
+    result = make_persist(deps)(_state(sample_images, species=named_only))
+
+    row = db.get(Plant, result["plant_id"])
+    assert row.species == "Basil"
+    assert row.species_scientific is None
+
+
 def test_recheck_of_a_never_identified_plant_saves_the_new_species(
     owner, make_deps, sample_images, db, now
 ):

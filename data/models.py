@@ -189,6 +189,18 @@ class Plant(Base):
     user_id: Mapped[UUID] = _owner()
     name: Mapped[str] = mapped_column(Text)
     species: Mapped[str | None] = mapped_column(Text)
+
+    # The binomial, beside the common name rather than instead of it.
+    #
+    # `species` holds the *common* name and always has: `DiagnosisState.species_name`
+    # returns `SpeciesGuess.common_name`. So the scientific name the vision model produced,
+    # and Pl@ntNet corroborated, had nowhere to go and was discarded — and every plant
+    # showed its own name twice, the second in the italics a binomial would have used.
+    #
+    # Nullable and unbackfilled. A species can be recognised by common name with no
+    # binomial offered, and for plants created before this column there is nothing to write:
+    # the name was never stored anywhere, not even on the diagnosis that found it.
+    species_scientific: Mapped[str | None] = mapped_column(Text, nullable=True)
     species_confidence: Mapped[float | None] = mapped_column(Float)
     location_kind: Mapped[str] = mapped_column(Text)
     location_text: Mapped[str | None] = mapped_column(Text)

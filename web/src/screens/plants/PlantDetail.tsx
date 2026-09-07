@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useTranscript } from "@/api/hooks/useChat";
 import { Roadmap } from "@/screens/plants/Roadmap";
 import { Timeline } from "@/screens/plants/Timeline";
+import { speciesLine } from "@/screens/plants/species";
 
 /** One plant: what it is, what has been found, what to do, and what was said about it. */
 export function PlantDetail() {
@@ -43,8 +44,8 @@ export function PlantDetail() {
         />
         <div className="grid gap-1">
           <h1 className="text-2xl font-semibold">{plant.name}</h1>
-          {plant.species ? (
-            <p className="text-muted-foreground italic">{plant.species}</p>
+          {speciesLine(plant) ? (
+            <p className="text-muted-foreground italic">{speciesLine(plant)}</p>
           ) : null}
           <Severity severity={latest?.candidates?.[0]?.severity} />
         </div>

@@ -29,6 +29,7 @@ class PlantRecord:
     id: UUID
     name: str
     species: str | None
+    species_scientific: str | None
     species_confidence: float | None
     location_kind: LocationKind
     location_text: str | None
@@ -41,6 +42,7 @@ def _to_record(row: Plant) -> PlantRecord:
         id=row.id,
         name=row.name,
         species=row.species,
+        species_scientific=row.species_scientific,
         species_confidence=row.species_confidence,
         location_kind=row.location_kind,  # type: ignore[arg-type]
         location_text=row.location_text,
@@ -74,11 +76,20 @@ class PlantRepository:
         location_text: str | None,
         photo_ref: str | None,
         now: datetime,
+        # **Defaulted, unlike every other field here**, which is a deliberate break from
+        # this module's convention of required keywords with explicit `None`. `create` has
+        # about fifty call sites and two of them are the application: both are in
+        # `agent/nodes/persist`, both pass it, and `tests/unit/agent/nodes/test_persist`
+        # asserts the binomial lands. The rest are tests with no interest in a species, and
+        # requiring it there would be fifty mechanical edits guarding nothing — the original
+        # bug was a missing column, not a forgotten argument.
+        species_scientific: str | None = None,
     ) -> UUID:
         plant = Plant(
             user_id=user_id,
             name=name,
             species=species,
+            species_scientific=species_scientific,
             species_confidence=species_confidence,
             location_kind=location_kind,
             location_text=location_text,
@@ -117,10 +128,23 @@ class PlantRepository:
         self._owned(user_id, plant_id).name = name
 
     def update_species(
-        self, user_id: UUID, plant_id: UUID, *, species: str, species_confidence: float | None
+        self,
+        user_id: UUID,
+        plant_id: UUID,
+        *,
+        species: str,
+        species_confidence: float | None,
+        species_scientific: str | None = None,
     ) -> None:
+        """Record a species identified after the plant was created.
+
+        Both names, not only the common one. A re-check of a plant nobody identified can
+        produce a species for the first time, and writing half of it here is how the
+        binomial came to be missing from exactly the plants that needed a second look.
+        """
         plant = self._owned(user_id, plant_id)
         plant.species = species
+        plant.species_scientific = species_scientific
         plant.species_confidence = species_confidence
 
     def _owned(self, user_id: UUID, plant_id: UUID) -> Plant:

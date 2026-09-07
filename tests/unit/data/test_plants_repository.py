@@ -183,3 +183,86 @@ def test_delete_cascades_to_observations(db, owner, now):
 
     remaining = db.scalar(select(func.count()).select_from(Observation))
     assert remaining == 0
+
+
+class TestTheScientificName:
+    """Stored beside the common name rather than instead of it.
+
+    `plants.species` held the *common* name — `state.species_name` returns
+    `SpeciesGuess.common_name` — and there was no column for the binomial at all, so the
+    vision model's `scientific_name` was collected, corroborated by Pl@ntNet, and thrown
+    away. The visible symptom was two identical lines on every plant: the name and the
+    "species" beneath it in italics, italics being the convention for a binomial that never
+    arrived.
+    """
+
+    def test_it_round_trips_beside_the_common_name(self, db, owner, now):
+        repo = PlantRepository(db)
+        plant_id = repo.create(
+            owner,
+            name="Kitchen basil",
+            species="Basil",
+            species_scientific="Ocimum basilicum",
+            species_confidence=0.9,
+            location_kind="indoor",
+            location_text=None,
+            photo_ref=None,
+            now=now(),
+        )
+
+        plant = repo.get(owner, plant_id)
+
+        assert plant is not None
+        assert plant.species == "Basil"
+        assert plant.species_scientific == "Ocimum basilicum"
+
+    def test_it_is_optional(self, db, owner, now):
+        """A species can be identified by common name with no binomial offered, and every
+        plant created before this column existed has none."""
+        repo = PlantRepository(db)
+        plant_id = repo.create(
+            owner,
+            name="Mystery",
+            species="Something leafy",
+            species_scientific=None,
+            species_confidence=0.4,
+            location_kind="indoor",
+            location_text=None,
+            photo_ref=None,
+            now=now(),
+        )
+
+        plant = repo.get(owner, plant_id)
+
+        assert plant is not None
+        assert plant.species_scientific is None
+
+    def test_identifying_a_plant_later_records_both(self, db, owner, now):
+        """A re-check of a plant that was never identified can produce a species for the
+        first time, and must write the binomial with it rather than only the common name."""
+        repo = PlantRepository(db)
+        plant_id = repo.create(
+            owner,
+            name="Unidentified plant",
+            species=None,
+            species_scientific=None,
+            species_confidence=None,
+            location_kind="indoor",
+            location_text=None,
+            photo_ref=None,
+            now=now(),
+        )
+
+        repo.update_species(
+            owner,
+            plant_id,
+            species="Golden pothos",
+            species_scientific="Epipremnum aureum",
+            species_confidence=0.82,
+        )
+
+        plant = repo.get(owner, plant_id)
+
+        assert plant is not None
+        assert plant.species == "Golden pothos"
+        assert plant.species_scientific == "Epipremnum aureum"
