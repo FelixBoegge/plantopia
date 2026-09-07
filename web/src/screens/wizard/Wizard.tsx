@@ -114,6 +114,21 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
   // everything, but a run that ended while nobody was watching is known from the run alone.
   const ending = watched.ending;
   const over = ending !== null || finished;
+
+  /**
+   * Waiting for the person, which is not the same as not working.
+   *
+   * Nothing clears `questions` from the stream's state once they are answered — only the
+   * run ending does — so "questions have arrived" cannot stand for "the run is paused".
+   * It did, and the sidebar therefore went quiet for the *whole resumed pass*: `diagnose`
+   * and `plan` both run after the interrupt and either can take a minute, so the page
+   * stopped saying anything exactly when it had the most to wait for.
+   *
+   * The mutation having succeeded is what says the run was handed back. One mandatory
+   * interrupt per run is what makes that sufficient; a second would need the answered set
+   * tracked, because this never goes false again once it is true.
+   */
+  const awaitingAnswers = watched.questions !== null && !answer.isSuccess;
   const diagnosisId = ending?.diagnosisId ?? run?.diagnosis_id ?? null;
   const { data: detail } = useDiagnosis(diagnosisId);
 
@@ -186,7 +201,7 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
       <div className="grid gap-8 lg:grid-cols-[18rem_1fr] lg:items-start">
         <Reasoning
           steps={watched.steps}
-          working={!over && watched.questions === null}
+          working={!over && !awaitingAnswers}
           connected={watched.connected}
         />
 

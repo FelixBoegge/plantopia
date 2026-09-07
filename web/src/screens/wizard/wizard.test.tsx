@@ -473,6 +473,40 @@ describe("when it asks something", () => {
     await waitFor(() => expect(heading).toHaveFocus());
   });
 
+  it("stops saying it is working while it waits for the answers", async () => {
+    // Correct, and the half that already worked: the run is not working, it is waiting.
+    signedIn();
+    watching([STEP, QUESTIONS], run({ status: "awaiting_answers" }));
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    await screen.findByLabelText("How often do you water it?");
+
+    expect(screen.queryByTestId("processing-spinner")).not.toBeInTheDocument();
+  });
+
+  it("says it is working again once the answers are in", async () => {
+    // The half that did not. Nothing clears `questions` from the stream's state until the
+    // run ends, so `working` stayed false for the whole resumed pass — which is the
+    // expensive half: diagnose and plan both run after the interrupt, and either can take
+    // a minute. The page went quiet exactly when it had most to wait for.
+    signedIn();
+    watching([STEP, QUESTIONS], run({ status: "awaiting_answers" }));
+    server.use(
+      http.post(`/api/v1/runs/${RUN}/answers`, () =>
+        HttpResponse.json(run({ status: "queued" })),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+    await userEvent.type(
+      await screen.findByLabelText("How often do you water it?"),
+      "every other day",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Carry on" }));
+
+    expect(await screen.findByTestId("processing-spinner")).toBeInTheDocument();
+  });
+
   it("sends the answers", async () => {
     signedIn();
     let sent: unknown = null;
