@@ -21,6 +21,7 @@ relationship that does not exist.
 import asyncio
 import functools
 import logging
+from uuid import UUID
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
@@ -82,7 +83,7 @@ async def chat_graph(config: RunnableConfig) -> CompiledStateGraph:
     Which plant to scope to comes from the run's own config, because the agent's
     system prompt is built from that plant's record and its latest diagnosis::
 
-        {"configurable": {"plant_id": 1}}
+        {"configurable": {"plant_id": "b1e5c0de-0000-4000-8000-000000000000"}}
 
     Studio exposes that as an editable field on the run, so the plant can be chosen
     per thread. Falling back to the newest plant keeps the graph loadable with no
@@ -93,11 +94,12 @@ async def chat_graph(config: RunnableConfig) -> CompiledStateGraph:
 
     plant_id = (config.get("configurable") or {}).get("plant_id")
     if plant_id is None:
-        plants = await asyncio.to_thread(deps.plants.list_all)
+        plants = await asyncio.to_thread(deps.plants.list_all, deps.user_id)
         if not plants:
             raise ValueError(
                 "No plants exist yet, so there is no conversation to scope. Run a "
-                "diagnosis in the app first, or pass {'configurable': {'plant_id': N}}."
+                "diagnosis in the app first, or pass "
+                "{'configurable': {'plant_id': '<uuid>'}}."
             )
         plant_id = plants[0].id
         logger.info("no plant_id in config; scoping chat to the newest plant %s", plant_id)
@@ -105,6 +107,6 @@ async def chat_graph(config: RunnableConfig) -> CompiledStateGraph:
     # make_chat_agent reads the plant and its latest diagnosis to build the system
     # prompt, so it is two more queries that must not run on the event loop.
     agent, _escalation = await asyncio.to_thread(
-        make_chat_agent, deps, int(plant_id), checkpointer=None
+        make_chat_agent, deps, UUID(str(plant_id)), checkpointer=None
     )
     return agent
