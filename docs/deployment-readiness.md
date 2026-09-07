@@ -111,15 +111,25 @@ stream.
 ### 2.1 Re-lock the evaluation page to admins
 
 **Currently open to every signed-in account, on purpose and temporarily** — so the capstone
-reviewer can see it with the member account they register. Revert before the deployment is
+reviewer can see it with the member account they register. Close it before the deployment is
 public: harness results are internal numbers, and the route is `/admin/evaluation` for a
 reason.
 
-- [ ] Restore `identity/roles.may_read_evaluations` to `role == ADMIN`.
+It is a configuration switch rather than an edit to the rule, specifically so this task
+cannot be forgotten into production. `identity/roles.may_read_evaluations` still answers
+admin-only by default, `Settings.evaluation_open_to_members` defaults to `False`, and a
+deployment that says nothing inherits the closed state. So the re-lock is a deletion, and
+the failure mode of forgetting it is a *closed* page rather than an open one.
+
+- [ ] **Delete `PLANTOPIA_EVALUATION_OPEN_TO_MEMBERS=true` from `.env`** — or simply do not
+      set it in the deployment's environment, which is the same thing.
 - [ ] Promote your own account:
       `UPDATE users SET role='admin' WHERE email='…';`
 - [ ] Confirm a member account gets a 404 (not a 403 — a refusal that distinguishes the two
-      tells a stranger the route exists).
+      tells a stranger the route exists), and that your admin account still gets 200.
+- [ ] Once the review is over, consider deleting the switch entirely — the setting, its
+      parameter on `may_read_evaluations`, and the two tests that pin the opened state. It
+      earns its place only while a reviewer needs it.
 
 ### 2.2 Trusted proxy headers
 

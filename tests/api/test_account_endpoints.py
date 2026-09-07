@@ -166,6 +166,35 @@ def test_a_role_is_not_a_tier(client, db, api_settings):
     assert client.get("/api/v1/evaluation/latest").status_code == 404
 
 
+def test_a_deployment_may_open_the_results_to_members(client, db, api_settings):
+    """Temporary, for the capstone review: the reviewer registers an ordinary account and
+    still has to reach the numbers.
+
+    Carried by configuration rather than by the rule in `identity/roles.py`, so that the
+    deployed default stays admin-only and re-locking is deleting a line from `.env`. The
+    three tests above pin that default and pass unchanged — which is the point of choosing
+    a switch over an edit.
+    """
+    from core.config import Settings
+    from tests.api.conftest import token_for
+    from tests.secrets import TEST_JWT_SECRET
+
+    opened = Settings(
+        _env_file=None,
+        openrouter_api_key="sk-test",
+        jwt_secret=TEST_JWT_SECRET,
+        secure_cookies=False,
+        run_sweeper_enabled=False,
+        evaluation_open_to_members=True,
+    )
+    member = make_user(db, role=MEMBER, verified=True)
+    db.commit()
+    client.app.dependency_overrides[dependencies.settings_dep] = lambda: opened
+    client.headers["Authorization"] = f"Bearer {token_for(member.id, opened)}"
+
+    assert client.get("/api/v1/evaluation/latest").status_code == 200
+
+
 def test_before_any_harness_has_run_the_answer_says_so(client, db, api_settings, tmp_path):
     """The ordinary state of a fresh clone. A page that failed here would send somebody
     looking for a bug instead of a command."""

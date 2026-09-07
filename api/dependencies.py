@@ -207,7 +207,7 @@ def run_service(session: SessionDep, owner: OwnerDep, settings: SettingsDep) -> 
 RunServiceDep = Annotated[RunService, Depends(run_service)]
 
 
-def require_evaluation_access(session: SessionDep, owner: OwnerDep) -> UUID:
+def require_evaluation_access(session: SessionDep, owner: OwnerDep, settings: SettingsDep) -> UUID:
     """The owner, if their account may read the evaluation results.
 
     Raises ``RecordNotFoundError`` otherwise, which the error layer turns into a 404. Not a
@@ -217,9 +217,12 @@ def require_evaluation_access(session: SessionDep, owner: OwnerDep) -> UUID:
 
     Read per request rather than carried in the token, for the same reason the tier is: a
     role revoked should take effect on the next request, not whenever a token happens to
-    expire.
+    expire. ``evaluation_open_to_members`` is read the same way and for the same reason —
+    closing the page again should take effect on the next request, not on the next restart.
     """
-    if not may_read_evaluations(_role_of(session, owner)):
+    if not may_read_evaluations(
+        _role_of(session, owner), open_to_members=settings.evaluation_open_to_members
+    ):
         raise RecordNotFoundError("no such resource")
     return owner
 
