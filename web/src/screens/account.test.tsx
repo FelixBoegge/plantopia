@@ -197,7 +197,9 @@ describe("the evaluation screen", () => {
     render(<AppRoutes />, { route: "/" });
     await screen.findByRole("heading", { name: "Your plants" });
 
-    expect(screen.queryByRole("link", { name: REPORT })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: REPORT }),
+    ).not.toBeInTheDocument();
   });
 
   it("is offered to an account the server says may reach it", async () => {
@@ -262,12 +264,22 @@ describe("the evaluation screen", () => {
   });
 
   it("renders the newest result for an account that may see it", async () => {
-    signedIn(account({ role: "admin" }));
+    // The access half only — that a permitted account reaches the route and gets the
+    // report rather than a refusal. What the report *says* is
+    // `src/screens/evaluation/evaluation.test.tsx`, against the real harness output.
+    //
+    // This used to assert "75%" and "89%" from a fixture keyed `top_1` and `top_3`, which
+    // the harness has never written. It passed because the page mapped over whatever keys
+    // it was handed and multiplied each by a hundred — the same loop that rendered
+    // `scored: 28` as "2800%".
+    signedIn(account({ may_read_evaluations: true }));
     server.use(
       http.get("/api/v1/evaluation/latest", () =>
         HttpResponse.json({
           generated_at: "2026-08-19T10:51:29Z",
-          results: { accuracy: { top_1: 0.75, top_3: 0.89 } },
+          results: {
+            accuracy: { top1: 0.75, top3: 0.89, scored: 4, failed: 0 },
+          },
         }),
       ),
     );

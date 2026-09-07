@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { AppRoutes } from "@/routes/routes";
+import REPORT from "@/screens/evaluation/fixture.json";
 import { render, screen, waitFor } from "@/test/render";
 import { server } from "@/test/server";
 
@@ -322,6 +323,27 @@ describe("what a checker cannot see", () => {
     await waitFor(() =>
       expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1),
     );
+  });
+
+  it("finds nothing to fix in the rendered report", async () => {
+    // The densest page in the application: a hero figure, three stat rows, seven bars, four
+    // meters, a definition list and a twenty-eight row table. The refused branch below was
+    // checked and the rendered one never was, which is the wrong way round — the branch
+    // with all the structure in it is the branch a checker earns its keep on.
+    everything();
+    server.use(
+      http.get("/api/v1/evaluation/latest", () =>
+        HttpResponse.json({
+          generated_at: "2026-08-19T10:51:29Z",
+          results: REPORT,
+        }),
+      ),
+    );
+
+    const { container } = render(<AppRoutes />, { route: "/admin/evaluation" });
+    await screen.findByRole("heading", { name: "RAG Evaluation Report" });
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("keeps a heading on a screen whose content was refused", async () => {

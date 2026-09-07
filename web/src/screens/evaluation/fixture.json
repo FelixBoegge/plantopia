@@ -1,0 +1,115 @@
+{
+  "generated_at": "2026-08-19T10:51:29.255352+00:00",
+  "provenance": {
+    "reasoning_model": "openai/gpt-4o",
+    "vision_model": "scripted",
+    "embedding_model": "openai/text-embedding-3-small",
+    "temperature": 0.2,
+    "corpus_documents": 43,
+    "golden_set_size": 28,
+    "profile": "overwaterer",
+    "total_token_usage": {
+      "prompt_tokens": 388397,
+      "completion_tokens": 61048,
+      "total_tokens": 449445
+    },
+    "total_cost_usd": 1.5443525
+  },
+  "accuracy": {
+    "top1": 0.8928571428571429,
+    "top3": 0.9642857142857143,
+    "scored": 28,
+    "failed": 0,
+    "by_category": {
+      "light": {
+        "top1": 0.6666666666666666,
+        "top3": 1.0,
+        "scored": 3
+      },
+      "pest": {
+        "top1": 1.0,
+        "top3": 1.0,
+        "scored": 5
+      },
+      "other": {
+        "top1": 0.5,
+        "top3": 0.5,
+        "scored": 2
+      }
+    }
+  },
+  "ragas": {
+    "context_precision": 0.5448412697961442,
+    "context_recall": 0.9821428571428571,
+    "faithfulness": 0.7442165968951684,
+    "answer_relevancy": 0.5822484442272201
+  },
+  "ragas_counts": {
+    "context_precision": {
+      "scored": 28,
+      "total": 28
+    },
+    "context_recall": {
+      "scored": 28,
+      "total": 28
+    },
+    "faithfulness": {
+      "scored": 28,
+      "total": 28
+    },
+    "answer_relevancy": {
+      "scored": 28,
+      "total": 28
+    }
+  },
+  "stability": {
+    "top1_agreement": 1.0,
+    "candidate_churn": 0.21666666666666667,
+    "question_drift": 0.5833333333333334,
+    "cases": 8,
+    "runs_per_case": 5.0
+  },
+  "near_misses": 1,
+  "retried_cases": [],
+  "cases": [
+    {
+      "case_id": "aphids-clustered-new-growth-hibiscus",
+      "ground_truth": "aphids",
+      "category": "pest",
+      "candidates": ["aphids", "mealybugs"],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "pest_control_methods",
+        "air_circulation"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "botrytis-grey-mould-spent-flowers",
+      "ground_truth": "botrytis",
+      "category": "fungal",
+      "candidates": ["botrytis", "overwatering"],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "recent_humidity_changes",
+        "air_circulation"
+      ],
+      "error": null
+    },
+    {
+      "case_id": "calcium-deficiency-crinkled-new-leaf",
+      "ground_truth": "calcium-deficiency",
+      "category": "nutrient",
+      "candidates": ["calcium-deficiency", "low-humidity", "underwatering"],
+      "questions_asked": [
+        "watering",
+        "drainage",
+        "fertilizer_use",
+        "temperature_changes"
+      ],
+      "error": null
+    }
+  ]
+}

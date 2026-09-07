@@ -7,7 +7,7 @@ import { SignIn } from "@/screens/auth/SignIn";
 import { VerifyEmail } from "@/screens/auth/VerifyEmail";
 import { Account } from "@/screens/Account";
 import { ChatPage } from "@/screens/chat/ChatPage";
-import { Evaluation } from "@/screens/Evaluation";
+import { Evaluation } from "@/screens/evaluation/Evaluation";
 import { SignedIn } from "@/screens/SignedIn";
 import { DiagnosisPage } from "@/screens/plants/DiagnosisPage";
 import { PlantDetail } from "@/screens/plants/PlantDetail";
