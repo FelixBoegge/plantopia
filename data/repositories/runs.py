@@ -19,6 +19,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from core.cost import UsageSnapshot
 from data.models import Run, RunEvent
 
 # The statuses a run can be in, and which of them are the end of it.
@@ -70,6 +71,38 @@ def _to_record(row: Run) -> RunRecord:
         diagnosis_id=row.diagnosis_id,
         error=row.error,
     )
+
+
+def _usage_as_json(usage: UsageSnapshot) -> dict:
+    """A snapshot as stored. Its own shape, not ``as_token_usage``'s.
+
+    ``as_token_usage`` is the shape a *client* reads and carries a derived total but no
+    cost. This one round-trips: the three fields a snapshot is made of and nothing else.
+    """
+    return {
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "cost_usd": usage.cost_usd,
+    }
+
+
+def _usage_from_json(stored: str | None) -> UsageSnapshot | None:
+    """A stored snapshot, or ``None`` if there is none or it cannot be read.
+
+    Unreadable is treated as absent rather than raised: this figure exists to make a
+    charge more accurate, and failing a finished run over it would be the wrong trade.
+    """
+    if not stored:
+        return None
+    try:
+        raw = json.loads(stored)
+        return UsageSnapshot(
+            prompt_tokens=int(raw["prompt_tokens"]),
+            completion_tokens=int(raw["completion_tokens"]),
+            cost_usd=None if raw.get("cost_usd") is None else float(raw["cost_usd"]),
+        )
+    except (ValueError, TypeError, KeyError):
+        return None
 
 
 class RunRepository:
@@ -205,6 +238,33 @@ class RunRepository:
             .values(usage_recorded=True)
         )
         return result.rowcount == 1
+
+    def add_partial_usage(self, run_id: UUID, usage: UsageSnapshot | None) -> None:
+        """Add what this pass spent to what the run's earlier passes spent.
+
+        Called by a pass that ended without finishing the run — at the clarifying-question
+        interrupt — because its collector dies with the worker thread and the pause can
+        outlive the process. Read-modify-write rather than an accumulating UPDATE: the
+        figure is a JSON object and there is only ever one writer, the pass that just
+        ended.
+
+        ``None`` is the ordinary case and does nothing: a pass whose provider reported no
+        usage has nothing to carry forward, and writing zeros would make the run look
+        measured when it was not.
+        """
+        if usage is None:
+            return
+        row = self._session.get(Run, run_id)
+        if row is None:
+            return
+        carried = _usage_from_json(row.partial_usage_json)
+        row.partial_usage_json = json.dumps(_usage_as_json(usage.plus(carried)))
+
+    def partial_usage_of(self, run_id: UUID) -> UsageSnapshot | None:
+        """What the run's earlier passes spent, or ``None`` if none of them reported any."""
+        return _usage_from_json(
+            self._session.scalar(select(Run.partial_usage_json).where(Run.id == run_id))
+        )
 
     def unfinished_since_before(self, moment: datetime, *, statuses: frozenset[str]) -> list[UUID]:
         """Runs stuck in one of these statuses since before a moment.

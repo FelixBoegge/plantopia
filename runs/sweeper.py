@@ -97,11 +97,20 @@ def _reap(runs, session, bus, *, statuses, before, reason, now) -> int:
 
 
 def _record_unmeasured_usage(session, runs, run_id, *, now) -> None:
-    """Count a swept run against its owner, with an unknown cost.
+    """Count a swept run against its owner, for whatever of it was measured.
 
     Claimed conditionally, so a worker that recorded its own usage before dying keeps that
-    record and this adds nothing. Zero tokens and a null cost: the collector went with the
-    process, and inventing a number would put a guess where a measurement belongs.
+    record and this adds nothing.
+
+    **A swept run is usually not unmeasured.** The commonest thing to sweep is a run
+    abandoned at the clarifying-question interrupt, and that pause wrote down what the
+    pass before it spent — the vision and gate calls, which are the expensive ones. Those
+    were real money and they are charged. This used to record a null cost regardless, so
+    a diagnosis somebody started and never answered was free.
+
+    Still ``None`` when there is nothing stored, which is the honest answer for a run
+    whose collector went with the process: inventing a number would put a guess where a
+    measurement belongs.
     """
     from data.models import Run
 
@@ -111,7 +120,11 @@ def _record_unmeasured_usage(session, runs, run_id, *, now) -> None:
     if owner is None:  # pragma: no cover - the run was just read
         return
     UsageRepository(session).record(
-        owner, kind=limits.DIAGNOSIS, usage=None, succeeded=False, now=now
+        owner,
+        kind=limits.DIAGNOSIS,
+        usage=runs.partial_usage_of(run_id),
+        succeeded=False,
+        now=now,
     )
 
 
