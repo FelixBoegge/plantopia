@@ -38,6 +38,30 @@ class UsageSnapshot:
             "total_tokens": self.total_tokens,
         }
 
+    def plus(self, other: "UsageSnapshot | None") -> "UsageSnapshot":
+        """This snapshot and another, added.
+
+        A run is driven in two passes — the first stops at the clarifying-question
+        interrupt, the second resumes and finishes it — and each pass has its own
+        collector. So the run's real cost is the sum of two snapshots, and nothing
+        smaller than that sum is the truth about what it spent.
+
+        Cost follows the same rule one collector already applies to partial reporting:
+        sum what was reported and keep ``None`` only when *nothing* reported a cost.
+        A pass whose provider reported no cost therefore lowers how complete the figure
+        is without inventing a ``$0.00``, which would read as measurement.
+        """
+        if other is None:
+            return self
+        costs = [c for c in (self.cost_usd, other.cost_usd) if c is not None]
+        return UsageSnapshot(
+            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+            completion_tokens=self.completion_tokens + other.completion_tokens,
+            # Rounded on the same grounds as ``UsageCollector.snapshot``: adding
+            # per-pass costs accumulates representation noise well below a cent.
+            cost_usd=round(sum(costs), 8) if costs else None,
+        )
+
 
 def _cost_of(usage: dict[str, Any]) -> float | None:
     """OpenRouter's reported cost for one call, or ``None`` if it reported none."""
@@ -53,11 +77,16 @@ def _cost_of(usage: dict[str, Any]) -> float | None:
 class UsageCollector(BaseCallbackHandler):
     """Accumulates token counts and cost across every model call in one run.
 
-    Scoped to a *thread*, not to a single ``invoke``: a diagnosis spans two
-    invocations (``start`` pauses at the clarifying-question interrupt, ``answer``
-    resumes it), and the vision and gate calls — the expensive ones — all happen in
-    the first. A per-invocation collector would silently undercount by roughly half.
-    ``DiagnosisService`` owns the lifetime; see spec §2.1.
+    **One collector covers one invocation, and a diagnosis is two.** ``start`` pauses at
+    the clarifying-question interrupt and ``answer`` resumes it, and the vision and gate
+    calls — the expensive ones — all happen in the first. So a single collector's snapshot
+    is half a diagnosis, and reading it as the whole undercounts by roughly that much.
+
+    The worker builds one per pass, because a pass is what a worker thread owns and the
+    pause between them can last as long as somebody takes to answer. Adding the halves is
+    therefore ``runs/worker.py``'s job, not this class's: it persists each pass's snapshot
+    on the run and sums them with ``UsageSnapshot.plus`` when the finishing pass records
+    the run's usage. That is the only place the whole figure exists.
     """
 
     def __init__(self) -> None:

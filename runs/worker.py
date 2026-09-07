@@ -301,15 +301,23 @@ def _finish(runs, session, bus, run_id, *, to: str, kind: str, detail: dict, err
 
 
 def _record_usage(session, runs, *, run_id: UUID, user_id: UUID, collector) -> None:
-    """Write what this pass spent, once.
+    """Account for what this pass spent: carry it forward, or record the run's total.
 
-    Claimed conditionally, so a worker finishing and the sweeper giving up on the same run
-    cannot both record it — which would charge an owner twice for one diagnosis.
+    One ledger entry per run, claimed conditionally so a worker finishing and the sweeper
+    giving up on the same run cannot both record it — which would charge an owner twice
+    for one diagnosis.
 
-    Only for a pass that reached a terminal status. The first half of an interrupted run
-    has spent real money, but recording it at the pause and again after the resume would
-    count one run twice; the collector is scoped to the thread, so the pass that finishes
-    reports the whole thing.
+    **A pass that did not finish the run carries its spend forward instead.** This is
+    where the accounting used to lose money. A diagnosis pauses at the clarifying-question
+    interrupt, and every pass builds its own collector, so the pass that finishes knows
+    only what *it* spent — while the vision and gate calls, the expensive ones, all
+    happened before the pause. This function used to return early on a non-terminal
+    status, on the belief that the collector spanned the whole thread; it never did, and
+    so every interrupted diagnosis was charged at roughly half price against the owner's
+    quota and the daily spend cap.
+
+    So the pause writes its snapshot to the run, and the pass that finishes adds it to its
+    own. The total is the only figure that reaches the ledger.
     """
     snapshot = collector.snapshot()
     try:
@@ -317,18 +325,34 @@ def _record_usage(session, runs, *, run_id: UUID, user_id: UUID, collector) -> N
         with transaction(session):
             status = runs.status_of(run_id)
             if status not in run_status.TERMINAL:
+                # Not finished, so nothing to charge yet — but this pass's spend has to
+                # outlive the worker thread that made it, and the pause can outlive the
+                # process.
+                runs.add_partial_usage(run_id, snapshot)
                 return
             if not runs.mark_usage_recorded(run_id):
                 return
             UsageRepository(session).record(
                 user_id,
                 kind=limits.DIAGNOSIS,
-                usage=snapshot,
+                usage=_total_spend(runs, run_id, snapshot),
                 succeeded=status == run_status.COMPLETED,
                 now=_now(),
             )
     except Exception:  # pragma: no cover - accounting must never break a finished run
         logger.exception("could not record usage for run %s", run_id)
+
+
+def _total_spend(runs, run_id: UUID, this_pass):
+    """Every pass of this run, added together.
+
+    ``None`` only when no pass reported any usage at all, which is the ordinary case under
+    scripted models — a zeroed figure would make a run look measured when it was not.
+    """
+    carried = runs.partial_usage_of(run_id)
+    if this_pass is None:
+        return carried
+    return this_pass.plus(carried)
 
 
 def _profile_facts(session, user_id: UUID):

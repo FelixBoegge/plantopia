@@ -514,6 +514,15 @@ class Run(Base):
     # is what stops the sweeper recording usage for a run that already recorded its own.
     usage_recorded: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # **What the passes before this one spent.** A diagnosis is driven in more than one
+    # pass — the first stops at the clarifying-question interrupt — and each pass has its
+    # own collector in its own worker thread. The pause between them lasts as long as
+    # somebody takes to answer, which can be longer than the process lives, so carrying
+    # the first pass's usage in memory would lose it to any restart. It is written here
+    # instead, and the pass that finishes adds it to its own before recording the run's
+    # usage once. Nothing reads this after that; it is not a second ledger.
+    partial_usage_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class RunEvent(Base):
     """One thing that happened during a run, in the order it happened.

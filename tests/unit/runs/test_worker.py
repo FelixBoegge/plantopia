@@ -10,9 +10,11 @@ the bus, which is what lets one connection span both.
 
 import threading
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
 from langgraph.checkpoint.memory import MemorySaver
 from sqlalchemy import select
 
@@ -20,10 +22,11 @@ from agent.diagnosis_graph import build_diagnosis_graph
 from agent.state import DiagnosisState
 from agent.threads import diagnosis_thread
 from core.config import Settings
+from core.cost import UsageSnapshot
 from data.models import UsageEvent
 from data.repositories import runs as run_status
 from data.repositories.runs import RunRepository
-from runs import steps, worker
+from runs import steps, sweeper, worker
 from runs.bus import EventBus
 from tests.runs import make_run
 from tests.secrets import TEST_JWT_SECRET
@@ -587,3 +590,98 @@ def test_the_terminal_event_names_the_plant_too(
 
     terminal = RunRepository(db).events(owner, run.id)[-1]
     assert terminal.payload["plant_id"]
+
+
+# What a run is charged for -------------------------------------------------
+#
+# The tests above assert *whether* usage was recorded. None of them asserted how much,
+# and that is exactly how an interrupted diagnosis came to be charged at half price: the
+# scripted models report no usage at all, so `UsageCollector.snapshot()` is `None`
+# throughout and every figure looks alike. These graphs report usage on purpose.
+
+
+def _spent(prompt: int, completion: int, cost: float | None = None) -> LLMResult:
+    usage = {"prompt_tokens": prompt, "completion_tokens": completion}
+    if cost is not None:
+        usage["cost"] = cost
+    return LLMResult(
+        generations=[[ChatGeneration(message=AIMessage(content="x"))]],
+        llm_output={"token_usage": usage, "model_name": "test"},
+    )
+
+
+class _SpendingGraph:
+    """Reports token usage through the run's collector, pauses once, then finishes.
+
+    Deliberately not a real graph: what is under test is the worker's accounting across
+    the pause, and a real graph cannot be made to report usage without a real model.
+    """
+
+    def __init__(self, *passes: LLMResult) -> None:
+        self._passes = list(passes)
+        self._done = 0
+
+    def __call__(self, **_):
+        return self
+
+    def stream(self, payload, config, stream_mode=None):
+        config["configurable"]["usage_collector"].on_llm_end(self._passes[self._done])
+        first = self._done == 0
+        self._done += 1
+        if first:
+            # Pauses like the clarifying-question interrupt does.
+            yield {"__interrupt__": [{"questions": [{"key": "watering", "prompt": "How often?"}]}]}
+
+    def get_state(self, config):
+        @dataclass
+        class _State:
+            values: dict
+
+        return _State(values={})
+
+
+def test_a_diagnosis_is_charged_for_both_of_its_passes(db, owner, sample_images, settings, bus):
+    """The bug this guards: the pass that finishes only knows what it spent, and the
+    expensive calls happen before the pause. Charging its snapshot alone charged roughly
+    half of every diagnosis, against both the owner's quota and the daily spend cap."""
+    graph = _SpendingGraph(_spent(1000, 200, cost=0.004), _spent(30, 10, cost=0.001))
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=graph, db=db, resume=ANSWERS)
+
+    recorded = db.scalars(select(UsageEvent).where(UsageEvent.user_id == owner)).all()
+    assert len(recorded) == 1
+    assert recorded[0].prompt_tokens == 1030
+    assert recorded[0].completion_tokens == 210
+    assert recorded[0].cost_usd == pytest.approx(0.005)
+
+
+def test_the_pause_carries_its_spend_on_the_run(db, owner, sample_images, settings, bus):
+    """Not in the ledger — on the run. The pause has spent real money and has not
+    finished, so the figure has to survive the worker thread without being charged yet."""
+    graph = _SpendingGraph(_spent(1000, 200, cost=0.004), _spent(30, 10))
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=graph, db=db)
+
+    carried = RunRepository(db).partial_usage_of(run.id)
+    assert carried == UsageSnapshot(prompt_tokens=1000, completion_tokens=200, cost_usd=0.004)
+
+
+def test_a_run_abandoned_at_the_interrupt_is_still_charged_for_what_it_spent(
+    db, owner, sample_images, settings, bus
+):
+    """Nobody answered, so the sweeper gave up on it. The vision and gate calls were still
+    made and still cost money; recording a null cost made an abandoned diagnosis free."""
+    graph = _SpendingGraph(_spent(1000, 200, cost=0.004))
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=graph, db=db)
+
+    sweeper.sweep(db, settings=settings, bus=bus, now=datetime.now(UTC) + timedelta(days=1))
+
+    recorded = db.scalars(select(UsageEvent).where(UsageEvent.user_id == owner)).all()
+    assert len(recorded) == 1
+    assert recorded[0].prompt_tokens == 1000
+    assert recorded[0].cost_usd == pytest.approx(0.004)
+    assert recorded[0].succeeded is False

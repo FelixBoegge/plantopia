@@ -88,3 +88,53 @@ def test_as_token_usage_is_json_shaped():
         "completion_tokens": 20,
         "total_tokens": 120,
     }
+
+
+# Summing two snapshots ----------------------------------------------------
+#
+# A diagnosis is driven in two passes: the first stops at the clarifying-question
+# interrupt, the second resumes and finishes it. Each pass has its own collector, so the
+# run's real cost is the sum of two snapshots and nothing else can produce it.
+
+
+def test_two_snapshots_add_their_tokens():
+    first = UsageSnapshot(prompt_tokens=100, completion_tokens=20, cost_usd=None)
+    second = UsageSnapshot(prompt_tokens=5, completion_tokens=3, cost_usd=None)
+
+    total = first.plus(second)
+
+    assert total == UsageSnapshot(prompt_tokens=105, completion_tokens=23, cost_usd=None)
+    assert total.total_tokens == 128
+
+
+def test_adding_snapshots_sums_the_costs_that_were_reported():
+    first = UsageSnapshot(prompt_tokens=100, completion_tokens=20, cost_usd=0.004)
+    second = UsageSnapshot(prompt_tokens=5, completion_tokens=3, cost_usd=0.001)
+
+    assert first.plus(second).cost_usd == 0.005
+
+
+def test_adding_a_costless_snapshot_keeps_the_cost_that_was_reported():
+    """Follows the same rule as one collector seeing partial cost reporting: sum what was
+    seen rather than discarding it, because the tokens are exact either way."""
+    measured = UsageSnapshot(prompt_tokens=100, completion_tokens=20, cost_usd=0.004)
+    costless = UsageSnapshot(prompt_tokens=5, completion_tokens=3, cost_usd=None)
+
+    assert measured.plus(costless).cost_usd == 0.004
+    assert costless.plus(measured).cost_usd == 0.004
+
+
+def test_adding_two_costless_snapshots_reports_no_cost():
+    """Never a fabricated $0.00: nothing reported a cost, so there is no cost to report."""
+    first = UsageSnapshot(prompt_tokens=100, completion_tokens=20, cost_usd=None)
+    second = UsageSnapshot(prompt_tokens=5, completion_tokens=3, cost_usd=None)
+
+    assert first.plus(second).cost_usd is None
+
+
+def test_adding_nothing_returns_the_snapshot_unchanged():
+    """``None`` is what a pass that reported no usage produces, and it is the common case
+    for the first pass of a run whose provider reported nothing."""
+    only = UsageSnapshot(prompt_tokens=100, completion_tokens=20, cost_usd=0.004)
+
+    assert only.plus(None) == only
