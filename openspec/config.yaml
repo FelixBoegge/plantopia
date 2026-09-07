@@ -10,8 +10,9 @@ context: |
   interrupt() for clarifying questions) plus a LangChain ReAct agent for chat. FastAPI
   backend at the repository root with a React + Vite + TypeScript + Tailwind/shadcn SPA
   in web/. One Postgres holds the domain tables and both LangGraph checkpointers. The
-  43-document disorder corpus is embedded in a Chroma store on disk, with a migrated
-  pgvector table standing unused beside it (M25). Own email/password auth with argon2id
+  43-document disorder corpus is embedded into pgvector in that same Postgres, 301
+  sections at 1536 dimensions, and read by `PgVectorRetriever` — the only retrieval path
+  there is. Own email/password auth with argon2id
   and rotating JWTs, open self-registration, per-user quotas and a global spend cap.
   Diagnoses run in the background with progress streamed over SSE across the interrupt.
   Every model call routes through OpenRouter (gate / vision / reasoning / embedding
