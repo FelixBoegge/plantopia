@@ -269,7 +269,7 @@ def main() -> None:
             # Sum of every model call in the run — the main set plus the stability
             # repeats — so the most expensive thing in the project finally reports
             # its own spend. ``None`` when no run reported cost, never a fabricated
-            # $0.00 (consistent with ui/components/cost_badge.py).
+            # $0.00, which would be a fabrication rather than a measurement.
             "total_token_usage": usage_report.as_token_usage() if usage_report else None,
             "total_cost_usd": usage_report.cost_usd if usage_report else None,
         },

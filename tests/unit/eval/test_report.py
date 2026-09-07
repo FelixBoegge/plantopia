@@ -183,7 +183,7 @@ def test_total_usage_is_rendered_in_provenance():
 
 def test_total_usage_renders_tokens_only_when_cost_is_none():
     """OpenRouter can omit cost while still reporting tokens. Never a fabricated
-    $0.00 — consistent with ``ui/components/cost_badge.py``."""
+    $0.00."""
     no_cost = {
         **RESULTS,
         "provenance": {**RESULTS["provenance"], "total_cost_usd": None},

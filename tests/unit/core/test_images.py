@@ -39,6 +39,46 @@ def _size(data: bytes) -> tuple[int, int]:
         return image.size
 
 
+def _jpeg_sized(width: int, height: int) -> bytes:
+    """A JPEG of a given size. Content is irrelevant; only the dimensions are asserted."""
+    buffer = BytesIO()
+    Image.new("RGB", (width, height), (10, 90, 40)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+class TestDownscaled:
+    def test_a_large_photograph_is_capped_on_its_long_edge(self):
+        from core.images import downscaled
+
+        result = downscaled(_jpeg_sized(4000, 3000), max_edge=1568)
+
+        with Image.open(BytesIO(result)) as opened:
+            assert max(opened.size) == 1568
+            # Aspect ratio preserved: 4000x3000 is 4:3, so the short edge follows.
+            assert opened.size == (1568, 1176)
+
+    def test_a_photograph_inside_the_cap_is_returned_untouched(self):
+        """Byte-identical, not merely equivalent: no re-encode means no quality loss."""
+        from core.images import downscaled
+
+        original = _jpeg_sized(800, 600)
+
+        assert downscaled(original, max_edge=1568) is original
+
+    def test_a_portrait_photograph_is_capped_on_its_height(self):
+        """The cap is on the long edge, whichever edge that is."""
+        from core.images import downscaled
+
+        with Image.open(BytesIO(downscaled(_jpeg_sized(1200, 4000), max_edge=1568))) as opened:
+            assert opened.size == (470, 1568)
+
+    def test_undecodable_bytes_are_returned_unchanged(self):
+        """Not this function's gate. `validate_upload` decides what counts as an image."""
+        from core.images import downscaled
+
+        assert downscaled(b"not an image", max_edge=1568) == b"not an image"
+
+
 class TestUprightBytes:
     def test_a_quarter_turn_is_applied_to_the_pixels(self):
         """Orientation 6 — the value every sampled phone upload carried — means the
@@ -98,10 +138,9 @@ class TestStoreUpload:
         stored = store.get(blob_owner, stored.ref.ref)
         assert stored == upright_bytes(_jpeg(orientation=6))
 
-    def test_nothing_is_downscaled(self, pg_session, blob_owner):
-        """U3 is deliberately not bundled with this change: resizing alters what the
-        vision model sees, and no measurement in this project can see the vision layer
-        (M19), so the damage would be undetectable."""
+    def test_a_photograph_inside_the_cap_keeps_its_size(self, pg_session, blob_owner):
+        """The long-edge cap (`max_image_edge_px`) only bites above it; this fixture's
+        40x20 frame is nowhere close, so storage must not shrink it."""
         store = PostgresBlobStore(pg_session)
         original = _jpeg(orientation=1)
 
@@ -211,6 +250,29 @@ class TestWhatAnUploadDeclared:
         stored = store_upload(photograph(), blobs=store, user_id=blob_owner, settings=_settings())
 
         assert stored.metadata == NOTHING
+
+    def test_metadata_is_still_read_from_the_bytes_as_they_arrived(self, pg_session, blob_owner):
+        """Downscaling re-encodes, which destroys EXIF. It must run after `read_metadata`.
+
+        Mirrors the orientation-ordering test above: if downscaling moves ahead of the
+        metadata read, a photograph lands with no capture date and the diagnosis silently
+        loses the ability to say how old it is.
+        """
+        from datetime import UTC, datetime
+
+        from tests.fakes.photographs import photograph
+
+        taken = datetime(2026, 8, 10, 10, 50, 49, tzinfo=UTC)
+        store = PostgresBlobStore(pg_session)
+
+        stored = store_upload(
+            photograph(captured_at=taken, size=(4000, 3000)),
+            blobs=store,
+            user_id=blob_owner,
+            settings=_settings(),
+        )
+
+        assert stored.metadata.captured_at == taken
 
     def test_a_refused_upload_is_never_read(self, pg_session, blob_owner):
         """The gate on what counts as an image is the gate on what gets examined. Reading

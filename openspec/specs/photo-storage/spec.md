@@ -47,11 +47,17 @@ of the photographs a diagnosis was given.
 - **THEN** the persisted run state for that diagnosis contains no image bytes
 - **AND** its total size is a small fraction of the size of the photographs
 
-### Requirement: The model sees what the owner uploaded
+### Requirement: The model sees what the owner photographed
 
-The system SHALL deliver photographs to the vision model with their original pixel data
-intact, apart from applying the orientation the photograph itself declares. It SHALL NOT
-downscale, recompress or crop them.
+The system SHALL deliver photographs to the vision model with their subject and framing
+intact, applying the orientation the photograph itself declares and capping the long edge
+at a configured maximum. It SHALL NOT crop them, and it SHALL NOT recompress a photograph
+that already fits within that cap.
+
+The cap exists because the vision models downscale above it themselves, so pixels beyond it
+are billed and discarded. It is a cost bound, not a judgement about what the model can see:
+no measurement in this project reaches the vision layer (`M19`), so nothing here claims the
+cap leaves a diagnosis unchanged.
 
 Applying that orientation rewrites the file, and rewriting it destroys the metadata block —
 the orientation tag is cleared deliberately, so nothing turns the image twice, and the rest

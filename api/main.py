@@ -40,7 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=_sweeping(settings),
     )
 
-    errors.register(app)
+    errors.register(app, settings)
     _add_cors(app, settings)
 
     from api.routers import (

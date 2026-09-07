@@ -1,14 +1,12 @@
 """Build the real dependencies, outside any UI framework.
 
-Lifted out of ``ui/bootstrap.py``, whose accessors are ``@st.cache_resource``
-functions and so only callable from a Streamlit script run. A second entry point
-needed the same objects — the LangGraph dev server behind Studio, which builds the
-graph itself in a plain Python process — and the one thing worse than wiring in an
-awkward place is the same wiring in two places, quietly drifting until Studio shows a
-graph the app does not run.
+Wiring lives here rather than at an entry point because there is more than one: the API
+process and the LangGraph dev server behind Studio, which builds the graph itself in a
+plain Python process. The one thing worse than wiring in an awkward place is the same
+wiring in two places, quietly drifting until Studio shows a graph the app does not run.
 
-Nothing here caches. Callers decide that: ``ui/bootstrap.py`` wraps these in
-``st.cache_resource``, and the dev server builds once at startup.
+Nothing here caches. Callers decide that: the API builds fresh per request, and the dev
+server builds once at startup.
 """
 
 import logging

@@ -41,12 +41,19 @@ export function useRenamePlant(plantId: string) {
   });
 }
 
-export function useRemovePlant() {
+export function useRemovePlant(plantId: string) {
   const queries = useQueryClient();
   return useMutation({
-    mutationFn: (plantId: string) =>
-      request(`/plants/${plantId}`, { method: "DELETE" }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: keys.plants }),
+    mutationFn: () => request(`/plants/${plantId}`, { method: "DELETE" }),
+    // **Exact, and not awaited.** `keys.plants` is a prefix of `keys.plant(id)`, so a
+    // prefix invalidation also refetches the plant just deleted -- which 404s, and a 404
+    // is permanent, so it renders "This plant could not be loaded" instead of retrying.
+    // Returning the promise made it worse: an onSuccess that returns one is awaited, so
+    // the error rendered before the caller's navigate ran. `removeQueries` on the detail
+    // key is not the fix either -- the observer is still mounted, so it would refetch.
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: keys.plants, exact: true });
+    },
   });
 }
 

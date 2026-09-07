@@ -6,8 +6,10 @@ photographs in its state. Anyone who can produce the string can continue the run
 
 The previous scheme made that a real hazard: a re-check thread was
 ``recheck-{plant_id}-{diagnosis_id}-{attempt}``, built from three values a second user
-could plausibly guess or enumerate. Every handle now carries the owner, and every resume
-path checks it before touching state.
+could plausibly guess or enumerate, and the ``attempt`` suffix existed only to stop a
+retry resuming an abandoned attempt's wreckage (``U7``). Every handle now carries the
+owner, and every resume path checks it before touching state — and since no caller
+derives a handle any more, a re-check simply gets a fresh random one like any other run.
 
 Construction and verification live together here so they cannot drift apart — a prefix
 added in one page and checked in another is a prefix that eventually stops matching.
@@ -33,19 +35,6 @@ def diagnosis_thread(user_id: UUID) -> str:
     and nothing else about the run is stable enough to name it by.
     """
     return f"{user_id}{SEPARATOR}diagnose{SEPARATOR}{uuid4().hex}"
-
-
-def recheck_thread(user_id: UUID, plant_id: UUID, diagnosis_id: UUID | None, attempt: int) -> str:
-    """A handle for re-checking a known plant.
-
-    Derived rather than random, so that returning to a re-check resumes it instead of
-    starting a second one. ``attempt`` is what makes an abandoned attempt unreachable
-    from the next one (``U7``): neither a rejection nor a retake writes a diagnosis, so
-    without it the derived id would not move and the retry would resume the wreckage.
-    """
-    latest = diagnosis_id or "none"
-    parts = (str(user_id), "recheck", str(plant_id), str(latest), str(attempt))
-    return SEPARATOR.join(parts)
 
 
 def chat_thread(user_id: UUID, plant_id: UUID) -> str:

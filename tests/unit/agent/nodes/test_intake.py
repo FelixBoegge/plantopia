@@ -1,6 +1,6 @@
 """Tests for the intake nodes."""
 
-from agent.nodes.intake import make_guard_input, make_quality_check
+from agent.nodes.intake import make_guard_input, make_quality_check, rejection_message
 from agent.schemas import ImageQuality, PlantCheck
 from agent.state import DiagnosisState
 from tests.fakes.chat_models import FailingChatModel, ScriptedStructuredModel
@@ -8,6 +8,28 @@ from tests.fakes.chat_models import FailingChatModel, ScriptedStructuredModel
 
 def _state(images) -> DiagnosisState:
     return DiagnosisState(images=images, plant_name="Basil", location_kind="indoor")
+
+
+def test_the_rejection_reads_as_one_sentence():
+    """Seen live: "This looks like A screenshot of a web form…., not a plant."
+
+    The model writes a standalone sentence — capitalised, full-stopped, and in this
+    real observed case ending in an ellipsis before the full stop — and it is
+    interpolated mid-sentence. Both ends need trimming, and the message must not end
+    up with a dangling ellipsis or two full stops.
+    """
+    message = rejection_message("A screenshot of a web form….", app_title="Plantopia")
+
+    assert message.startswith("This looks like a screenshot of a web form, not a plant.")
+    assert "…" not in message
+    assert "A screenshot" not in message
+
+
+def test_the_rejection_keeps_an_acronym_capitalised():
+    """ "NASA logo" is not ordinary prose — its capitals stay."""
+    message = rejection_message("NASA logo.", app_title="Plantopia")
+
+    assert message.startswith("This looks like NASA logo, not a plant.")
 
 
 class TestGuardInput:

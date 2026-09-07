@@ -17,6 +17,24 @@ logger = logging.getLogger(__name__)
 NodeFn = Callable[[DiagnosisState], dict]
 
 
+def rejection_message(what_it_is: str, *, app_title: str) -> str:
+    """The refusal shown when an upload is not a plant.
+
+    The description comes from the model as a standalone sentence, and it is used here
+    mid-sentence — so its capital and its full stop both have to go, or the result reads
+    "This looks like A screenshot of a web form…., not a plant." (``U8``, seen live).
+    """
+    described = what_it_is.strip().rstrip(".…")
+    if described[:1].isupper() and not described[1:2].isupper():
+        # Lowercased only when it looks like ordinary prose. "NASA logo" keeps its capitals.
+        described = described[0].lower() + described[1:]
+    return (
+        f"This looks like {described}, not a plant. "
+        f"{app_title} only diagnoses plants — please upload a photo of the plant "
+        "you are concerned about."
+    )
+
+
 def make_guard_input(deps: Deps) -> NodeFn:
     """Reject anything that is not plant material.
 
@@ -51,10 +69,8 @@ def make_guard_input(deps: Deps) -> NodeFn:
         if not check.is_plant:
             return {
                 "rejected": True,
-                "rejection_reason": (
-                    f"This looks like {check.what_it_is}, not a plant. "
-                    "Plantopia only diagnoses plants — please upload a photo of the plant "
-                    "you are concerned about."
+                "rejection_reason": rejection_message(
+                    check.what_it_is, app_title=deps.settings.app_title
                 ),
             }
 

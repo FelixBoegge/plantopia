@@ -397,7 +397,7 @@ def test_total_usage_omits_runs_with_no_usage_from_the_sum():
 
 def test_total_usage_is_none_cost_when_no_run_reported_one():
     """OpenRouter can omit cost even while reporting tokens. The aggregate must
-    never fabricate a $0.00 — consistent with ``ui/components/cost_badge.py``."""
+    never fabricate a $0.00."""
     runs = [
         _run("a", ["overwatering"], usage=UsageSnapshot(100, 50, None)),
         _run("b", ["overwatering"], usage=UsageSnapshot(200, 75, None)),

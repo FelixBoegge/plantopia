@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from api.dependencies import NotSignedInError, SessionExpiredError
 from api.rate_limit import RateLimitedError
+from core.config import Settings
 from core.guards import UploadRejected
 from data.repositories.errors import RecordNotFoundError
 from identity.accounts import (
@@ -66,8 +67,15 @@ def problem(
     return JSONResponse(status_code=status_code, content=body, media_type=CONTENT_TYPE)
 
 
-def register(app: FastAPI) -> None:
-    """Install the handlers that turn exceptions into problem details."""
+def register(app: FastAPI, settings: Settings) -> None:
+    """Install the handlers that turn exceptions into problem details.
+
+    Takes settings rather than calling ``get_settings()`` inside a handler, and the
+    difference is not stylistic: ``get_settings`` is ``lru_cache``d, so a handler calling it
+    would read the process-wide singleton and quietly ignore the settings a test passed to
+    ``create_app``. Closing over what the factory was given is the only version that stays
+    truthful under an injected configuration.
+    """
 
     @app.exception_handler(RecordNotFoundError)
     def _not_found(request: Request, exc: RecordNotFoundError) -> JSONResponse:
@@ -141,7 +149,7 @@ def register(app: FastAPI) -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             type_=TYPE_BUSY,
             title="Too many runs at once",
-            detail="Plantopia is working through a queue. Try again in a minute.",
+            detail=f"{settings.app_title} is working through a queue. Try again in a minute.",
         )
         response.headers["Retry-After"] = "60"
         return response
@@ -174,7 +182,10 @@ def register(app: FastAPI) -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             type_=TYPE_DAILY_CAP,
             title="Temporarily unavailable",
-            detail="Plantopia has reached its spending limit for today. Try again tomorrow.",
+            detail=(
+                f"{settings.app_title} has reached its spending limit for today. "
+                "Try again tomorrow."
+            ),
             resets_at=exc.resets_at.isoformat(),
         )
 

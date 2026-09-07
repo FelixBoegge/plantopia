@@ -4,7 +4,7 @@
 
 **Goal:** Remove every live trace of the retired Streamlit UI, delete one dead function, close five small carried items, and flatten `api/errors.py`'s repeated handlers — without changing what the application does.
 
-**Architecture:** Four independent lanes. Lanes 1 and 2 touch only comments, docstrings, configuration and one deletion, so the existing suite is the proof. Lane 3 contains the one behavioural change (upload downscaling) and one bug fix (the delete-plant redirect), both test-first. Lane 4 is a pure refactor of exception handlers under existing tests.
+**Architecture:** Four independent lanes. Lanes 1 and 2 touch only comments, docstrings, configuration and one deletion, so the existing suite is the proof. Lane 3 contains the one behavioural change (upload downscaling) and one bug fix (the delete-plant redirect), both test-first. Lane 4 threads settings into the error handlers under existing tests.
 
 **Tech Stack:** Python 3.12, uv, FastAPI, Pillow, pytest; React 19 + TypeScript, TanStack Query v5, Vitest.
 
@@ -420,7 +420,11 @@ Read lines 52-58 first and carry the rest of the existing wording across verbati
 
 - [ ] **Step 4: Route the other product names through the setting (M13)**
 
-`services/chat_events.py` lines 39-45 and `api/errors.py` lines 144 and 177 hardcode `"Plantopia"`. Each becomes `settings.app_title`.
+`services/chat_events.py` lines 39-45 hardcode `"Plantopia"`. Each becomes `settings.app_title`.
+
+**`api/errors.py` is deliberately NOT in this task.** Its two occurrences are handled by
+Task 7, which rewrites those exact lines and threads `settings` into `register`. Editing
+them here as well would mean touching the file twice and colliding with that task.
 
 Check how each site reaches settings before editing: `api/errors.py`'s handlers take `(request, exc)` and may have no settings to hand. **If a handler cannot reach settings without threading a new dependency through it, leave that occurrence alone** and note it in the commit body — `M13` is a naming tidy-up and is not worth a new dependency injection path. `core/config.py`'s own default stays a literal; it is the definition.
 
@@ -666,8 +670,13 @@ Expected: everything PASSES, unchanged. This is the proof the lane is inert.
 
 - [ ] **Step 7: Commit**
 
+**Stage explicitly. Never `git add -A`** — this worktree carries the plan document and the
+SDD workspace, and a blanket add sweeps in whatever the controller has in flight. List the
+files you actually edited:
+
 ```bash
-git add -A
+git add services/__init__.py services/diagnosis_service.py api/__init__.py api/dependencies.py         agent/wiring.py agent/studio.py core/images.py         eval/run_eval.py eval/metrics.py eval/report.py         tests/api/test_app_shape.py tests/unit/eval/test_report.py tests/unit/eval/test_metrics.py         tests/unit/identity/test_message_links.py tests/e2e/mail.py         tests/unit/knowledge/test_retriever.py web/e2e/people.ts web/e2e/account.spec.ts
+git status --short          # confirm nothing unexpected is staged before committing
 git commit -m "$(cat <<'EOF'
 docs: stop describing a Streamlit UI that was retired months ago
 
@@ -715,27 +724,40 @@ git rm -r .streamlit
 
 - [ ] **Step 2: Rewrite `openspec/config.yaml`'s stack description**
 
-The highest-value edit in the lane: this file is loaded as context into every OpenSpec change, and currently briefs each one that the *current* stack is Streamlit + SQLite + Chroma with FastAPI/React as the *target*. Replace the two `## Current stack (being migrated)` and `## Target stack` sections with one:
+The highest-value edit in the lane: this file is loaded as context into every OpenSpec change,
+and it currently briefs each one that the *current* stack is Streamlit + SQLite + Chroma with
+FastAPI/React as the *target*. Replace the two `## Current stack (being migrated)` and
+`## Target stack` sections with one:
 
 ```yaml
   ## Stack
   Python 3.12, uv. LangGraph state machine for diagnosis (14 nodes, a mandatory
   interrupt() for clarifying questions) plus a LangChain ReAct agent for chat. FastAPI
   backend at the repository root with a React + Vite + TypeScript + Tailwind/shadcn SPA
-  in web/. One Postgres holds domain tables, the corpus in pgvector, and both LangGraph
-  checkpointers. Own email/password auth with argon2id and rotating JWTs, open
-  self-registration, per-user quotas and a global spend cap. Diagnoses run in the
-  background with progress streamed over SSE across the interrupt. Every model call
-  routes through OpenRouter (gate / vision / reasoning / embedding tiers). Ragas
-  evaluation harness over a 28-case golden set; LangSmith tracing optional.
+  in web/. One Postgres holds the domain tables and both LangGraph checkpointers. The
+  43-document disorder corpus is embedded in a Chroma store on disk, with a migrated
+  pgvector table standing unused beside it (M25). Own email/password auth with argon2id
+  and rotating JWTs, open self-registration, per-user quotas and a global spend cap.
+  Diagnoses run in the background with progress streamed over SSE across the interrupt.
+  Every model call routes through OpenRouter (gate / vision / reasoning / embedding
+  tiers). Ragas evaluation harness over a 28-case golden set; LangSmith tracing optional.
 ```
 
 Three further corrections in the same file:
 - `Layering is ui/api -> services -> agent + data` → `Layering is api -> services -> agent + data`.
 - `Markers: integration, ui, llm` → `Markers: integration, llm` — `pyproject.toml` defines only those two.
-- The layout claim: it describes `backend/` and `frontend/`, which was never built. The rewrite above says "at the repository root" and `web/`, which is what exists.
+- The layout claim: it describes `backend/` and `frontend/`, which was never built. The block
+  above says "at the repository root" and `web/`, which is what exists.
 
-**Leave the Chroma wording alone if any remains outside the block you replaced** — Task B rewrites it again, and one owner per sentence avoids a conflict. The block above already says pgvector because that is what the config *should* say once B lands; if A ships alone, this is the one sentence that runs ahead of the code. Note that in the commit body.
+**On the corpus sentence, and why it says Chroma.** An earlier draft of this step wrote "the
+corpus in pgvector", on the reasoning that a later change would make it true. That was wrong and
+is corrected above. Retrieval still runs on Chroma today; the pgvector move is a separate change,
+deferred until the owner's data wipe, and it may not land for some time. Writing "pgvector" now
+would put a false statement into the one file that briefs every future OpenSpec change —
+precisely the defect this task exists to remove, committed to spare a later change one diff. The
+pgvector change owns that sentence when it lands, and its own plan already updates this file. Two
+changes touching one sentence in sequence is ordinary; one of them lying about the present to
+save the other an edit is not.
 
 - [ ] **Step 3: `.env.example`**
 
@@ -755,25 +777,53 @@ grep -n -i 'streamlit\|8501\|ui/components\|ui/pages' docs/code-tour.md
 
 For each: if it describes the architecture *now*, rewrite it to the API/React reality. If it narrates history ("this used to..."), reword to "a retired UI" and keep the tense. Do not delete whole passages that explain why something is shaped as it is — that reasoning is the file's value.
 
-- [ ] **Step 6: Verify the purge**
+- [ ] **Step 6: Verify the purge — by file set, not by count**
+
+The count this step originally specified (264) is **wrong and is withdrawn**. Two reasons, both
+instructive: it was measured before this change's own spec and plan existed, and those documents
+necessarily contain the word "Streamlit" 89 times — a plan about purging Streamlit must name it.
+The number also moved depending on whether the pattern included `st.session_state` and
+`st.rerun`. A count was never the real assertion.
+
+The real assertion is *which files* may still contain a match. Run:
 
 ```bash
-git ls-files | while read -r f; do grep -ohE 'streamlit|Streamlit|8501|ui/components|ui/pages' "$f" 2>/dev/null; done | wc -l
+python -c "
+import subprocess, re
+files = subprocess.run(['git','ls-files'], capture_output=True, text=True).stdout.split()
+pat = re.compile(r'streamlit|Streamlit|8501|ui/components|ui/pages|st[.]session_state|st[.]rerun')
+for f in files:
+    try: t = open(f, encoding='utf-8', errors='ignore').read()
+    except Exception: continue
+    n = len(pat.findall(t))
+    if n: print(f'{n:5} {f}')
+"
 ```
 
-Expected: **264** — 258 in Tier 3 historical records plus 6 `8501`-in-hash coincidences in `uv.lock`. Then confirm the remainder is only Tier 3 and `uv.lock`:
+Every file listed must fall into exactly one of these four categories. **Anything else is a
+failure of this task:**
 
-```bash
-git ls-files | while read -r f; do c=$(grep -ocE 'streamlit|Streamlit|8501|ui/components' "$f" 2>/dev/null); [ "$c" != "0" ] && echo "$c $f"; done
-```
+1. **Tier 3 historical records** — `docs/plans/*.md`, `docs/superpowers/specs/2026-08-*.md`,
+   `openspec/changes/archive/**`, `project_brief_*.md`, `docs/known-limitations.md`.
+2. **This change's own documents** — `docs/superpowers/{plans,specs}/2026-09-04-*`. They describe
+   the purge and cannot avoid naming the thing purged.
+3. **`uv.lock`** — 6 matches, every one the literal string `8501` inside a content hash. Confirm
+   with `grep -c -i streamlit uv.lock`, which must print `0`.
+4. **`tests/unit/identity/test_message_links.py`** — exactly 2 matches: the module docstring's
+   historical note, and the live `assert "8501" not in settings.app_url` guard.
 
-Expected files: `uv.lock`, `docs/plans/*`, `docs/superpowers/specs/*`, `docs/known-limitations.md`, `openspec/changes/archive/*`, `project_brief_*.md`. **Nothing else.**
+No `.py`, `.ts` or `.tsx` file outside category 4 may match at all. Confirm separately with a
+search over those extensions that excludes `node_modules`, `.venv` and `__pycache__`; expect no
+output.
 
 - [ ] **Step 7: Run the suites and commit**
 
 ```bash
 uv run pytest && cd web && npx tsc -b && npm test
-git add -A
+# Explicit staging. Never `git add -A`: the plan document and SDD workspace live here too.
+# .streamlit removal is already staged by `git rm -r`, so it needs no `git add`.
+git add openspec/config.yaml .env.example README.md docs/code-tour.md
+git status --short          # confirm nothing unexpected is staged before committing
 git commit -m "$(cat <<'EOF'
 docs: delete the retired UI's config, and brief OpenSpec on the real stack
 
@@ -802,146 +852,122 @@ EOF
 
 ---
 
-### Task 7: Flatten `api/errors.py`
+### Task 7: Read the product name from settings in `api/errors.py`
+
+**The table refactor this task originally specified is cancelled.** Measured against the
+real file rather than the plan's estimate: of 21 handlers only **8** are pure
+`status + type + title + static detail`. Thirteen genuinely need code — `UploadRejected`,
+`MissingAnswerError`, `RunConflictError`, `QuotaExceededError`, `DailyCapReachedError`,
+`ExportTooLargeError`, `ConfirmationError`, `PasswordChangeError` and `ValueError` all read
+the exception; `QueueFullError` and `RateLimitedError` set a `Retry-After` header; and the
+`Exception` catch-all logs with a documented `exc_info=exc` that must not be disturbed.
+
+Collapsing the remaining 8 would occupy ~96 lines as a dataclass, a registration loop and
+8 rows, against the ~89 they occupy today — a **net gain of about 7 lines** — and would
+leave the file with *two* patterns instead of one, so a new failure would have two places
+it might belong. That is the opposite of the uniformity the refactor was for. Dropped.
+
+What remains is the part the owner asked for directly.
 
 **Files:**
-- Modify: `api/errors.py`
-- Test: existing `tests/api/` — no new tests
+- Modify: `api/errors.py` — `register`'s signature and two `detail` strings
+- Modify: `api/main.py:43`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `problem(...)` unchanged; `register(app)` unchanged. A new module-level `_SIMPLE: tuple[Problem, ...]` is internal.
+- Produces: **`register(app: FastAPI, settings: Settings) -> None`**. `api/main.py:43` is its
+  only caller — `tests/api/test_error_shape.py` and `test_refusal_types.py` import only the
+  `TYPE_*` constants (verified), so no test breaks.
 
-- [ ] **Step 1: Establish the baseline**
+- [ ] **Step 1: Record the baseline**
 
 ```bash
-uv run pytest tests/api/ -v 2>&1 | tail -5 && wc -l api/errors.py
+uv run pytest tests/api/ -v 2>&1 | tail -5
 ```
 
-Record the pass count and the line count (393). Both are the before-figures for the commit body.
+Note the pass count. It must be identical at the end.
 
-- [ ] **Step 2: Add the table and the registration loop**
+- [ ] **Step 2: Take settings at registration**
 
-Keep `problem()` and the `TYPE_*` constants exactly as they are — **no `type` URI may change**, they are a client contract that `web/src/api/problems.ts` branches on.
+In `api/errors.py`, add `from core.config import Settings` to the imports and change:
 
 ```python
-@dataclass(frozen=True, slots=True)
-class Problem:
-    """One failure that needs no more than a status, a type and a sentence.
+def register(app: FastAPI, settings: Settings) -> None:
+    """Install the handlers that turn exceptions into problem details.
 
-    The ``why`` field is not rendered. It is here because the reasoning behind a status
-    code is the most valuable thing in this module and it must not be lost to a table —
-    "404, never 403" is a security decision, not a formatting one.
+    Takes settings rather than calling ``get_settings()`` inside a handler, and the
+    difference is not stylistic: ``get_settings`` is ``lru_cache``d, so a handler calling it
+    would read the process-wide singleton and quietly ignore the settings a test passed to
+    ``create_app``. Closing over what the factory was given is the only version that stays
+    truthful under an injected configuration.
     """
-
-    exception: type[Exception]
-    status_code: int
-    type_: str
-    title: str
-    detail: str
-    why: str
-
-
-_SIMPLE: tuple[Problem, ...] = (
-    Problem(
-        exception=RecordNotFoundError,
-        status_code=status.HTTP_404_NOT_FOUND,
-        type_=TYPE_NOT_FOUND,
-        title="Not found",
-        detail="No such resource.",
-        why=(
-            "404, never 403. The repositories already refuse another owner's record; "
-            "this is the half that stops the status code undoing that refusal. A 403 "
-            "asserts the thing exists and is being withheld, which tells a stranger it "
-            "exists."
-        ),
-    ),
-    # ... one row per simple handler, each carrying its existing docstring as `why`
-)
 ```
 
-and inside `register`:
+Every handler is already nested inside `register`, so all of them can see `settings` through
+the closure with no further plumbing.
+
+- [ ] **Step 3: Use `app_title` in the two messages**
+
+Both occurrences are in handlers that stay explicit, so neither needs a placeholder
+mechanism. `QueueFullError`:
 
 ```python
-    for entry in _SIMPLE:
-
-        def _handler(request: Request, exc: Exception, entry: Problem = entry) -> JSONResponse:
-            return problem(
-                status_code=entry.status_code,
-                type_=entry.type_,
-                title=entry.title,
-                detail=entry.detail,
-            )
-
-        app.add_exception_handler(entry.exception, _handler)
+            detail=f"{settings.app_title} is working through a queue. Try again in a minute.",
 ```
 
-`entry: Problem = entry` is load-bearing: a closure over the loop variable would give every handler the last row's values. This is the classic late-binding bug and the reason a naive table refactor breaks silently rather than loudly.
-
-- [ ] **Step 3: Move only the simple handlers**
-
-Convert a handler to a row **only if** its body is a single `problem(...)` call using no attribute of `exc` and setting no header. Approximately 13 qualify.
-
-**These 8 stay as explicit handlers** — read each and leave it alone:
-- `UploadRejected` — uses `exc.reason`
-- `MissingAnswerError` — passes `keys=exc.keys`
-- `QuotaExceededError` — three extras from `exc`
-- `DailyCapReachedError` — `resets_at=exc.resets_at.isoformat()`
-- `RateLimitedError` — sets a `Retry-After` response header
-- `RequestValidationError` — maps `exc.errors()`
-- the two handlers around line 301 that read `exc.field`
-
-- [ ] **Step 4: Run the API tests**
-
-```bash
-uv run pytest tests/api/ -v
-```
-
-Expected: the **same** pass count as Step 1, with no failures. A refactor that changes a status code or a `type` shows up here.
-
-- [ ] **Step 5: Prove every problem type still resolves**
-
-Add one guard test to `tests/api/test_errors.py` (or wherever the module's tests live) — cheap insurance against a row silently registering the wrong exception:
+`DailyCapReachedError`:
 
 ```python
-def test_every_registered_problem_type_is_unique_and_declared():
-    """A table makes a copy-paste of the wrong TYPE_ constant invisible. This sees it."""
-    from api import errors
-
-    types_ = [entry.type_ for entry in errors._SIMPLE]
-
-    assert len(types_) == len(set(types_))
-    declared = {value for name, value in vars(errors).items() if name.startswith("TYPE_")}
-    assert set(types_) <= declared
+            detail=f"{settings.app_title} has reached its spending limit for today. Try again tomorrow.",
 ```
 
-- [ ] **Step 6: Full suite, lint, commit**
+Leave `api/main.py`'s `FastAPI(title="Plantopia", ...)` alone — that is the OpenAPI document's
+title, not user-facing copy, and `core/config.py`'s own default stays a literal because it is
+the definition.
 
-```bash
-uv run pytest && uv run ruff check api/ && uv run ruff format api/ && wc -l api/errors.py
+- [ ] **Step 4: Update the caller**
+
+`api/main.py:43`:
+
+```python
+    errors.register(app, settings)
 ```
 
+`create_app` already has `settings` in scope on the line above.
+
+- [ ] **Step 5: Run the tests**
+
 ```bash
-git add api/errors.py tests/api/
+uv run pytest tests/api/ -v && uv run pytest
+```
+
+Expected: the **same** pass count as Step 1. A missed caller shows up as a `TypeError` at app
+construction, which fails loudly rather than subtly.
+
+- [ ] **Step 6: Lint and commit**
+
+```bash
+uv run ruff check api/ && uv run ruff format api/
+git add api/errors.py api/main.py
 git commit -m "$(cat <<'EOF'
-refactor: collapse the simple problem handlers into a table
+refactor: read the product name from settings in the error copy
 
-Thirteen of twenty-one handlers were the same six lines with different
-constants. They become rows; the registration loop installs them.
+The busy and daily-cap messages hardcoded "Plantopia" while settings.app_title
+already existed. register() now takes settings and the nested handlers close
+over them.
 
-Eight stay as explicit handlers because they need code: UploadRejected and
-MissingAnswerError read the exception, the two quota handlers add extras,
-RateLimitedError sets a Retry-After header, and RequestValidationError maps a
-list.
+Passed in rather than fetched: get_settings is lru_cached, so a handler calling
+it would read the process singleton and ignore the settings a test passes to
+create_app. api/main.py is its only caller -- the two error tests import only
+the TYPE_ constants.
 
-The rationale is not dropped. Each row carries a `why` that is never rendered,
-because "404, never 403 -- a 403 asserts the thing exists and is being
-withheld, which tells a stranger it exists" is a security decision and the
-most valuable content in this file.
+The table refactor planned for this file is dropped. Only 8 of 21 handlers are
+simple enough to become rows: thirteen read the exception, set a Retry-After
+header, or log with a documented exc_info. Collapsing the remaining 8 measured
+at about 7 lines *added*, and would leave two patterns in one file so a new
+failure had two places it might belong.
 
-No type URI changes: web/src/api/problems.ts branches on them, so they are as
-much a contract as the status codes. The default argument in the loop's closure
-is load-bearing -- without it every handler would answer with the last row.
+Closes M13.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
@@ -954,10 +980,25 @@ EOF
 
 **Files:**
 - Modify: `docs/known-limitations.md`
+- Modify: `openspec/specs/photo-storage/spec.md:50-54`
 
 - [ ] **Step 1: Strike the resolved rows**
 
-Following the file's convention — struck through and dated, never deleted. Strike `U3`, `U8`, `M13`, `M50`, `M52`. For each, add the date and what the fix cost, not just that it closed.
+Following the file's convention — struck through and dated, never deleted. Strike `U3`, `U8`, `M50`, `M52`.
+
+**`M13` does NOT close — amend it instead, with what was learned.** Its claim of "one
+occurrence" was wrong by an order of magnitude: there are six in Python and four more in
+TypeScript. Task 3 fixed `agent/nodes/intake.py` and Task 7 fixed the two in `api/errors.py`.
+The remaining four are `services/chat_events.py`'s `TOOL_NAMES`, and they are deliberately
+left, for a reason worth recording:
+
+`web/src/screens/chat/sources.ts` holds the same four strings as a static TypeScript literal,
+and `tests/api/test_source_names_agree.py` regex-parses that file to assert the two tables say
+the same thing — deliberately two tables, because they are in different languages and neither
+can import the other. Making the server's side read `app_title` would break that agreement
+against a client that has no settings concept at all. Closing this properly means serving the
+title to the client, not renaming a constant. So M13 is a *product-rename* task, not the
+naming tidy-up its row claims, and the row should say so. For each, add the date and what the fix cost, not just that it closed.
 
 - [ ] **Step 2: Record M54 as not achievable**
 
@@ -974,6 +1015,91 @@ longer static string, which tells a model nothing more. Verified 2026-09-04.
 
 It was never carried, so it arrives struck: found and fixed on 2026-09-04, with the prefix-matching cause recorded — a future reader adding a query key needs to know that `keys.plants` is a prefix of `keys.plant(id)`.
 
+- [ ] **Step 3b: Correct the photo-storage spec, which now contradicts the code**
+
+Found during Task 2 rather than planned. `openspec/specs/photo-storage/spec.md:50-54` carries
+a requirement headed **"The model sees what the owner uploaded"** which states the system
+"SHALL deliver photographs to the vision model with their original pixel data intact, apart
+from applying the orientation the photograph itself declares. It SHALL NOT downscale,
+recompress or crop them."
+
+Task 2 makes the last sentence false. This is a live spec, not an archived one, and the
+project is spec-driven — a spec that contradicts shipped behaviour is worse than no spec,
+because the next change will be argued from it.
+
+Amend the requirement so it permits the cap and keeps everything else it was protecting:
+
+```
+### Requirement: The model sees what the owner photographed
+
+The system SHALL deliver photographs to the vision model with their subject and framing
+intact, applying the orientation the photograph itself declares and capping the long edge
+at a configured maximum. It SHALL NOT crop them, and it SHALL NOT recompress a photograph
+that already fits within that cap.
+
+The cap exists because the vision models downscale above it themselves, so pixels beyond it
+are billed and discarded. It is a cost bound, not a judgement about what the model can see:
+no measurement in this project reaches the vision layer (`M19`), so nothing here claims the
+cap leaves a diagnosis unchanged.
+```
+
+Leave the two paragraphs that follow — the ordering constraint about reading metadata from
+the bytes as uploaded — **exactly as they are**. Task 2 strengthens that constraint rather
+than weakening it, and the prose already argues it well.
+
+Do not touch the "Completing a diagnosis with large photographs" scenario above it: it is
+about persisted run state carrying no image bytes, which this change does not affect.
+
+- [ ] **Step 3c: Note what M52 answered, without editing the archive**
+
+Found during Task 3. `openspec/changes/archive/2026-09-01-add-continuous-integration/design.md`
+contains four passages that M52 falsifies: its Context calls the Node version "unpinned: no
+`engines`, no `.nvmrc`, no `volta`" (`:36`); a section calls the CI-only pin accepted drift; a
+Risks entry says the pin "drifts from local where nothing is pinned"; and an Open Question asks
+"**Whether to pin the Node version in the repository** rather than only in CI" (`:140`).
+
+**Do not edit that file.** It is in `openspec/changes/archive/`, a dated record of what was
+true on 2026-09-01, and Tier 3 is untouchable by this change's own rules — the whole point of
+that ruling is that a later change answering an earlier design's open question is not licence
+to rewrite the earlier design.
+
+Record it in the register instead. `M52`'s struck row should say that the pin now exists in
+three places that must agree — `.github/workflows/ci.yml`, `web/.nvmrc`, `web/package.json`'s
+`engines` — and that this closes the open question that archived design deliberately left open,
+naming the file so a reader can find the argument rather than only its answer.
+
+- [ ] **Step 3d: Record four gaps found by reading the code, not planned for**
+
+Task 6 rewrote `docs/code-tour.md` against the actual source rather than against the old prose,
+and that turned up drift nobody had recorded. None of it is in scope to fix here; all of it is
+in scope to *write down*, because an unrecorded gap is the thing this register exists to prevent.
+Add each as a new row, dated 2026-09-04, in the section its audience belongs to. I verified the
+first two personally; verify the other two before writing them.
+
+1. **LangSmith tracing never runs in production.** `core/tracing.py::configure_tracing` has
+   exactly one caller — `eval/run_eval.py:227`. `api/main.py` never calls it, so setting
+   `PLANTOPIA_LANGSMITH_API_KEY` configures tracing for the evaluation harness and for nothing
+   else. A diagnosis served to an owner is not traced. The setting reads as though it switches
+   tracing on for the application, and it does not. **Affects a maintainer**, and it is the more
+   serious of the two: an observability feature that appears wired and is not.
+
+2. **`Differential.tsx:29` re-sorts the candidates the server ranked.**
+   `[...diagnosis.candidates].sort(...)` imposes the client's own order on a list the backend
+   already ordered. If the two rules ever disagree, the screen shows a different leading
+   candidate than the diagnosis recorded — and `eval/` scores the server's order, so no
+   measurement would see it. **Affects a user.**
+
+3. **Three Streamlit-era surfaces have no React equivalent** — the retrieval-sources view, the
+   tool-call detail view, and the cost badge. Confirm each against `web/src/` before recording
+   it; the point of the row is that the migration dropped them silently rather than deciding to.
+
+4. **`Differential.tsx` no longer carries the "nothing argues against it" caption** the Streamlit
+   view had. Confirm, then record as a copy regression if true.
+
+Write these as prose that argues, in the register's established voice: what is wrong, why it was
+not fixed now, and what fixing it would take. Do not strike them — they are newly opened, not
+resolved.
+
 - [ ] **Step 4: Verify the numbers**
 
 Every figure in the rows you wrote must be checkable from the repository. Confirm the 1568 cap, the 8 MB and 4-image limits, and Node 22 against the files before committing.
@@ -981,7 +1107,8 @@ Every figure in the rows you wrote must be checkable from the repository. Confir
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/known-limitations.md
+git add docs/known-limitations.md openspec/specs/photo-storage/spec.md
+git status --short          # confirm nothing unexpected is staged
 git commit -m "$(cat <<'EOF'
 docs: strike five carried items, and record one that cannot be done
 
@@ -1006,7 +1133,7 @@ EOF
 
 ## Self-Review
 
-**Spec coverage.** Lane 1 (Streamlit) → Tasks 5 and 6. Lane 2 (dead code) → Task 4. Lane 3's five items → Task 2 (U3), Task 3 (U8, M13, M52), Task 1 (delete-plant); M54's non-fix → Task 8. Lane 4 (`api/errors.py`) → Task 7. Testing section → each task's own run steps. Tier 3 protection → Global Constraints and Task 6 Step 6. No spec section is unimplemented.
+**Spec coverage.** Lane 1 (Streamlit) → Tasks 5 and 6. Lane 2 (dead code) → Task 4. Lane 3's five items → Task 2 (U3), Task 3 (U8, M13, M52), Task 1 (delete-plant); M54's non-fix → Task 8. Lane 4 (`api/errors.py`) → Task 7, reduced to the settings threading after measurement falsified the refactor's premise (see that task's preamble). Testing section → each task's own run steps. Tier 3 protection → Global Constraints and Task 6 Step 6. No spec section is unimplemented.
 
 **Ordering.** Task 1 is first because it is the only live user-facing bug. Tasks 5 and 6 are late because they are the widest diffs and the least risky, so a conflict with them is cheap. Task 8 is last because it records the rest.
 

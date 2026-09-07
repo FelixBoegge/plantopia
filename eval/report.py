@@ -70,8 +70,7 @@ def _usage_rows(provenance: dict[str, Any]) -> list[str]:
     """Provenance-table rows for total spend, or none at all if usage was never recorded.
 
     Renders tokens only when cost is ``None`` — never a fabricated ``$0.00`` —
-    matching ``ui/components/cost_badge.py``'s rule for the same data at the
-    per-diagnosis scale.
+    the same rule the per-diagnosis figures follow.
     """
     usage = provenance.get("total_token_usage")
     if not usage:

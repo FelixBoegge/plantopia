@@ -131,9 +131,12 @@ jobs:
       - name: Install the toolchain
         run: uv sync --frozen
 
-      # Stated here because nothing in the repository pins it — no `engines`, no `.nvmrc`.
-      # That is the one thing CI knows and the repository does not; `design.md` records it as
-      # accepted drift rather than an oversight.
+      # Stated here the way `.python-version` states Python's, because Node has no such file
+      # of its own to read. `web/.nvmrc` pins the same exact version; `engines.node` in
+      # `web/package.json` only sets a floor (`>=22`), not a third pin. So this line and
+      # `.nvmrc` are the two places that actually have to agree, and this is the one that
+      # gets believed when they do not: whatever a laptop has installed, a fork's pull
+      # request runs whichever version this line names.
       - uses: actions/setup-node@v4
         with:
           node-version: 22

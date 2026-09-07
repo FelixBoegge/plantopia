@@ -104,7 +104,7 @@ export function PlantDetail() {
 function PlantSettings({ plantId, name }: { plantId: string; name: string }) {
   const navigate = useNavigate();
   const rename = useRenamePlant(plantId);
-  const remove = useRemovePlant();
+  const remove = useRemovePlant(plantId);
   const [draft, setDraft] = useState(name);
   const [confirming, setConfirming] = useState(false);
 
@@ -145,7 +145,9 @@ function PlantSettings({ plantId, name }: { plantId: string; name: string }) {
             <Button
               variant="destructive"
               onClick={() =>
-                remove.mutate(plantId, { onSuccess: () => navigate("/") })
+                remove.mutate(undefined, {
+                  onSuccess: () => navigate("/", { replace: true }),
+                })
               }
               disabled={remove.isPending}
             >

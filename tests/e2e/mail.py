@@ -2,7 +2,7 @@
 
 Verification and reset both work by sending somebody a link, so a browser test that skipped
 the link would skip the half of the flow most likely to be wrong — this project has already
-shipped a verification link pointing at a retired Streamlit port, and a verification screen
+shipped a verification link pointing at a retired UI's port, and a verification screen
 that spent its own token before the person clicked it.
 
 Messages are appended as JSON lines to a file the test reads. Deliberately a file rather
