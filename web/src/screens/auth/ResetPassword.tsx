@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import { request } from "@/api/client";
 import { readable } from "@/api/problems";
 import type { Accepted } from "@/api/types";
 import { Field } from "@/components/Field";
+import { TextLink } from "@/components/TextLink";
 import { ShowPasswords } from "@/components/ShowPasswords";
 import { Notice } from "@/components/Notice";
 import { Button } from "@/components/ui/button";
@@ -78,19 +79,20 @@ function AskForLink() {
     <AuthShell
       title="Reset your password"
       description="We will email you a link to choose a new one."
-      footer={<Link to="/login">Back to signing in</Link>}
+      footer={<TextLink to="/login">Back to signing in</TextLink>}
     >
-      <form onSubmit={submit} className="grid gap-6" noValidate>
+      <form onSubmit={submit} className="grid gap-4" noValidate>
         {failure ? <Notice tone="failure">{failure}</Notice> : null}
         <Field
           label="Email"
+          className="h-10 md:text-base"
           type="email"
           autoComplete="email"
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" className="h-10 text-base" disabled={busy}>
           {busy ? "Sending…" : "Send the link"}
         </Button>
       </form>
@@ -129,17 +131,18 @@ function ChooseNew({ token }: { token: string }) {
           You have been signed out everywhere else. Sign in with your new
           password.
         </Notice>
-        <Link to="/login">Sign in</Link>
+        <TextLink to="/login">Sign in</TextLink>
       </AuthShell>
     );
   }
 
   return (
     <AuthShell title="Choose a new password">
-      <form onSubmit={submit} className="grid gap-6" noValidate>
+      <form onSubmit={submit} className="grid gap-4" noValidate>
         {failure ? <Notice tone="failure">{failure}</Notice> : null}
         <Field
           label="New password"
+          className="h-10 md:text-base"
           type={showing ? "text" : "password"}
           autoComplete="new-password"
           required
@@ -152,7 +155,7 @@ function ChooseNew({ token }: { token: string }) {
             link that only works once. */}
         <ShowPasswords showing={showing} onChange={setShowing} />
 
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" className="h-10 text-base" disabled={busy}>
           {busy ? "Setting it…" : "Set my password"}
         </Button>
       </form>
