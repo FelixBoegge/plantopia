@@ -60,8 +60,13 @@ would not receive it at all, so sessions could never be renewed.
       $0.0005 — so it needs the OpenRouter key present. It is idempotent by
       `doc_id::section`, so re-running it is safe.
 - [ ] **Confirm the corpus landed:** 301 chunks across 43 documents at 1536 dimensions.
-      Retrieval returns nothing on an empty table, and a diagnosis with no retrieved
-      passages is a diagnosis with no evidence.
+      ```
+      docker compose exec -T db psql -U plantopia -d plantopia         -c "SELECT count(*), count(DISTINCT doc_id) FROM corpus_chunks;"
+      ```
+      This is a hard gate, not a sanity check. Since 2026-09-07 `corpus_chunks` is the
+      *only* place retrieval reads, so a migrated-but-not-ingested database serves every
+      diagnosis with no reference material at all — and says so politely rather than
+      failing, which is the worst way for it to be wrong.
 
 ### 1.4 A real mail provider
 
@@ -189,19 +194,26 @@ capability just does not happen, and nothing on the page says so.
 - [ ] **Database backups.** One Postgres holds the domain tables, the corpus vectors and both
       LangGraph checkpointers. `pgdata` is a compose volume; a `docker compose down -v`
       destroys every account.
-- [ ] **LangSmith project separation.** `PLANTOPIA_LANGSMITH_PROJECT` currently points at a
-      sprint-scoped project. Give production its own, so demo traffic and real traffic are not
-      read as one. Note the key is region-scoped: an EU workspace key needs
-      `PLANTOPIA_LANGSMITH_ENDPOINT` set, or it 403s against the default US host.
+- [ ] **LangSmith project separation.** As of 2026-09-07 the application itself traces, not
+      just the evaluation harness — so this now decides where real user traffic is recorded.
+      `PLANTOPIA_LANGSMITH_PROJECT` points at a sprint-scoped project; give production its
+      own, so demo traffic and real traffic are not read as one. The key is region-scoped: an
+      EU-workspace key needs `PLANTOPIA_LANGSMITH_ENDPOINT` set, or it 403s against the
+      default US host and tracing uploads nowhere while reporting itself enabled.
+- [ ] **Decide whether to trace at all.** Traces carry prompts, and prompts carry what an
+      owner wrote about their plant and where it lives. Omitting the key is the whole
+      opt-out; nothing else changes.
 - [ ] **Health check.** `api/routers/health.py` is already mounted under the prefix — point
       the platform's probe at it.
 - [ ] **Log retention and access.** At `INFO`, and with `ConsoleMailer` in play for any
       environment without a mail key, logs contain password-reset and verification links.
 - [ ] **A staging pass.** Register, verify, diagnose, chat, export, delete an account — the
       whole path, on the real deployment, once.
-- [ ] **Decide what happens to `data/chroma`.** Once pgvector is the only retrieval path the
-      directory and the `PLANTOPIA_CHROMA_PATH` setting are gone; if any deployment artefact
-      mounts a volume for it, remove that too.
+- [ ] **No volume for a vector store.** Retrieval moved to pgvector on 2026-09-07, so
+      `data/chroma` and `PLANTOPIA_CHROMA_PATH` no longer exist. The corpus is rows in the
+      same Postgres as everything else, which means it is covered by the backup above and
+      needs no mount of its own — but also that a restored database is only useful if
+      `corpus_chunks` came with it.
 
 ---
 
