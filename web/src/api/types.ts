@@ -71,7 +71,19 @@ export interface Account {
 export interface Plant {
   id: string;
   name: string;
+
+  /** The **common** name — what somebody calls the plant. */
   species: string | null;
+
+  /**
+   * The binomial, or `null`.
+   *
+   * Separate from `species` because they answer different questions and a screen wants
+   * both: "Golden pothos" is what it is called, "Epipremnum aureum" is what it is. `null`
+   * for a plant identified without a binomial, and for every plant created before this was
+   * stored — nothing can be backfilled, the name having never been written anywhere.
+   */
+  species_scientific: string | null;
   species_confidence: number | null;
   location_kind: "indoor" | "outdoor";
   location_text: string | null;

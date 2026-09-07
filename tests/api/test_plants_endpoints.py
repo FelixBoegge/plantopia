@@ -100,6 +100,7 @@ def test_the_response_carries_only_the_documented_fields(client, seeded):
         "id",
         "name",
         "species",
+        "species_scientific",
         "species_confidence",
         "location_kind",
         "location_text",

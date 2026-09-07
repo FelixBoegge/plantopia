@@ -127,4 +127,15 @@ class DiagnosisState(BaseModel):
 
     @property
     def species_name(self) -> str | None:
+        """The common name. Named without "common" for historical reasons, and kept that way
+        because it is what every prompt and every screen calls the species."""
         return self.species.common_name if self.species else None
+
+    @property
+    def species_scientific(self) -> str | None:
+        """The binomial, or ``None`` when the model named the plant without offering one.
+
+        ``None`` rather than falling back to the common name: repeating it is precisely what
+        made every plant display its own name twice.
+        """
+        return self.species.scientific_name if self.species else None

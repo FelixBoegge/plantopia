@@ -35,6 +35,7 @@ def plant(record: PlantRecord) -> PlantOut:
         id=record.id,
         name=record.name,
         species=record.species,
+        species_scientific=record.species_scientific,
         species_confidence=record.species_confidence,
         location_kind=record.location_kind,
         location_text=record.location_text,

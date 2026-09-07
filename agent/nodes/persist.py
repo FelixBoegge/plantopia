@@ -92,6 +92,7 @@ def make_persist(deps: Deps) -> NodeFn:
                     deps.user_id,
                     name=_display_name(state),
                     species=state.species_name,
+                    species_scientific=state.species_scientific,
                     species_confidence=state.species_confidence,
                     location_kind=state.location_kind,
                     location_text=state.location_text or state.answers.get("location"),
@@ -106,6 +107,7 @@ def make_persist(deps: Deps) -> NodeFn:
                     deps.user_id,
                     plant_id,
                     species=state.species_name,
+                    species_scientific=state.species_scientific,
                     species_confidence=state.species_confidence,
                 )
 

@@ -18,7 +18,17 @@ from agent.schemas import WeatherSummary
 class PlantOut(BaseModel):
     id: UUID
     name: str
+
+    # The **common** name, which is what this has always held — `DiagnosisState.species_name`
+    # returns `SpeciesGuess.common_name`.
     species: str | None
+
+    # The binomial, or `null`. Two fields rather than one because they answer different
+    # questions and a screen wants both: "Golden pothos" is what somebody calls it,
+    # "Epipremnum aureum" is what it is. `null` for every plant identified without a
+    # binomial offered, and for every plant created before this was stored — nothing can be
+    # backfilled, the name having never been written anywhere.
+    species_scientific: str | None = None
     species_confidence: float | None
     location_kind: Literal["indoor", "outdoor"]
     location_text: str | None

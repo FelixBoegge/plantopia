@@ -7,6 +7,7 @@ import { Photo } from "@/components/Photo";
 import { Severity } from "@/components/Severity";
 import { LinkButton } from "@/components/LinkButton";
 import { Card, CardContent } from "@/components/ui/card";
+import { speciesLine } from "@/screens/plants/species";
 
 /**
  * Everything this person is looking after.
@@ -76,9 +77,9 @@ export function Plants() {
                     <span className="text-lg leading-tight font-semibold">
                       {plant.name}
                     </span>
-                    {plant.species ? (
+                    {speciesLine(plant) ? (
                       <span className="text-muted-foreground truncate text-sm italic">
-                        {plant.species}
+                        {speciesLine(plant)}
                       </span>
                     ) : null}
                     {/* Stacked, and each one holds its line. Side by side they competed
