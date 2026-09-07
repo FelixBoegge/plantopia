@@ -287,6 +287,53 @@ def test_persist_writes_usage_from_the_collector(owner, make_deps, sample_images
     assert record.cost_usd == 0.002
 
 
+def test_persist_charges_the_diagnosis_for_the_pass_before_the_pause(
+    owner, make_deps, sample_images, db
+):
+    """`U25`'s undercount, one layer up from the ledger.
+
+    `persist` runs in the pass that *finishes* a run, and the vision and gate calls all
+    happened before the clarifying-question pause. Reading the collector alone therefore
+    wrote the finishing pass's spend to the record while `usage_events` — fixed in
+    `cba92c0` — held the whole run. The two disagreed by the pre-interrupt spend, and it
+    is the record's figure that `U23`'s cost badge would put on the screen.
+    """
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, LLMResult
+
+    from agent.nodes.persist import make_persist
+    from core.cost import UsageCollector, UsageSnapshot
+    from data.repositories.diagnoses import DiagnosisRepository
+
+    collector = UsageCollector()
+    collector.on_llm_end(
+        LLMResult(
+            generations=[[ChatGeneration(message=AIMessage(content="x"))]],
+            llm_output={
+                "token_usage": {"prompt_tokens": 90, "completion_tokens": 10, "cost": 0.002}
+            },
+        )
+    )
+
+    config = {
+        "configurable": {
+            "thread_id": "t",
+            "usage_collector": collector,
+            "carried_usage": UsageSnapshot(prompt_tokens=300, completion_tokens=40, cost_usd=0.005),
+        }
+    }
+
+    result = make_persist(make_deps())(_state_ready_to_persist(sample_images), config)
+
+    record = DiagnosisRepository(db).get(owner, result["diagnosis_id"])
+    assert record.token_usage == {
+        "prompt_tokens": 390,
+        "completion_tokens": 50,
+        "total_tokens": 440,
+    }
+    assert record.cost_usd == pytest.approx(0.007)
+
+
 def test_persist_writes_null_usage_without_a_collector(owner, make_deps, sample_images, db):
     """Every existing caller and every unit test passes no collector. Must not crash."""
     from agent.nodes.persist import make_persist

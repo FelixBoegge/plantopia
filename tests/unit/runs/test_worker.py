@@ -620,11 +620,17 @@ class _SpendingGraph:
     def __init__(self, *passes: LLMResult) -> None:
         self._passes = list(passes)
         self._done = 0
+        # What each pass was handed. Recorded because the ledger being right is only half
+        # of one run being accounted for: the node that writes the diagnosis record runs
+        # inside the graph, and can only add the earlier pass's spend if the config says
+        # what it was.
+        self.configs: list[dict] = []
 
     def __call__(self, **_):
         return self
 
     def stream(self, payload, config, stream_mode=None):
+        self.configs.append(config)
         config["configurable"]["usage_collector"].on_llm_end(self._passes[self._done])
         first = self._done == 0
         self._done += 1
@@ -655,6 +661,29 @@ def test_a_diagnosis_is_charged_for_both_of_its_passes(db, owner, sample_images,
     assert recorded[0].prompt_tokens == 1030
     assert recorded[0].completion_tokens == 210
     assert recorded[0].cost_usd == pytest.approx(0.005)
+
+
+def test_the_resumed_pass_is_told_what_the_pause_carried(db, owner, sample_images, settings, bus):
+    """The other half of charging a run once, for all of it.
+
+    `cba92c0` fixed the ledger, which the worker writes after the graph returns. The
+    *diagnosis record* is written by `agent/nodes/persist` inside the graph's own
+    transaction — deliberately, so a crash cannot leave a diagnosis with a NULL cost
+    (`M12`) — so the only way it can include the pre-interrupt spend is for the config to
+    carry it. Until it did, `usage_events` held the whole run and `diagnoses.cost_usd`
+    held the finishing pass, and the two disagreed on every interrupted diagnosis.
+    """
+    graph = _SpendingGraph(_spent(1000, 200, cost=0.004), _spent(30, 10, cost=0.001))
+    run, state = _run_and_state(db, owner, sample_images)
+
+    _execute(run, state, settings=settings, bus=bus, graph=graph, db=db)
+    _execute(run, None, settings=settings, bus=bus, graph=graph, db=db, resume=ANSWERS)
+
+    # Nothing had been spent when the first pass began, so there is nothing to carry.
+    assert graph.configs[0]["configurable"].get("carried_usage") is None
+    assert graph.configs[1]["configurable"].get("carried_usage") == UsageSnapshot(
+        prompt_tokens=1000, completion_tokens=200, cost_usd=0.004
+    )
 
 
 def test_the_pause_carries_its_spend_on_the_run(db, owner, sample_images, settings, bus):
