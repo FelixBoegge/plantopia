@@ -13,7 +13,6 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import lru_cache
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import Engine, select
@@ -23,7 +22,6 @@ from agent.deps import Deps
 from agent.schemas import CareProfile
 from core.blobs import PostgresBlobStore
 from core.config import Settings, get_settings
-from core.embeddings import ImageEmbedder
 from core.llm import (
     build_embeddings,
     build_gate_model,
@@ -39,8 +37,7 @@ from data.repositories.plants import PlantRepository
 from data.repositories.profile import ProfileRepository
 from data.repositories.roadmap import RoadmapRepository
 from identity.passwords import UNUSABLE
-from knowledge.ingest import load_corpus
-from knowledge.retriever import ChromaRetriever, build_vectorstore
+from knowledge.pgvector_retriever import PgVectorRetriever
 from services.profile_service import ProfileService
 from tools.care_profiles import make_care_profile_lookup
 from tools.care_research import make_care_research
@@ -154,7 +151,16 @@ def build_deps(
     settings = settings or get_settings()
     session = session or open_session(settings)
 
-    retriever = _shared_retriever(settings)
+    # **Not cached, and it must not be.** The retriever holds this request's session, and a
+    # process-wide cache is exactly where a session cannot live: it would pin one owner
+    # into a process serving many, and a single SQLAlchemy session is not safe to share
+    # across concurrent requests — the same argument `api/dependencies.py` opens with.
+    #
+    # There is nothing left to cache anyway. The cache existed because building a
+    # retriever meant loading the corpus and embedding 301 sections into Chroma, which is
+    # slow, billable, and a network call the test suite forbids. The vectors are in
+    # Postgres now, so construction is two attribute assignments.
+    retriever = PgVectorRetriever(session, build_embeddings())
 
     return Deps(
         settings=settings,
@@ -228,57 +234,3 @@ def _store_care_profile(session: Session) -> Callable[[CareProfile, datetime], N
         CareProfileRepository(session).put(profile, now=when)
 
     return store
-
-
-def _shared_retriever(settings: Settings) -> ChromaRetriever:
-    """The corpus retriever, built once for the process.
-
-    Embedding the corpus and opening the collection is the expensive part of wiring, and
-    none of it varies by request or by owner. Built per call it would re-embed on every
-    chat message — slow, billable, and in tests a network call the suite forbids.
-    """
-    return _retriever_for(
-        settings.corpus_path,
-        settings.chroma_path,
-        settings.embedding_model,
-        settings.multimodal_embeddings,
-        settings.openrouter_api_key,
-        settings.openrouter_base_url,
-    )
-
-
-@lru_cache(maxsize=2)
-def _retriever_for(
-    corpus_path: Path,
-    chroma_path: Path,
-    embedding_model: str,
-    multimodal: bool,
-    api_key: str,
-    base_url: str,
-) -> ChromaRetriever:
-    """Keyed on what actually determines a retriever.
-
-    Scalars rather than the ``Settings`` object, which is not hashable — and keying on
-    the specific fields is the more honest cache anyway: two settings differing only in,
-    say, a diagnosis threshold describe the same retriever.
-    """
-    vectorstore = build_vectorstore(
-        chunks=load_corpus(corpus_path),
-        embeddings=build_embeddings(),
-        persist_directory=chroma_path,
-    )
-
-    # Shares the collection's vector space, which is what makes cross-modal retrieval
-    # work. Wired only when the configured embedding model actually accepts images —
-    # passing it unconditionally would cost one doomed HTTP call per uploaded image.
-    image_embedder = (
-        ImageEmbedder(api_key=api_key, base_url=base_url, model=embedding_model)
-        if multimodal
-        else None
-    )
-    if image_embedder is None:
-        logger.info(
-            "cross-modal image retrieval disabled (multimodal_embeddings=False); "
-            "diagnosis will use the text retrieval path only"
-        )
-    return ChromaRetriever(vectorstore, image_embedder)

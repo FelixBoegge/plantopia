@@ -38,7 +38,11 @@ def offline(monkeypatch):
     inside `build_deps` — which is exactly how `tests/e2e/server.py` keeps a browser run
     off the network, and the reason this can test the real function rather than a copy of it.
     """
-    monkeypatch.setattr(wiring, "_shared_retriever", lambda _settings: None)
+    # The retriever itself no longer needs patching: it holds a session and reads vectors
+    # already in Postgres, so constructing one touches nothing. Only the embeddings client
+    # is network-shaped, and `PgVectorRetriever` accepts `None` for it — which is what
+    # `tests/unit/knowledge/test_pgvector_retriever.py` passes, since nothing here embeds.
+    monkeypatch.setattr(wiring, "build_embeddings", lambda: None)
     monkeypatch.setattr(wiring, "build_gate_model", lambda: _Model())
     monkeypatch.setattr(wiring, "build_vision_model", lambda: None)
     monkeypatch.setattr(wiring, "build_reasoning_model", lambda: None)
