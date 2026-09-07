@@ -5,14 +5,16 @@ reach ``api/``, so tenancy stays enforced in one place rather than at every call
 remembered to ask for it.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from agent.schemas import WEB_DOC_PREFIX, Passage
 from agent.threads import chat_thread
 from core.blobs import BlobStore
 from data.engine import transaction
+from data.repositories.corpus import CorpusRepository
 from data.repositories.diagnoses import DiagnosisRecord, DiagnosisRepository
 from data.repositories.errors import RecordNotFoundError
 from data.repositories.feedback import DidItHelp, FeedbackRepository
@@ -41,6 +43,60 @@ class PlantDetail:
     feedback_due: bool
 
 
+# What a consulted passage came from, as a reader is told it. Two values, because there are
+# two kinds of material and they are weighed differently: a corpus section was written for
+# this project and curated, a web result was found. `M4` records that their scores share one
+# list and are not comparable, which is precisely why provenance is shown and score is not.
+KNOWLEDGE_BASE = "knowledge_base"
+WEB = "web"
+
+
+@dataclass(frozen=True, slots=True)
+class Source:
+    """One passage a diagnosis consulted, named for somebody reading the result."""
+
+    name: str
+    section: str
+    origin: str
+
+
+def sources_of(passages: Sequence[Passage], names: Mapping[str, str]) -> list[Source]:
+    """The consulted passages, in the order retrieval returned them.
+
+    Pure, and separate from the lookup that feeds it, so the rules below are testable
+    without a database — they are the part with judgement in them.
+
+    **Order is preserved rather than sorted.** The leading passages were ranked by
+    similarity; the rest were fetched by id once a disorder was in contention, mostly each
+    candidate's look-alikes section. Those score 0.0 because nothing ranked them, and on a
+    real diagnosis they are twelve of eighteen — most of what the model read. Sorting by
+    score would bury them and present a deliberate fetch as a weak match.
+
+    **A name never comes from the slug.** Three of the 43 documents disagree with their own
+    id, so `names` is consulted first; a `doc_id` absent from it keeps the slug, which is
+    honest about being unresolved and still says the passage was read. Dropping it would
+    understate the evidence.
+
+    Nothing is deduplicated. Each entry is one passage the model was given, and two
+    sections of one document are two pieces of material rather than a repetition.
+    """
+    return [
+        Source(
+            name=_name_of(passage, names),
+            section=passage.section,
+            origin=WEB if passage.doc_id.startswith(WEB_DOC_PREFIX) else KNOWLEDGE_BASE,
+        )
+        for passage in passages
+    ]
+
+
+def _name_of(passage: Passage, names: Mapping[str, str]) -> str:
+    """The host for a web result, the corpus name for a disorder, the slug as a last resort."""
+    if passage.doc_id.startswith(WEB_DOC_PREFIX):
+        return passage.doc_id.removeprefix(WEB_DOC_PREFIX)
+    return names.get(passage.doc_id, passage.doc_id)
+
+
 class PlantService:
     """Read and write access to plant profiles, for the UI."""
 
@@ -53,6 +109,7 @@ class PlantService:
         diagnoses: DiagnosisRepository,
         roadmap: RoadmapRepository,
         feedback: FeedbackRepository,
+        corpus: CorpusRepository,
         blobs: BlobStore,
         now: Callable[[], datetime],
         forget_conversation: Callable[[str], int] | None = None,
@@ -63,6 +120,7 @@ class PlantService:
         self._diagnoses = diagnoses
         self._roadmap = roadmap
         self._feedback = feedback
+        self._corpus = corpus
         self._blobs = blobs
         self._now = now
         # How to remove a conversation's checkpoints, which live in LangGraph's own tables
@@ -118,6 +176,17 @@ class PlantService:
             if step.diagnosis_id == diagnosis_id
         ]
         return record, steps
+
+    def sources_for(self, record: DiagnosisRecord) -> list[Source]:
+        """What this diagnosis consulted, named for a reader.
+
+        One query for the names, however many passages there are, and none at all when
+        there were none. Kept separate from `get_diagnosis` rather than folded into its
+        return value: the passages are already on the record, so this adds only the names —
+        and a caller that does not render them should not pay for the lookup.
+        """
+        names = self._corpus.names_for([passage.doc_id for passage in record.retrieved])
+        return sources_of(record.retrieved, names)
 
     def get_plant_detail(self, plant_id: UUID) -> PlantDetail | None:
         """Everything the Plant detail page needs, or ``None`` for an unknown plant."""

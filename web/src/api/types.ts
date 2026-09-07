@@ -191,7 +191,17 @@ export interface Diagnosis {
    */
   weather: WeatherSummary | null;
   created_at: string;
+
+  /**
+   * What this diagnosis spent. `null` where nothing was measured — a failed run records no
+   * cost, and neither does any diagnosis made before it was kept. Render nothing rather
+   * than "$0.0000", which would claim the run was measured and free.
+   */
   cost_usd: number | null;
+  token_usage: TokenUsage | null;
+
+  /** Every passage the diagnosis was given, in the order retrieval returned them. */
+  sources: Source[];
 }
 
 export type StepStatus = "pending" | "done" | "skipped";
@@ -208,6 +218,18 @@ export interface RoadmapStep {
   due_date: string;
   status: StepStatus;
   completed_at: string | null;
+}
+
+export interface Source {
+  name: string;
+  section: string;
+  origin: "knowledge_base" | "web";
+}
+
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
 }
 
 export interface DiagnosisDetail {

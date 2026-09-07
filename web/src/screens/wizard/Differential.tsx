@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
-import type { DiagnosisDetail } from "@/api/types";
+import type { DiagnosisDetail, Source, TokenUsage } from "@/api/types";
 import { Severity } from "@/components/Severity";
 import { Verdict } from "@/components/Verdict";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,11 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
 
       <p>{diagnosis.reasoning}</p>
 
-      <ol className="grid gap-4">
+      {/* Named, so that "the candidate is ranked here" is assertable as distinct from "the
+          word appears on the page" — the consulted-material list below names disorders
+          too. A list with a name is also easier to move between when navigating by
+          landmark. */}
+      <ol aria-label="Ranked candidates" className="grid gap-4">
         {ranked.map((candidate) => (
           <li key={candidate.disorder_id}>
             <Card>
@@ -98,6 +102,15 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
         ))}
       </ol>
 
+      {/* Optional-chained although the contract requires the field. A client held open in
+          a tab across a deployment can be reading a response shaped by the previous one,
+          and losing the whole differential over a missing display field is the wrong
+          trade — the same judgement `DiagnosisPage` makes about the activity panel, which
+          deliberately does not branch on its own error. */}
+      {diagnosis.sources?.length ? (
+        <Consulted sources={diagnosis.sources} />
+      ) : null}
+
       {detail.roadmap_steps.length ? (
         <section aria-labelledby="plan">
           <h2 id="plan" className="mb-2 text-lg font-medium">
@@ -122,6 +135,90 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
           </p>
         </section>
       ) : null}
+
+      <Spend
+        cost={diagnosis.cost_usd ?? null}
+        usage={diagnosis.token_usage ?? null}
+      />
     </section>
   );
+}
+
+/**
+ * Every passage the diagnosis was given, behind a disclosure.
+ *
+ * **A disclosure and not an open list.** The differential is the answer somebody came for,
+ * and a real diagnosis consults eighteen passages — listing them above the treatment plan
+ * would bury both. `<details>` rather than a button and state because it is the element
+ * for exactly this, and it opens before any JavaScript has run.
+ *
+ * **Named and sectioned, never scored.** `M4` records that corpus cosine scores and Tavily
+ * relevance scores land in one list after web escalation and are not comparable; the
+ * retired Streamlit view labelled this list by source for that reason rather than printing
+ * a number two passages could be wrongly compared on. Provenance is the useful distinction
+ * anyway: a corpus section was written for this project, a web result was found.
+ *
+ * The count is on the summary so the size is known before opening — an expander hiding
+ * three things and one hiding thirty invite different decisions.
+ */
+function Consulted({ sources }: { sources: Source[] }) {
+  return (
+    <details className="rounded-md border px-3 py-2">
+      <summary className="cursor-pointer text-sm font-medium">
+        Reference material consulted ({sources.length})
+      </summary>
+      <ul className="mt-2 grid gap-1.5">
+        {sources.map((source, index) => (
+          // Index in the key on purpose: two sections of one document are two entries and
+          // nothing here is a stable identifier, the list being a record of one run.
+          <li
+            key={`${source.name}-${source.section}-${index}`}
+            className="text-sm"
+          >
+            <span className="font-medium">{source.name}</span>
+            <span className="text-muted-foreground"> — {source.section}</span>
+            <span className="text-muted-foreground ml-2 rounded border px-1.5 py-0.5 text-xs">
+              {source.origin === "web" ? "Web" : "Knowledge base"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/**
+ * What the diagnosis spent.
+ *
+ * **Nothing at all when nothing was measured.** A failed run records no cost (`M18`), and
+ * neither does any diagnosis made before this was kept — "$0.0000" would claim it ran and
+ * was free, which is a different and false statement. The two figures are independent for
+ * the same reason `core/cost.py` keeps a null cost rather than inventing a zero: the
+ * provider reports usage and price separately, and either can be absent.
+ *
+ * Tokens beside the price, not instead of it: a price alone reads as a charge, where a
+ * count and a price together read as a measurement. Four decimal places because a
+ * diagnosis costs about two and a half cents and rounding to two would print "$0.03" for
+ * everything.
+ */
+function Spend({
+  cost,
+  usage,
+}: {
+  cost: number | null;
+  usage: TokenUsage | null;
+}) {
+  if (cost === null && usage === null) return null;
+
+  const parts = [
+    // `en-US` explicitly, not the viewer's locale. Every other word on this screen is
+    // English, and a bare `toLocaleString()` groups by whatever locale the runtime happens
+    // to carry — "12.946" on a German machine, which next to English copy reads as a
+    // decimal point rather than a thousands separator. It also made this figure differ
+    // between a developer's machine and CI.
+    usage ? `${usage.total_tokens.toLocaleString("en-US")} tokens` : null,
+    cost === null ? null : `$${cost.toFixed(4)}`,
+  ].filter(Boolean);
+
+  return <p className="text-muted-foreground text-xs">{parts.join(" · ")}</p>;
 }

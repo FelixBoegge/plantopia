@@ -28,7 +28,7 @@ def get_diagnosis(
 
     record, steps = found
     return DiagnosisDetailOut(
-        diagnosis=converters.diagnosis(record),
+        diagnosis=converters.diagnosis(record, sources=service.sources_for(record)),
         roadmap_steps=[converters.roadmap_step(step) for step in steps],
     )
 

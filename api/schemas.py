@@ -36,6 +36,34 @@ class CandidateOut(BaseModel):
     distinguishing_test: str
 
 
+class SourceOut(BaseModel):
+    """One passage a diagnosis consulted.
+
+    Name, section and provenance — and deliberately **no score and no text**. `M4` records
+    that corpus cosine scores and Tavily relevance scores share `retrieved` and are not
+    comparable; publishing either invites comparing them, which is why the retired UI
+    labelled this list by source rather than scoring it. The text is omitted because a
+    reader wants to know what was read, and eighteen passages of it would bury the
+    differential.
+    """
+
+    name: str
+    section: str
+    origin: Literal["knowledge_base", "web"]
+
+
+class TokenUsageOut(BaseModel):
+    """What a diagnosis spent, in tokens.
+
+    Shown beside the cost rather than instead of it: a price on its own reads as a charge,
+    where tokens and a price together read as a measurement.
+    """
+
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
 class DiagnosisOut(BaseModel):
     id: UUID
     plant_id: UUID
@@ -44,7 +72,16 @@ class DiagnosisOut(BaseModel):
     reasoning: str
     candidates: list[CandidateOut]
     created_at: datetime
+
+    # What it spent. `null` rather than zero where nothing was measured — a failed run
+    # records no cost (`M18`), and neither does any diagnosis made before this was kept.
+    # Zero would claim the run was measured and free.
     cost_usd: float | None
+    token_usage: TokenUsageOut | None = None
+
+    # Every passage the diagnosis was given, in the order retrieval returned them. Empty
+    # for a diagnosis reached before these were carried, which is a real answer.
+    sources: list[SourceOut] = []
 
     # Where the species this was reasoned from came from, and whether a person agreed to
     # it. `null` means unknown, which is what every diagnosis made before this was recorded

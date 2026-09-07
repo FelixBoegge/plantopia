@@ -53,6 +53,8 @@ function diagnosis(overrides: Partial<Diagnosis> = {}): Diagnosis {
     weather: null,
     created_at: "2026-08-20T10:00:00Z",
     cost_usd: null,
+    token_usage: null,
+    sources: [],
     ...overrides,
   };
 }

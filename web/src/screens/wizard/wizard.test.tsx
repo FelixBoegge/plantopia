@@ -77,6 +77,8 @@ const DETAIL = {
     ],
     created_at: "2026-03-02T12:00:00Z",
     cost_usd: 0.04,
+    token_usage: null,
+    sources: [],
   },
   roadmap_steps: [
     {

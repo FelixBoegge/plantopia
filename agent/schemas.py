@@ -244,6 +244,14 @@ class QuestionSet(BaseModel):
     questions: list[Question] = Field(default_factory=list)
 
 
+# How a passage says it came from the open web rather than the curated corpus. The two
+# are not comparable — a corpus section was written for this project, a web result was
+# found — and `M4` records that their scores land in one list and must not be ranked
+# together. Defined here, beside the field that carries it, because both the tool that
+# writes it (`tools/web_search`) and the readers that branch on it need the same string.
+WEB_DOC_PREFIX = "web:"
+
+
 class Passage(BaseModel):
     doc_id: str
     section: str

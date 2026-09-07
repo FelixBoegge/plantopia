@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from agent.schemas import Passage
+from agent.schemas import WEB_DOC_PREFIX, Passage
 from core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ def web_search_plant_info(
 def _to_passage(result: dict) -> Passage:
     host = urlparse(result["url"]).netloc or "unknown"
     return Passage(
-        doc_id=f"web:{host}",
+        doc_id=f"{WEB_DOC_PREFIX}{host}",
         section=result.get("title") or "Web result",
         text=result.get("content") or "",
         score=max(0.0, min(1.0, float(result.get("score", 0.0)))),

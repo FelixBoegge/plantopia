@@ -49,6 +49,8 @@ const DETAIL = {
     ],
     created_at: "2026-03-01T12:00:00Z",
     cost_usd: null,
+    token_usage: null,
+    sources: [],
   },
   roadmap_steps: [],
 };

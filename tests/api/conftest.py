@@ -27,6 +27,7 @@ from api import dependencies
 from api.main import create_app
 from core.blobs import PostgresBlobStore
 from core.config import Settings
+from data.repositories.corpus import CorpusRepository
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.feedback import FeedbackRepository
 from data.repositories.messages import MessageRepository
@@ -150,6 +151,7 @@ def make_service(db):
             diagnoses=DiagnosisRepository(db),
             roadmap=RoadmapRepository(db),
             feedback=FeedbackRepository(db),
+            corpus=CorpusRepository(db),
             blobs=PostgresBlobStore(db),
             now=lambda: NOW,
         )
