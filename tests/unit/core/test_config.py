@@ -73,19 +73,6 @@ def test_settings_thresholds_must_be_probabilities(monkeypatch):
         Settings(_env_file=None)
 
 
-def test_cross_modal_retrieval_is_off_by_default(monkeypatch):
-    """No multimodal embedding model is currently reachable, so the path must not
-    fire doomed requests on every diagnosis."""
-    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
-    assert Settings(_env_file=None).multimodal_embeddings is False
-
-
-def test_cross_modal_retrieval_can_be_enabled(monkeypatch):
-    monkeypatch.setenv("PLANTOPIA_OPENROUTER_API_KEY", "sk-test")
-    monkeypatch.setenv("PLANTOPIA_MULTIMODAL_EMBEDDINGS", "true")
-    assert Settings(_env_file=None).multimodal_embeddings is True
-
-
 def test_the_jwt_secret_has_no_default(monkeypatch):
     """A generated secret would work perfectly here and log everybody out at random in
     production: every restart invalidates every token issued before it, and the cause

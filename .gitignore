@@ -12,12 +12,9 @@ data/plantopia.db
 # a second, separate one.
 data/plantopia.db.checkpoints*
 data/plantopia.db.chat-checkpoints*
-data/chroma/
-# The one-shot export of Chroma's vectors, used to seed pgvector with byte-identical
 # numbers while the parity gate runs. Local scratch: a deployment embeds the corpus
 # itself (`python -m knowledge.ingest_corpus`), and the committed fixture in
 # eval/fixtures/ is what preserves the comparison.
-data/corpus_vectors.json
 data/uploads/
 .playwright-mcp/
 .superpowers/
@@ -38,7 +35,6 @@ web/coverage/
 web/*.tsbuildinfo
 web/.playwright-mcp/
 # The browser tests' own state: a vector store, a mail sink, traces and reports.
-tests/e2e/.chroma/
 tests/e2e/mail.jsonl
 web/test-results/
 web/playwright-report/

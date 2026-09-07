@@ -1,6 +1,5 @@
 """Shared pytest fixtures. Populated as tasks add fixtures."""
 
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -10,12 +9,13 @@ import pytest
 from agent.deps import Deps
 from core.blobs import PostgresBlobStore
 from core.config import Settings
+from data.models import CorpusChunk
 from data.repositories.diagnoses import DiagnosisRepository
 from data.repositories.observations import ObservationRepository
 from data.repositories.plants import PlantRepository
 from data.repositories.roadmap import RoadmapRepository
-from knowledge.ingest import load_corpus
-from knowledge.retriever import ChromaRetriever, build_vectorstore
+from knowledge.ingest import chunk_text, load_corpus
+from knowledge.pgvector_retriever import PgVectorRetriever
 from tests.fakes.chat_models import ScriptedStructuredModel
 from tests.fakes.embeddings import HashingEmbeddings
 
@@ -92,25 +92,43 @@ def fixture_corpus():
 
 
 @pytest.fixture
-def chroma_retriever(fixture_corpus):
-    """An in-memory Chroma retriever over the corpus, using offline embeddings.
+def corpus_retriever(db, fixture_corpus):
+    """A retriever over the real corpus, embedded offline into the test database.
 
-    The same ``HashingEmbeddings`` instance serves both paths: it satisfies the
-    LangChain ``Embeddings`` interface for text and exposes ``embed_image`` for the
-    cross-modal path, so neither path touches a network. A uuid suffix on the
-    collection name keeps each test's collection isolated from every other test.
+    ``HashingEmbeddings`` rather than the provider, so nothing touches a network and the
+    ranking is still meaningful — cosine similarity between two of its vectors reflects
+    real word overlap. ``content`` is ``chunk_text`` because that is the string both this
+    and ``knowledge.ingest_corpus`` embed; a different string would be a different vector.
+
+    Rows go into the per-test transaction, so each test gets the corpus and none of them
+    sees another's. This replaced an in-memory Chroma collection when Chroma was deleted;
+    the two were compared over all 87 golden-set queries first and returned identical
+    passages at every rank.
     """
+    texts = [chunk_text(chunk) for chunk in fixture_corpus]
     embeddings = HashingEmbeddings()
-    store = build_vectorstore(
-        chunks=fixture_corpus,
-        embeddings=embeddings,
-        collection_name=f"test-corpus-{uuid.uuid4().hex}",
+    vectors = embeddings.embed_documents(texts)
+    db.add_all(
+        [
+            CorpusChunk(
+                doc_id=chunk.doc_id,
+                section=chunk.section,
+                name=chunk.name,
+                content=text,
+                category=chunk.category,
+                transmissible=chunk.transmissible,
+                severity=chunk.severity,
+                embedding=vector,
+            )
+            for chunk, text, vector in zip(fixture_corpus, texts, vectors, strict=True)
+        ]
     )
-    return ChromaRetriever(store, embeddings)
+    db.flush()
+    return PgVectorRetriever(db, embeddings)
 
 
 @pytest.fixture
-def make_deps(db, owner, now, chroma_retriever):
+def make_deps(db, owner, now, corpus_retriever):
     """Factory returning a Deps wired entirely with fakes.
 
     Override any field per test, for example::
@@ -127,7 +145,7 @@ def make_deps(db, owner, now, chroma_retriever):
             "gate_model": ScriptedStructuredModel([]),
             "vision_model": ScriptedStructuredModel([]),
             "chat_model": ScriptedStructuredModel([]),
-            "retriever": chroma_retriever,
+            "retriever": corpus_retriever,
             "blobs": PostgresBlobStore(db),
             "plants": PlantRepository(db),
             "observations": ObservationRepository(db),

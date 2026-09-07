@@ -7,11 +7,9 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.19.1",
     "argon2-cffi>=25.1.0",
-    "chromadb>=1.5.9",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "langchain>=1.3.14",
-    "langchain-chroma>=1.1.0",
     "langchain-community>=0.4.2",
     "langchain-openai>=1.4.1",
     "langgraph>=1.2.10",
@@ -51,7 +49,7 @@ pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-m 'not integration and not llm' --strict-markers --cov --cov-fail-under=85"
 markers = [
-    "integration: real SQLite and Chroma, still no LLM or network",
+    "integration: excluded from the default run; ask for it with -m integration",
     "llm: hits the real model, costs money, opt-in only",
 ]
 filterwarnings = ["error::DeprecationWarning:plantopia.*"]

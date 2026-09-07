@@ -12,18 +12,25 @@ from typing import ClassVar
 
 from langchain_core.embeddings import Embeddings
 
+from data.models import EMBEDDING_DIMENSIONS
+
 _TOKEN_RE = re.compile(r"[a-z]+")
 
 
 class HashingEmbeddings(Embeddings):
     """Bag-of-words hashing embeddings for tests.
 
-    Serves both the LangChain text-embeddings interface (``embed_documents`` and
-    ``embed_query``) and the image-embedder protocol (``embed_image``), so the same
-    instance can drive both the text and cross-modal retrieval paths in tests.
+    Implements the LangChain text-embeddings interface (``embed_documents`` and
+    ``embed_query``). It served an ``embed_image`` protocol too, until the cross-modal
+    path was removed for want of any reachable model that could supply it (``U2``).
     """
 
-    dimensions: ClassVar[int] = 256
+    # The corpus column's width, not an arbitrary one. `corpus_chunks.embedding` is
+    # `vector(1536)` and cannot store anything narrower, so a fake that produced its own
+    # width could not be written to the table the retriever reads. The extra dimensions
+    # are zeros for every token that does not hash into them, and zeros change no dot
+    # product and no norm — so cosine similarity is the same geometry either way.
+    dimensions: ClassVar[int] = EMBEDDING_DIMENSIONS
 
     def _embed(self, text: str) -> list[float]:
         vector = [0.0] * self.dimensions
@@ -40,7 +47,3 @@ class HashingEmbeddings(Embeddings):
 
     def embed_query(self, text: str) -> list[float]:
         return self._embed(text)
-
-    def embed_image(self, data: bytes, media_type: str) -> list[float]:
-        """Deterministic pseudo-embedding for an image, no real vision involved."""
-        return self._embed(f"image {media_type} {data!r}")

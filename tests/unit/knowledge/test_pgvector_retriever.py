@@ -1,9 +1,9 @@
 """The pgvector retriever, on its own terms.
 
-Not wired into the application: retrieval still runs on Chroma, and the move waits until
-the embedding model is chosen (`docs/known-limitations.md`). These tests hold the
-implementation honest in the meantime — against a small synthetic corpus with vectors
-chosen so the expected ordering is arithmetic rather than a guess.
+The only retrieval path there is, as of 2026-09-07. These tests hold it honest against a
+small synthetic corpus with vectors chosen so the expected ordering is arithmetic rather
+than a guess — which is what the real corpus cannot give you, its ranking being a fact
+about the corpus rather than about this code.
 
 No embedding calls: every test supplies vectors directly.
 """
@@ -157,10 +157,3 @@ def test_known_document_ids_are_unique_and_sorted(retriever):
         "root-rot",
         "spider-mites",
     )
-
-
-def test_image_search_reports_itself_unavailable(retriever):
-    """No embedding model that accepts images is reachable (U2). Reported rather than
-    silently returning text matches, so the enrich node can skip it and say so."""
-    assert retriever.supports_image_search is False
-    assert retriever.search_by_image([], k=4) == []

@@ -5,10 +5,10 @@
 Reads the corpus, embeds each section, stores the result. Costs a fraction of a cent
 for 301 sections.
 
-Nothing reads this table yet: retrieval still runs on Chroma. The table and this
-command exist because the retrieval move is deliberately deferred until the embedding
-model is chosen — see `docs/known-limitations.md`. Changing model means re-running this,
-and vectors from two models are not comparable, so it replaces rather than appends.
+**Retrieval reads this table**, and nothing else. So this command is a deployment step
+rather than groundwork: a database migrated but not ingested serves a diagnosis no
+reference material at all. Changing the embedding model means re-running it, and vectors
+from two models are not comparable, so it replaces rather than appends.
 
 Idempotent: the corpus is keyed by ``(doc_id, section)``, so re-running replaces each
 row rather than accumulating duplicates. That matters because this is a deployment
@@ -41,9 +41,9 @@ def rows_from_corpus(settings) -> list[dict]:
 
     chunks = load_corpus(settings.corpus_path)
     embeddings = build_embeddings()
-    # The same text build_vectorstore embedded for Chroma. It has to stay identical:
-    # a different string is a different vector, and the corpus would silently stop
-    # matching what the parity fixture recorded.
+    # `chunk_text` and not the raw section: it is what the retriever's queries are
+    # compared against, so a different string here is a different vector and a silently
+    # worse ranking. The same function builds the text in every test that embeds a corpus.
     texts = [chunk_text(c) for c in chunks]
     vectors = embeddings.embed_documents(texts)
     return [

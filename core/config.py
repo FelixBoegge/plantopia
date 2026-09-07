@@ -39,21 +39,10 @@ class Settings(BaseSettings):
     vision_model: str = "google/gemini-2.5-flash"
     reasoning_model: str = "openai/gpt-4o"
 
-    # Retrieval embeddings, via OpenRouter's /embeddings endpoint.
+    # Retrieval embeddings, via OpenRouter's /embeddings endpoint. The corpus vectors in
+    # `corpus_chunks` come from this model, and the column is fixed at its width — so
+    # changing it means an Alembic migration and re-running `knowledge.ingest_corpus`.
     embedding_model: str = "openai/text-embedding-3-small"
-    image_match_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
-
-    # Whether embedding_model accepts image input. The cross-modal retrieval path
-    # (spec §10.4) embeds the photograph itself and searches the same corpus, which
-    # only works when text and images share one vector space.
-    #
-    # Off by default because no multimodal embedding model is currently reachable:
-    # gemini-embedding-001 is the only candidate and is data-policy blocked on
-    # restricted keys, while the OpenAI embedding models reject image input outright
-    # ("OpenAI embeddings do not support image_url inputs"). Left on, every diagnosis
-    # would make one doomed HTTP call per uploaded image. Turn it on together with a
-    # multimodal embedding_model and the path lights up with no code change.
-    multimodal_embeddings: bool = False
 
     tavily_api_key: str | None = None
 
@@ -98,7 +87,6 @@ class Settings(BaseSettings):
     # installed has a service on 5432 that the container would otherwise contend with.
     database_url: str = "postgresql+psycopg://plantopia:plantopia@localhost:5433/plantopia"
 
-    chroma_path: Path = Path("data/chroma")
     corpus_path: Path = Path("knowledge/corpus")
 
     # Where the evaluation harness writes its results, and where the API reads the newest

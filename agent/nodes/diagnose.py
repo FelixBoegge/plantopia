@@ -98,27 +98,6 @@ def _build_case(
             "and lower your confidence accordingly."
         )
 
-    if state.visual_matches:
-        sections.append(
-            _format_passages(
-                state.visual_matches,
-                "Visually similar reference material — found by matching the photograph "
-                "itself against the knowledge base, independently of the symptom "
-                "description above. Treat it as a second opinion: corroborating when it "
-                "agrees with the described symptoms, and worth explaining when it does not",
-            )
-        )
-    else:
-        # Stated rather than omitted. The system prompt describes this section
-        # unconditionally, and on the first live run the model filled the silence by
-        # claiming the visual material corroborated its diagnosis — evidence the owner
-        # was shown in the reasoning and that never existed.
-        sections.append(
-            "No photograph-matched reference material is available for this case. Do not "
-            "refer to visually similar reference material in your reasoning, and do not "
-            "treat its absence as evidence either way."
-        )
-
     # Last on purpose: the owner's priors are the weakest evidence in the case and
     # should read after the photograph-derived material, not before it. An empty
     # profile appends nothing at all — no header, no placeholder — because a section
