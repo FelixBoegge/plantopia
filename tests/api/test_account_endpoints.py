@@ -127,6 +127,59 @@ def test_asking_who_i_am_without_a_session_is_refused(db, api_settings):
         assert stranger.get("/api/v1/me").status_code == 401
 
 
+class TestWhatTheAccountMayReach:
+    """`/me` says whether this account may read the evaluation results.
+
+    The client used to decide that for itself, from `account.role === "admin"` in
+    `AppHeader` — a second copy of an authorization rule, in the place least able to keep
+    up with it. It was already wrong once `PLANTOPIA_EVALUATION_OPEN_TO_MEMBERS` existed:
+    the deployment had opened the page and the navigation went on hiding the link.
+
+    So the server answers it, with the same function the endpoint guards itself by. A
+    client showing a link it cannot follow and a client hiding one it can are the same
+    bug, and neither is the client's to get right.
+    """
+
+    def test_an_administrator_may(self, client, db, api_settings):
+        from tests.api.conftest import token_for
+
+        admin = make_user(db, role=ADMIN, verified=True)
+        db.commit()
+        client.headers["Authorization"] = f"Bearer {token_for(admin.id, api_settings)}"
+
+        assert client.get("/api/v1/me").json()["may_read_evaluations"] is True
+
+    def test_an_ordinary_member_may_not(self, client, db, owner):
+        assert client.get("/api/v1/me").json()["may_read_evaluations"] is False
+
+    def test_a_member_may_when_the_deployment_opens_it(self, client, db):
+        from core.config import Settings
+        from tests.api.conftest import token_for
+        from tests.secrets import TEST_JWT_SECRET
+
+        opened = Settings(
+            _env_file=None,
+            openrouter_api_key="sk-test",
+            jwt_secret=TEST_JWT_SECRET,
+            secure_cookies=False,
+            run_sweeper_enabled=False,
+            evaluation_open_to_members=True,
+        )
+        member = make_user(db, role=MEMBER, verified=True)
+        db.commit()
+        client.app.dependency_overrides[dependencies.settings_dep] = lambda: opened
+        client.headers["Authorization"] = f"Bearer {token_for(member.id, opened)}"
+
+        assert client.get("/api/v1/me").json()["may_read_evaluations"] is True
+
+    def test_it_agrees_with_what_the_endpoint_actually_allows(self, client, db, owner):
+        """The point of moving it to the server: one answer, not two that can drift."""
+        claimed = client.get("/api/v1/me").json()["may_read_evaluations"]
+        allowed = client.get("/api/v1/evaluation/latest").status_code == 200
+
+        assert claimed == allowed
+
+
 def test_an_ordinary_account_cannot_read_the_evaluation_results(client, db, owner):
     response = client.get("/api/v1/evaluation/latest")
 

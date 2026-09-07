@@ -326,6 +326,10 @@ class AccountOut(BaseModel):
     consent_at: datetime
     runs_used: int
     runs_allowed: int
+
+    # What this account may reach, answered rather than left to the client to derive from
+    # `role`. See `services/account.Account` for why that derivation was a bug.
+    may_read_evaluations: bool = False
     allowance_resets_at: datetime
 
 

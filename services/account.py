@@ -20,6 +20,7 @@ from core.config import Settings
 from data.models import User
 from data.repositories.errors import RecordNotFoundError
 from data.repositories.usage import UsageRepository
+from identity.roles import may_read_evaluations
 from services import limits
 
 
@@ -37,6 +38,13 @@ class Account:
     runs_used: int
     runs_allowed: int
     allowance_resets_at: datetime
+
+    # Whether this account may read the evaluation results. A *capability*, not the role it
+    # was derived from — `role` is already here and a client could apply the rule itself,
+    # which is exactly what went wrong: `AppHeader` compared it to "admin" and went on
+    # hiding the link after `evaluation_open_to_members` opened the page. Answered here
+    # with the function the endpoint guards itself by, so the two cannot disagree.
+    may_read_evaluations: bool
 
 
 def describe(session: Session, *, user_id: UUID, settings: Settings, now: datetime) -> Account:
@@ -63,4 +71,7 @@ def describe(session: Session, *, user_id: UUID, settings: Settings, now: dateti
         runs_used=usage.count_runs(user_id, kind=limits.DIAGNOSIS, since=limits.period_start(now)),
         runs_allowed=limits.allowance_for(user.tier, settings),
         allowance_resets_at=limits.period_end(now),
+        may_read_evaluations=may_read_evaluations(
+            user.role, open_to_members=settings.evaluation_open_to_members
+        ),
     )

@@ -27,6 +27,7 @@ const ADA = {
   runs_used: 0,
   runs_allowed: 20,
   allowance_resets_at: "2026-04-01T00:00:00Z",
+  may_read_evaluations: false,
 };
 
 const REFUSED = {
@@ -164,17 +165,20 @@ describe("the header", () => {
     await screen.findByRole("heading", { name: "Your plants" });
 
     expect(
-      screen.queryByRole("link", { name: "Evaluation" }),
+      screen.queryByRole("link", { name: "RAG Evaluation Report" }),
     ).not.toBeInTheDocument();
   });
 
   it("offers it to an account that may", async () => {
+    // `may_read_evaluations` and not `role: "admin"`. The role no longer decides this on
+    // the client, deliberately: a deployment can open the page to members, and a header
+    // applying the rule itself kept hiding the link when it did.
     server.use(
       http.post("/api/v1/auth/refresh", () =>
         HttpResponse.json({ access_token: "fresh" }),
       ),
       http.get("/api/v1/me", () =>
-        HttpResponse.json({ ...ADA, role: "admin" }),
+        HttpResponse.json({ ...ADA, may_read_evaluations: true }),
       ),
     );
 
@@ -182,7 +186,7 @@ describe("the header", () => {
     await screen.findByRole("heading", { name: "Your plants" });
 
     expect(
-      screen.getByRole("link", { name: "Evaluation" }),
+      screen.getByRole("link", { name: "RAG Evaluation Report" }),
     ).toBeInTheDocument();
   });
 

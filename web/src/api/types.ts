@@ -57,6 +57,14 @@ export interface Account {
   consent_at: string;
   runs_used: number;
   runs_allowed: number;
+  /**
+   * Whether this account may read the evaluation results.
+   *
+   * The server's answer, not a rule to re-derive from `role`. `AppHeader` used to compare
+   * the role to "admin" itself and kept hiding the link after a deployment opened the page
+   * to members.
+   */
+  may_read_evaluations: boolean;
   allowance_resets_at: string;
 }
 
