@@ -4,6 +4,9 @@ An AI plant-health agent. Upload photos of an ailing plant; Plantopia identifies
 species, asks the questions a photograph cannot answer, and returns a ranked
 differential diagnosis with an integrated-pest-management treatment plan.
 
+**Showcase:**
+https://showcase.turingcollege.com/project/c9a2f37c-a1dc-4538-8898-c4a8f8e1010c
+
 ## Why this exists
 
 Plant symptoms are many-to-one ambiguous. Yellowing leaves alone are consistent with
@@ -22,7 +25,9 @@ answers, the way a clinician takes a history.
 - **Identifies the species** and says how confident it is
 - **Extracts symptoms with their position** on the plant — interveinal yellowing and
   leaf-tip yellowing have different causes
-- **Pauses to ask you two to four questions** chosen for your specific case
+- **Pauses to ask four defined questions** — where the plant is, when the photograph was
+  taken, watering and drainage, the first two already filled in from the file — **plus
+  three or four more** chosen for your specific case
 - **Reasons before it retrieves.** It shortlists the disorders worth reading about *by
   name*, then fetches those documents from a curated corpus of 43 rather than hoping
   similarity search ranks them — which took the correct document from reaching the
@@ -43,10 +48,10 @@ answers, the way a clinician takes a history.
   can confirm or overwrite.
 - **Learns about you, not just your plants.** Durable facts extracted from diagnoses
   and chat — *"tends to overwater"*, *"lives in Berlin"* — are injected as priors into
-  later runs. The **What we've learned** page lists each one with its source, confidence
-  and last-confirmed date, and forgets any of them on one click — a record of inferences a
-  system holds about a person belongs somewhere reachable, not folded under a grid of
-  plants.
+  later runs. **What Plantopia has learned about you** on the account screen lists each one
+  with its source, the date it was first noticed and how sure it is in words, and forgets
+  any of them on one click — a record of inferences a system holds about a person belongs
+  beside the account it is held against, not folded under a grid of plants.
 - **Re-checks progress.** Upload a new photo of a known plant and get a verdict —
   improving, static, worsening, or a new problem — against the prior diagnosis,
   without repeating the clarifying questions: roadmap-step completion already
@@ -358,10 +363,10 @@ ahead of the run, which is the past by the time anybody reads a history.
 
 A diagnosis needs a baseline to answer "is this normal for this plant?" — a fern dropping
 fronds in dry air is a different situation from a succulent doing the same thing. There are
-18 hand-written profiles, and Pl@ntNet can name upwards of 50,000 species, so sharper
-identification *widened* that gap rather than closing it: a run that identifies *Ocimum
-africanum* precisely and then has no idea what it wants is worse off than one that guessed
-"basil".
+8 hand-written profiles, reachable under 19 common and scientific names, and Pl@ntNet can
+name upwards of 50,000 species, so sharper identification *widened* that gap rather than
+closing it: a run that identifies *Ocimum africanum* precisely and then has no idea what it
+wants is worse off than one that guessed "basil".
 
 So there are three tiers, in order:
 
@@ -506,25 +511,29 @@ with nothing serving it.
 `.env.example` lists the stronger models as commented-out upgrades to try if your policy
 permits them.
 
-### Cross-modal retrieval is off by default
+### Cross-modal retrieval was designed, and is not here
 
-The design includes a second retrieval path that embeds the photograph itself and
-searches the same corpus, bypassing the vision model's written description — two paths
+The design included a second retrieval path that embedded the photograph itself and
+searched the same corpus, bypassing the vision model's written description — two paths
 that fail independently (spec §10.4). It needs an embedding model accepting image input,
-and none is currently reachable: the OpenAI embedding models refuse images outright
+and none is reachable: the OpenAI embedding models refuse images outright
 (*"OpenAI embeddings do not support image_url inputs"*), and `gemini-embedding-001`, the
 only candidate, is data-policy blocked on restricted keys.
 
-So `PLANTOPIA_MULTIMODAL_EMBEDDINGS` defaults to `false` and diagnosis runs on the text
-path alone. The code stays in place and tested; set that flag to `true` alongside a
-multimodal `PLANTOPIA_EMBEDDING_MODEL` and the path lights up with no code change.
+So the path was **deleted** rather than left dormant behind a flag. `core/embeddings.py`,
+the two `Retriever` members, the `multimodal_embeddings` and `image_match_threshold`
+settings, the `visual_matches` state field, the branch in `enrich` and the paragraph of
+the diagnose prompt that described it are all gone. Diagnosis runs on the text path
+alone, and there is nothing to switch on: a Protocol member nothing can implement
+honestly is not an extension point, it is a claim. `U2` in `docs/known-limitations.md`
+records it as **closed as not pursued, which is not the same as fixed** — the capability
+was never delivered, and the request shape was never verified against a live model.
 
-When it is off, the pipeline says so rather than staying quiet about it. The retriever
-reports that it cannot search by image, so the enrich node skips the call and does not
-list `search_by_photograph` among the tools used; the diagnose prompt states outright
-that no photograph-matched material is available. Both exist because the first live run
-showed what silence costs — the model narrated visual corroboration it had never been
-given, and the UI credited a search that could not have happened.
+Deleting the prompt's paragraph was half the point. While the path was merely disabled,
+the prompt still described a section of photograph-matched material that never arrived,
+and the first live run showed what that costs: the model narrated visual corroboration it
+had never been given, and the UI credited a search that could not have happened. A prompt
+that describes what it was not sent is worse than one that never mentions it.
 
 A Tavily key is optional. Without it, web-search escalation is skipped and diagnosis
 relies on the curated corpus alone.
@@ -679,22 +688,11 @@ it happened.
 message stays readable on the page, in an export, and behind the timeline's events. That is
 held in place by its own tests rather than by care.
 
-## Capstone showcase
-
-The capstone brief requires this README to link to the project's entry on
-[showcase.turingcollege.com](https://showcase.turingcollege.com/), and requires that entry to
-reflect the project's current state. **That link is not here yet, and belongs here:**
-
-> Showcase: _(add the link once the project is uploaded)_
-
-Uploading is something only the project's owner can do, so it is recorded here rather than
-done. The review does not pass without it.
-
 ## Development
 
 ```bash
 docker compose up -d db          # a prerequisite: the suite uses a real database
-uv run pytest                    # unit, graph and API tests, ~2½ minutes
+uv run pytest                    # unit, graph and API tests, 2½–3 minutes
 uv run ruff check . && uv run ruff format .
 ```
 
@@ -714,14 +712,15 @@ from them. The coverage floor is enforced by `pyproject.toml`, so moving it move
 
 No step reads a secret, because no test needs one, so a pull request from a fork is verified
 exactly as a branch is. The evaluation harness is never run there: it makes real model calls
-and costs about $1.50 a time.
+and costs about $1.55 a time.
 
 `npx playwright install chromium` once, first. The browser tests start their own API and
 their own Vite server on ports of their own, so they cannot collide with anything you have
 open, and they recreate and migrate their own database on every run — `docker compose up
 -d db` is the only prerequisite.
 
-1,606 tests at 95% coverage, gated at 85%.
+2,092 Python tests at 96% coverage, gated at 85%, plus 467 component tests and 21 browser
+tests.
 
 **Tests make no LLM calls.** That constraint is absolute: models arrive through
 `core/llm.py`, which tests replace with a scripted fake, and HTTP is mocked at the
@@ -736,11 +735,17 @@ created per session and dropped afterwards, each test inside a transaction that 
 back. Mocking the database in a project whose subject is the database would produce tests
 that assert on the mock.
 
-**Nothing is tested outside the gated run any more.** The `ui` tier went with the retired UI,
-and `api/` and `identity/` are measured in the default run, so the gate sees everything
-except the evaluation CLI and two one-shot migration tools — each omitted for being
-real-infrastructure wiring with nothing in it a test could assert that would not be a mock
-asserting on itself.
+**What the coverage gate measures, and what it does not.** `api/` and `identity/` are in the
+default run, and the only file explicitly omitted is the evaluation CLI — argument parsing,
+real model construction and file writing, with nothing in it a test could assert that would
+not be a mock asserting on itself.
+
+One gap is worth naming rather than leaving to be discovered: **`runs/` is outside the
+measurement entirely.** The run pool, the event bus, the sweeper and the worker are covered
+by tests (`tests/unit/runs/`, and the API and browser tiers exercise them end to end), but
+the package is absent from `[tool.coverage.run] source`, so none of it counts toward the
+96% and a regression there would not move the number. That is an oversight being reported,
+not a policy.
 
 **The browser tests script the models too.** Everything below the browser is real — a real
 API, a real database, the real graph with its real interrupt — and only the models are
@@ -797,10 +802,23 @@ top-3 — to 100% at top-3.
 
 All four Ragas metrics now score all 28 rows. Earlier runs lost roughly half the judge
 calls to dropped connections and averaged over whatever survived, so figures from before
-that fix are not comparable with these. `eval/REPORT.md` carries the full table, the
-per-metric row counts, and a **What this does not measure** section — the short version
-being that golden cases inject symptoms as text, so none of these numbers say anything
-about the vision layer.
+that fix are not comparable with these. `eval/REPORT.md` carries the full table — including
+the four Ragas scores omitted above — and a **What this does not measure** section, the
+short version being that golden cases inject symptoms as text, so none of these numbers say
+anything about the vision layer.
+
+**This baseline is stale, and knowingly so.** Two changes have landed since 2026-08-19 that
+alter what every golden case is shown, and neither has been measured: the clarifying
+questions were rewritten to ask about a plant's recent treatment and raised in number
+(`M39`), which changes each case's `situation` string that `answer_relevancy` and the
+question-drift figure read directly; and weather became a dated series of named events
+rather than five aggregate numbers, which changes the prompt for the four outdoor cases.
+The table above is the last measured state of the system, not the current one. `M39` and
+the closing section of `eval/REPORT.md` say which way each metric should be expected to
+move and why — including that top-1 on those four cases could honestly go *down*, because a
+dated series can contradict a case's premise out loud where an aggregate was vague enough
+to be read as supporting it. Re-running costs about $1.55, and the next run should be read
+as a new baseline rather than compared against these figures.
 
 ```bash
 uv run python -m eval.run_eval --profile overwaterer
@@ -821,9 +839,10 @@ measured between two `overwaterer` runs rather than against the `empty` baseline
 keeps the comparison clean but leaves the current neutral figure unmeasured; an `empty` run
 is the cheapest thing to do next.
 
-Results are written to `eval/results/` as timestamped JSON and Markdown. The page that
-used to render them went with the retired UI; reading the newest file is the interface until
-the React frontend has somewhere to put it.
+Results are written to `eval/results/` as timestamped JSON and Markdown, and the newest one
+is rendered at `/admin/evaluation` in the web client, reachable from the navbar for an
+account that may read it. The page states each Ragas metric's row count beside its score,
+so a figure averaged over half the set cannot be mistaken for one averaged over all of it.
 
 The harness runs as its own account — created on demand, unverified, with an unusable
 password, so nothing can sign in as it. Its plants and diagnoses are real rows in the real
@@ -843,10 +862,12 @@ the shipped app never imports them.
 | `tools/` | The seven function tools |
 | `knowledge/` | Disorder corpus, ingestion, retrieval |
 | `data/` | Models, repositories, Alembic migrations |
-| `core/` | Config, model factory, guards, image handling, cost, tracing |
+| `core/` | Config, model factory, guards, image handling, EXIF, blobs, mail, cost, tracing |
+| `runs/` | The run pool, event bus, worker and sweeper behind a diagnosis |
 | `eval/` | Golden set, harness, metrics, report renderer |
 | `services/` | The boundary the routers call |
-| `tests/` | `unit/`, `graph/` and `api/` tiers |
+| `web/` | The React client, its component tests, and the browser tests in `web/e2e/` |
+| `tests/` | `unit/`, `graph/` and `api/` tiers, plus the real API and scripted models `web/e2e/` drives |
 | `docs/` | Graph diagrams, code tour, plans, limitations |
 
 ## Known limitations
@@ -876,8 +897,10 @@ would take — is in [`docs/known-limitations.md`](docs/known-limitations.md).
 
 ## Design documents
 
-- [`project_brief_Sprint4.md`](project_brief_Sprint4.md) — the sprint-4 assignment
-  this was built against
+- [`project_brief_capstone.md`](project_brief_capstone.md) — the capstone assignment this
+  is submitted against
+- [`project_brief_Sprint4.md`](project_brief_Sprint4.md) — the earlier sprint assignment
+  the agent itself was built against
 - [`docs/agent-graph.md`](docs/agent-graph.md) — both graphs, drawn from the code, and how
   to open them in LangGraph Studio
 - [`docs/code-tour.md`](docs/code-tour.md) — a reading order through the codebase
