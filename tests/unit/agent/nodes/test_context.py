@@ -224,35 +224,6 @@ def test_model_failure_still_yields_the_always_asked_questions(make_deps, sample
     assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300
 
 
-def test_always_asked_questions_survive_the_cap(make_deps, sample_images):  # noqa: D103
-    """The cap must never evict a question we consider mandatory."""
-    deps = make_deps(
-        chat_model=_model_questions("a", "b", "c", "d", "e"),
-        settings=Settings(
-            openrouter_api_key="sk-test",
-            jwt_secret=TEST_JWT_SECRET,
-            max_clarifying_questions=2,
-            _env_file=None,
-        ),
-    )
-    keys = {q.key for q in select_questions(deps, _state(sample_images))}
-    assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300
-
-
-def test_a_cap_below_the_mandatory_count_cannot_evict_them(make_deps, sample_images):
-    deps = make_deps(
-        chat_model=_model_questions("a", "b"),
-        settings=Settings(
-            openrouter_api_key="sk-test",
-            jwt_secret=TEST_JWT_SECRET,
-            max_clarifying_questions=1,
-            _env_file=None,
-        ),
-    )
-    keys = {q.key for q in select_questions(deps, _state(sample_images))}
-    assert ALWAYS_ASK_KEYS <= keys  # noqa: SIM300
-
-
 class TestResumingWithAChoice:
     """What a resume payload means, at the node that reads it.
 

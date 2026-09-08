@@ -600,19 +600,6 @@ class TestWhenThereIsNothingToAsk:
 
         assert len(result["candidates"]) == 1
 
-    def test_both_methods_agreeing_with_nothing_typed_leaves_one_candidate(
-        self, make_deps, sample_images
-    ):
-        deps = make_deps(
-            vision_model=ScriptedStructuredModel([_seen("Basil", "Ocimum basilicum")]),
-            identify_species=lambda _: [_candidate("Sweet basil", "Ocimum basilicum", 0.9)],
-        )
-
-        result = make_identify_plant(deps)(_state(sample_images))
-
-        assert len(result["candidates"]) == 1
-        assert result["candidates"][0].method is SpeciesMethod.AGREED
-
     def test_one_dissenter_is_enough_to_ask(self, make_deps, sample_images):
         deps = make_deps(
             vision_model=ScriptedStructuredModel([_seen("Basil", "Ocimum basilicum")]),

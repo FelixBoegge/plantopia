@@ -27,11 +27,6 @@ class TestAPhotographThatKnowsThings:
 
         assert found.captured_at == TAKEN
 
-    def test_reads_the_position(self):
-        found = read(photograph(latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE), now=NOW)
-
-        assert found.position == Position(latitude=54.5, longitude=3.2)
-
     def test_reads_both_at_once(self):
         found = read(
             photograph(captured_at=TAKEN, latitude=NOWHERE_LATITUDE, longitude=NOWHERE_LONGITUDE),

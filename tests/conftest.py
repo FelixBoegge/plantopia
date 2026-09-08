@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from sqlalchemy import insert
 
 from agent.deps import Deps
 from core.blobs import PostgresBlobStore
@@ -91,8 +92,39 @@ def fixture_corpus():
     return load_corpus(Path("knowledge/corpus"))
 
 
+@pytest.fixture(scope="session")
+def fixture_corpus_rows(fixture_corpus):
+    """The corpus as rows ready to insert, embedded once for the whole session.
+
+    Embedding 301 sections into 1536 dimensions costs about 40ms, which is nothing once and
+    a measurable share of the suite three hundred times — `corpus_retriever` is reached by
+    roughly a third of the tests here, through `make_deps`. The vectors are deterministic,
+    so computing them per test bought nothing at all.
+
+    Returned as plain dicts rather than ORM instances so the insert can go out as one
+    executemany. Building 301 `CorpusChunk` objects and letting the unit of work flush them
+    was the larger half of the cost.
+    """
+    embeddings = HashingEmbeddings()
+    texts = [chunk_text(chunk) for chunk in fixture_corpus]
+    vectors = embeddings.embed_documents(texts)
+    return [
+        {
+            "doc_id": chunk.doc_id,
+            "section": chunk.section,
+            "name": chunk.name,
+            "content": text,
+            "category": chunk.category,
+            "transmissible": chunk.transmissible,
+            "severity": chunk.severity,
+            "embedding": vector,
+        }
+        for chunk, text, vector in zip(fixture_corpus, texts, vectors, strict=True)
+    ]
+
+
 @pytest.fixture
-def corpus_retriever(db, fixture_corpus):
+def corpus_retriever(db, fixture_corpus_rows):
     """A retriever over the real corpus, embedded offline into the test database.
 
     ``HashingEmbeddings`` rather than the provider, so nothing touches a network and the
@@ -101,30 +133,19 @@ def corpus_retriever(db, fixture_corpus):
     and ``knowledge.ingest_corpus`` embed; a different string would be a different vector.
 
     Rows go into the per-test transaction, so each test gets the corpus and none of them
-    sees another's. This replaced an in-memory Chroma collection when Chroma was deleted;
-    the two were compared over all 87 golden-set queries first and returned identical
-    passages at every rank.
+    sees another's — which is why they are inserted per test rather than once per session:
+    `tests/unit/knowledge/test_pgvector_retriever.py` builds a five-row synthetic corpus and
+    asserts exact rankings over it, and 301 committed rows would change every one of them.
+    One executemany of pre-embedded rows (`fixture_corpus_rows`) rather than 301 ORM
+    objects, which is the same rows at a fraction of the cost.
+
+    This replaced an in-memory Chroma collection when Chroma was deleted; the two were
+    compared over all 87 golden-set queries first and returned identical passages at every
+    rank.
     """
-    texts = [chunk_text(chunk) for chunk in fixture_corpus]
-    embeddings = HashingEmbeddings()
-    vectors = embeddings.embed_documents(texts)
-    db.add_all(
-        [
-            CorpusChunk(
-                doc_id=chunk.doc_id,
-                section=chunk.section,
-                name=chunk.name,
-                content=text,
-                category=chunk.category,
-                transmissible=chunk.transmissible,
-                severity=chunk.severity,
-                embedding=vector,
-            )
-            for chunk, text, vector in zip(fixture_corpus, texts, vectors, strict=True)
-        ]
-    )
+    db.execute(insert(CorpusChunk), fixture_corpus_rows)
     db.flush()
-    return PgVectorRetriever(db, embeddings)
+    return PgVectorRetriever(db, HashingEmbeddings())
 
 
 @pytest.fixture
