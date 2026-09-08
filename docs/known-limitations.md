@@ -545,8 +545,10 @@ after a wait long enough that somebody will have gone elsewhere.
 ### The frontend pass, and what is still only true in a test (2026-09-03)
 
 Two days of using the application as a person rather than as its author, driven from
-`frontend_improvements.md`. Thirty-one items, all closed. What is worth recording is not the
-list — it is in that file — but the shape of what the work found and what it did not settle.
+`frontend_improvements.md` — a checklist deleted on 2026-09-08 once every one of its
+thirty-one items was closed; it is in git history, last at `7705041`. What is worth
+recording was never the list but the shape of what the work found and what it did not
+settle.
 
 **Four of the items were not cosmetic.** Each was reported as a look-and-feel complaint and
 turned out to be behaviour:
