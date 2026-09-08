@@ -10,6 +10,8 @@ from agent.prompts.plan import BUILD_ROADMAP
 from agent.schemas import ContagionAssessment, Roadmap
 from agent.state import DiagnosisState
 from agent.structured import StructuredOutputFailed, invoke_structured
+from core.guards import scan_for_injection, wrap_untrusted
+from tools.knowledge import treatment_notes
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +76,10 @@ def make_build_roadmap(deps: Deps) -> NodeFn:
         if differential is None or differential.is_healthy:
             return {"roadmap": None}
 
-        messages = [SystemMessage(BUILD_ROADMAP), HumanMessage(_build_brief(state))]
+        messages = [
+            SystemMessage(BUILD_ROADMAP),
+            HumanMessage(_build_brief(state, _treatment(deps, differential))),
+        ]
         try:
             roadmap = invoke_structured(deps.chat_model, Roadmap, messages)
         except StructuredOutputFailed as exc:
@@ -86,7 +91,7 @@ def make_build_roadmap(deps: Deps) -> NodeFn:
     return build_roadmap
 
 
-def _build_brief(state: DiagnosisState) -> str:
+def _build_brief(state: DiagnosisState, treatment: list) -> str:
     differential = state.differential
     assert differential is not None  # guarded by the caller
 
@@ -115,4 +120,47 @@ def _build_brief(state: DiagnosisState) -> str:
         answers = "\n".join(f"- {k}: {v}" for k, v in state.answers.items())
         parts.append(f"What the owner told us:\n{answers}")
 
+    # Last, and deliberately after the differential it belongs to: the steps are
+    # written from this, and it reads as guidance about candidates already named
+    # rather than as evidence for naming them.
+    if treatment:
+        parts.append(_format_treatment(treatment))
+
     return "\n\n".join(parts)
+
+
+def _treatment(deps: Deps, differential) -> list:
+    """What the corpus says to do about each candidate.
+
+    Degrades to nothing. A plan written from the differential alone is what this node
+    did for months, which is worse than one that read the corpus and far better than
+    none — so a store that cannot be reached costs the plan its grounding, never the
+    owner their roadmap.
+    """
+    try:
+        return treatment_notes(deps.retriever, [c.disorder_id for c in differential.candidates])
+    except Exception:  # pragma: no cover - a plan must survive an unreachable corpus
+        logger.exception("could not read treatment guidance; planning without it")
+        return []
+
+
+def _format_treatment(passages: list) -> str:
+    """Fence it as untrusted data (spec §13.2).
+
+    The same rule `diagnose` applies to the symptom passages, and it holds here for the
+    same reason: retrieved text is data, never instruction. That this project wrote the
+    corpus itself does not exempt it — the guard is about what the channel is, not
+    about who is trusted on it.
+    """
+    blocks = []
+    for passage in passages:
+        matches = scan_for_injection(passage.text)
+        if matches:
+            logger.warning("injection patterns %s in passage %s", matches, passage.doc_id)
+        blocks.append(
+            wrap_untrusted(
+                f"[{passage.doc_id} — {passage.section}]\n{passage.text}",
+                label=passage.doc_id,
+            )
+        )
+    return "What the reference material says to do:\n\n" + "\n\n".join(blocks)

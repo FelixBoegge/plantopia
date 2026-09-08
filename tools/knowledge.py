@@ -48,6 +48,22 @@ MATCHABLE_SECTIONS = ("Symptoms", "Where on the plant symptoms appear")
 # for the shortlist rather than matched, for the reason above.
 DISCRIMINATING_SECTION = "Look-alikes and how to tell them apart"
 
+# What a treatment plan is written from. Three sections rather than one, because the plan
+# has three things to get right and each is written down in a different place: the steps
+# and their order come from the treatment section, `success_signal` and `day_offset` from
+# how long improvement actually takes, and honest expectations from the prognosis.
+#
+# **Never matched, only fetched by id** — the same reason as the discriminator above and a
+# stronger one. A treatment section describes what to *do*, so it holds almost none of the
+# vocabulary a symptom query is built from and could not win a slot against the symptom
+# sections it would have to outrank. It does not need to: by the time a plan is being
+# written the disorders are already named, so there is nothing to search for.
+TREATMENT_SECTIONS = (
+    "Treatment, least-invasive first",
+    "Expected time to visible improvement",
+    "Prognosis and when to give up",
+)
+
 
 def search_plant_knowledge(
     retriever: Retriever,
@@ -98,3 +114,21 @@ def search_plant_knowledge(
     # tells the reader which candidates similarity actually matched.
     already = {(p.doc_id, p.section) for p in shortlist}
     return shortlist + [p for p in discriminators if (p.doc_id, p.section) not in already]
+
+
+def treatment_notes(retriever: Retriever, doc_ids: Sequence[str]) -> list[Passage]:
+    """What the corpus says to do about each named disorder.
+
+    For `build_roadmap`, which had no access to any of it. The corpus's treatment guidance
+    was written, validated at ingest, embedded and never read by the node that writes the
+    treatment plan — so the plan an owner acts on came from the model alone while the
+    curated advice sat unread.
+
+    Every candidate, not only the leader. A differential the model is unsure of should be
+    able to open with steps that are safe whichever way it resolves, and a plan that read
+    one document cannot do that.
+
+    An id the corpus does not hold is skipped, not an error: `Candidate.disorder_id` is a
+    free string and a model can name a disorder nobody wrote.
+    """
+    return retriever.sections_for(list(doc_ids), TREATMENT_SECTIONS) if doc_ids else []
