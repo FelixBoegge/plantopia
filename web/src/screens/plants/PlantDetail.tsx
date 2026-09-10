@@ -10,6 +10,7 @@ import { Photo } from "@/components/Photo";
 import { Severity } from "@/components/Severity";
 import { Button } from "@/components/ui/button";
 import { useTranscript } from "@/api/hooks/useChat";
+import { TotalCost } from "@/screens/plants/Cost";
 import { Roadmap } from "@/screens/plants/Roadmap";
 import { Timeline } from "@/screens/plants/Timeline";
 import { speciesLine } from "@/screens/plants/species";
@@ -96,6 +97,8 @@ export function PlantDetail() {
         steps={roadmap_steps}
         messages={transcript}
       />
+
+      <TotalCost diagnoses={diagnoses} />
 
       <PlantSettings plantId={plant.id} name={plant.name} />
     </div>

@@ -265,6 +265,84 @@ describe("one plant", () => {
   });
 });
 
+describe("what this has cost", () => {
+  const MEASURED = {
+    ...DIAGNOSIS,
+    cost_usd: 0.0042,
+    token_usage: {
+      prompt_tokens: 900,
+      completion_tokens: 344,
+      total_tokens: 1244,
+    },
+  };
+
+  it("matches a single diagnosis exactly", async () => {
+    signedIn();
+    withPlant({ ...DETAIL, diagnoses: [MEASURED] });
+
+    render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
+
+    expect(await screen.findByText(/1[,.]244 tokens/)).toBeInTheDocument();
+    expect(screen.getByText(/900 prompt, 344 completion/)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.0042/)).toBeInTheDocument();
+  });
+
+  it("sums several diagnoses on the same plant", async () => {
+    signedIn();
+    const second = {
+      ...MEASURED,
+      id: "01a0-diagnosis-2",
+      cost_usd: 0.0058,
+      token_usage: {
+        prompt_tokens: 1100,
+        completion_tokens: 400,
+        total_tokens: 1500,
+      },
+    };
+    withPlant({ ...DETAIL, diagnoses: [MEASURED, second] });
+
+    render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
+
+    expect(await screen.findByText(/2[,.]744 tokens/)).toBeInTheDocument();
+    expect(await screen.findByText(/\$0\.0100/)).toBeInTheDocument();
+  });
+
+  it("says so when nothing has been measured yet", async () => {
+    signedIn();
+    withPlant({
+      ...DETAIL,
+      diagnoses: [{ ...DIAGNOSIS, cost_usd: null, token_usage: null }],
+    });
+
+    render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
+
+    expect(await screen.findByText("Not yet measured.")).toBeInTheDocument();
+  });
+
+  it("notes when some diagnoses on the plant were not measured", async () => {
+    signedIn();
+    withPlant({
+      ...DETAIL,
+      diagnoses: [
+        MEASURED,
+        {
+          ...DIAGNOSIS,
+          id: "01a0-diagnosis-3",
+          cost_usd: null,
+          token_usage: null,
+        },
+      ],
+    });
+
+    render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
+
+    expect(await screen.findByText(/1[,.]244 tokens/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Not every diagnosis on this plant recorded/),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("the plan", () => {
   it("shows each step with why it is there and what success looks like", async () => {
     signedIn();
