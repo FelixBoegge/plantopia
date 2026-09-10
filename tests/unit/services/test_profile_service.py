@@ -332,6 +332,47 @@ def test_the_owners_answers_reach_the_model(owner, db, now):
     assert "twice a week on a schedule" in sent
 
 
+def test_notes_given_upfront_reach_the_model(owner, db, now):
+    """What the owner types when starting a diagnosis, before any question is asked."""
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    model = ScriptedStructuredModel([ProfileUpdate()])
+    service = ProfileService(user_id=owner, repo=ProfileRepository(db), gate_model=model, now=now)
+
+    service.learn_from_diagnosis(
+        answers={"watering": "twice a week"},
+        location_text=None,
+        user_notes="just moved it to a brighter window",
+    )
+
+    assert "just moved it to a brighter window" in str(model.prompts[0])
+
+
+def test_notes_alone_are_enough_to_learn_from(owner, db, now):
+    """A re-check skips the interrupt entirely, so it can carry notes and no answers."""
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    model = ScriptedStructuredModel([ProfileUpdate()])
+    service = ProfileService(user_id=owner, repo=ProfileRepository(db), gate_model=model, now=now)
+
+    service.learn_from_diagnosis(
+        answers={}, location_text=None, user_notes="back from two weeks away"
+    )
+
+    assert model.call_count == 1
+
+
+def test_no_answers_and_no_notes_never_calls_the_model(owner, db, now):
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    model = ScriptedStructuredModel([])
+    service = ProfileService(user_id=owner, repo=ProfileRepository(db), gate_model=model, now=now)
+
+    service.learn_from_diagnosis(answers={}, location_text=None, user_notes=None)
+
+    assert model.call_count == 0
+
+
 def test_the_current_profile_is_sent_so_the_model_can_echo_it_verbatim(owner, db, now):
     """Reconciliation only deduplicates if the model sees the existing wording."""
     from data.engine import transaction

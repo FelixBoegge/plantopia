@@ -85,7 +85,7 @@ def _run_and_state(db, owner, sample_images, *, status=None):
     return started, state
 
 
-def _execute(run, state, *, settings, bus, graph, db, resume=None):
+def _execute(run, state, *, settings, bus, graph, db, resume=None, profile_gate_model=None):
     if resume is not None:
         # What ``RunService.answer`` does before submitting. Driving ``execute`` without it
         # would test a state the application never produces.
@@ -106,6 +106,7 @@ def _execute(run, state, *, settings, bus, graph, db, resume=None):
         resume=resume,
         session_factory=lambda: db,
         build_graph=graph,
+        profile_gate_model=profile_gate_model,
     )
 
 
@@ -175,6 +176,77 @@ def test_a_completed_run_names_the_diagnosis_it_produced(
 
     diagnosis_id = RunRepository(db).get(owner, run.id).diagnosis_id
     assert db.get(Diagnosis, diagnosis_id) is not None
+
+
+def test_a_completed_diagnosis_teaches_the_profile(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """`_learn_profile` fires once the terminal transaction has committed, reading the
+    answers gathered at the interrupt off the finished graph's own state."""
+    from agent.schemas import ExtractedFact, ProfileUpdate
+    from data.repositories.profile import ProfileRepository
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    profile_model = ScriptedStructuredModel(
+        [
+            ProfileUpdate(
+                added=[
+                    ExtractedFact(fact="waters every other day", source="stated", confidence=0.8)
+                ]
+            )
+        ]
+    )
+    run, state = _run_and_state(db, owner, sample_images)
+    _execute(run, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    _execute(
+        run,
+        None,
+        settings=settings,
+        bus=bus,
+        graph=scripted_graph,
+        db=db,
+        resume=ANSWERS,
+        profile_gate_model=profile_model,
+    )
+
+    assert [f.fact for f in ProfileRepository(db).list_all(owner)] == ["waters every other day"]
+    assert "every other day" in str(profile_model.prompts[0])
+
+
+def test_notes_given_at_upload_reach_profile_learning_too(
+    db, owner, sample_images, settings, bus, scripted_graph
+):
+    """Notes typed on the way in are on ``state`` from the start of the run, so they
+    reach extraction alongside whatever the interrupt gathered."""
+    from agent.schemas import ProfileUpdate
+    from tests.fakes.chat_models import ScriptedStructuredModel
+
+    profile_model = ScriptedStructuredModel([ProfileUpdate()])
+    thread_id = diagnosis_thread(owner)
+    run = make_run(db, owner, status=run_status.QUEUED, thread_id=thread_id)
+    started = _Started(id=run.id, user_id=run.user_id, thread_id=run.thread_id)
+    db.commit()
+    state = DiagnosisState(
+        images=sample_images,
+        plant_name="Kitchen basil",
+        location_kind="indoor",
+        user_notes="just moved it to a brighter window",
+    )
+    _execute(started, state, settings=settings, bus=bus, graph=scripted_graph, db=db)
+
+    _execute(
+        started,
+        None,
+        settings=settings,
+        bus=bus,
+        graph=scripted_graph,
+        db=db,
+        resume=ANSWERS,
+        profile_gate_model=profile_model,
+    )
+
+    assert "just moved it to a brighter window" in str(profile_model.prompts[0])
 
 
 def test_every_step_becomes_an_event(db, owner, sample_images, settings, bus, scripted_graph):

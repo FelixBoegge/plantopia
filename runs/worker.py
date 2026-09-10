@@ -60,6 +60,7 @@ def execute(
     resume=None,
     session_factory=None,
     build_graph=None,
+    profile_gate_model=None,
 ) -> None:
     """Drive one pass of a run: from the start, or from where it paused.
 
@@ -70,6 +71,12 @@ def execute(
     replaced. They are not test scaffolding bolted on: they are the same two seams a real
     worker process would need, and having them means this function can be driven end to
     end against scripted models without a single patch.
+
+    ``profile_gate_model`` is the third such seam, narrower than the other two: production
+    never passes it, so a fresh cheap-tier model is built the one time a completed pass
+    actually has something to learn from; a test passes a scripted one so profile learning
+    can be driven without a real model call, the same rule every other test in this suite
+    already follows.
     """
     session = (session_factory or (lambda: open_session(settings)))()
     runs = RunRepository(session)
@@ -104,6 +111,7 @@ def execute(
             bus=bus,
             collector=collector,
             build_graph=build_graph,
+            profile_gate_model=profile_gate_model,
         )
     except RunCancelledError:
         _finish(
@@ -139,6 +147,7 @@ def _drive(
     bus: EventBus,
     collector: UsageCollector,
     build_graph=None,
+    profile_gate_model=None,
 ) -> None:
     """One pass of the graph, publishing as it goes."""
     graph = (build_graph or _real_graph)(session=session, user_id=user_id, settings=settings)
@@ -190,7 +199,16 @@ def _drive(
         if interrupted:
             return
 
-    _complete(runs, session, bus, run_id, graph=graph, config=config)
+    _complete(
+        runs,
+        session,
+        bus,
+        run_id,
+        user_id=user_id,
+        graph=graph,
+        config=config,
+        profile_gate_model=profile_gate_model,
+    )
 
 
 def _real_graph(*, session, user_id: UUID, settings: Settings):
@@ -256,7 +274,9 @@ def _pause(runs, session, bus, run_id, interrupts) -> None:
     bus.publish(Event(run_id=run_id, sequence=sequence, kind=steps.QUESTIONS, payload=payload))
 
 
-def _complete(runs, session, bus, run_id, *, graph, config) -> None:
+def _complete(
+    runs, session, bus, run_id, *, user_id: UUID, graph, config, profile_gate_model=None
+) -> None:
     """The graph finished. Record what it produced, or why it produced nothing.
 
     A run can finish without a diagnosis: the intake guard refuses a photograph that is not
@@ -295,6 +315,11 @@ def _complete(runs, session, bus, run_id, *, graph, config) -> None:
         sequence = runs.append_event(run_id, kind=steps.COMPLETED, payload=payload, now=_now())
     bus.publish(Event(run_id=run_id, sequence=sequence, kind=steps.COMPLETED, payload=payload))
     bus.close_run(run_id)
+
+    # After the terminal commit, so a learning failure can never take back a diagnosis
+    # that has already been persisted and shown — the same ordering `services/chat_service`
+    # uses for the same reason on the chat path.
+    _learn_profile(session, user_id, state, gate_model=profile_gate_model)
 
 
 def _finish(runs, session, bus, run_id, *, to: str, kind: str, detail: dict, error=None) -> None:
@@ -367,21 +392,59 @@ def _total_spend(runs, run_id: UUID, this_pass):
     return this_pass.plus(carried)
 
 
-def _profile_facts(session, user_id: UUID):
-    """The owner's learned profile, rendered for prompts.
+def _profile_service(session, user_id: UUID, *, gate_model=None):
+    """This run's profile service, on this run's own session.
 
     Built here rather than passed in because it belongs to this run's session, which the
-    request that started the run does not share. No gate model: rendering existing facts
-    reads the table and nothing else — the model is only for deciding what to learn, which
-    happens on the chat path.
+    request that started the run does not share.
     """
     from data.repositories.profile import ProfileRepository
     from services.profile_service import ProfileService
 
-    service = ProfileService(
-        user_id=user_id, repo=ProfileRepository(session), gate_model=None, now=_now
+    return ProfileService(
+        user_id=user_id, repo=ProfileRepository(session), gate_model=gate_model, now=_now
     )
-    return service.facts_for_prompt
+
+
+def _profile_facts(session, user_id: UUID):
+    """The owner's learned profile, rendered for prompts.
+
+    No gate model: rendering existing facts reads the table and nothing else — a model is
+    only needed to decide what to learn, which ``_learn_profile`` does separately, once a
+    pass actually finishes.
+    """
+    return _profile_service(session, user_id).facts_for_prompt
+
+
+def _learn_profile(session, user_id: UUID, state, *, gate_model=None) -> None:
+    """Extract durable facts from what this run's owner said, best-effort.
+
+    Covers both halves of what an owner offers: the clarifying answers gathered at the
+    interrupt, and the free-text notes typed upfront when the run was started — both sit on
+    ``state`` for the life of the run regardless of which nodes actually ran, so a re-check
+    that skipped the interrupt entirely still has its notes read if it left any.
+
+    ``gate_model`` is a seam for tests, the same shape ``execute``'s ``profile_gate_model``
+    is. Production never passes it: a fresh cheap-tier model is built the one time there is
+    something to learn from, rather than on every run regardless of whether this guard ever
+    lets it through.
+    """
+    answers = state.get("answers") or {}
+    user_notes = state.get("user_notes")
+    if not answers and not user_notes:
+        return
+
+    try:
+        if gate_model is None:
+            from core.llm import build_gate_model
+
+            gate_model = build_gate_model()
+        service = _profile_service(session, user_id, gate_model=gate_model)
+        service.learn_from_diagnosis(
+            answers=answers, location_text=state.get("location_text"), user_notes=user_notes
+        )
+    except Exception as exc:  # noqa: BLE001 — learning must never break a completed run
+        logger.warning("profile learning failed: %s", exc)
 
 
 def _asked(interrupts) -> dict:

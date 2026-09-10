@@ -144,17 +144,31 @@ class ProfileService:
                     continue
                 self._repo.supersede(self._user_id, fact)
 
-    def learn_from_diagnosis(self, *, answers: dict[str, str], location_text: str | None) -> None:
-        """Extract durable facts from what the owner said during a diagnosis.
+    def learn_from_diagnosis(
+        self,
+        *,
+        answers: dict[str, str],
+        location_text: str | None,
+        user_notes: str | None = None,
+    ) -> None:
+        """Extract durable facts from what the owner said, starting a diagnosis and
+        answering its clarifying questions.
 
         The clarifying answers are the highest-signal text in the application —
-        the owner literally answering how often they water. Called after the
-        diagnosis is committed, so a failure here is invisible to them.
+        the owner literally answering how often they water. ``user_notes`` is the
+        free text offered upfront, before any question was asked — "just moved it
+        to a brighter spot", "back from two weeks away" — and is read here too:
+        it is not owed to a question, but it is no less durable a signal when it
+        is there. Called after the diagnosis is committed, so a failure here is
+        invisible to them.
         """
-        if not answers:
+        if not answers and not user_notes:
             return
 
-        material = "\n".join(f"- {key}: {value}" for key, value in answers.items())
+        lines = [f"- {key}: {value}" for key, value in answers.items()]
+        if user_notes:
+            lines.append(f"- Notes given when starting this diagnosis: {user_notes}")
+        material = "\n".join(lines)
         if location_text:
             material = f"Stated location: {location_text}\n{material}"
 
