@@ -21,6 +21,25 @@ from data.repositories._ownership import require_plant
 
 
 @dataclass(frozen=True, slots=True)
+class DiagnosisSpend:
+    """What every diagnosis on an account has cost, summed.
+
+    Cost and tokens are counted independently, the same way a single ``DiagnosisRecord``
+    carries them: a diagnosis can have one without the other — a failed run records no
+    cost, and neither is set on anything made before either was kept — so ``costed`` and
+    ``tokened`` are not always equal to ``diagnosis_count``. ``None`` rather than ``0``
+    when nothing at all was measured, for the reason `cost_usd` is nullable everywhere
+    else in this codebase: zero would claim the account was measured and free.
+    """
+
+    diagnosis_count: int
+    cost_usd: float | None
+    costed_diagnosis_count: int
+    token_usage: dict[str, int] | None
+    tokened_diagnosis_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class DiagnosisRecord:
     id: UUID
     observation_id: UUID
@@ -155,6 +174,43 @@ class DiagnosisRepository:
             .order_by(Diagnosis.created_at.desc(), Diagnosis.id.desc())
         ).all()
         return [_to_record(*row) for row in rows]
+
+    def total_spend(self, user_id: UUID) -> DiagnosisSpend:
+        """Every diagnosis this owner has, across every plant, summed.
+
+        Selects only the two columns this needs rather than the whole row: the account
+        page has no use for a differential or a passage list, and those are the columns
+        with real weight on them.
+
+        Tokens are summed in Python rather than by the database: ``token_usage_json`` is
+        a JSON blob, not three integer columns, so there is nothing for SQL to ``sum()``
+        without unpacking it first — and the number of diagnoses one account has is
+        nowhere near where that would start to matter.
+        """
+        rows = self._session.execute(
+            select(Diagnosis.cost_usd, Diagnosis.token_usage_json)
+            .join(Plant, Diagnosis.plant_id == Plant.id)
+            .where(Plant.user_id == user_id)
+        ).all()
+
+        costs = [cost for cost, _ in rows if cost is not None]
+        usages = [json.loads(usage) for _, usage in rows if usage is not None]
+
+        return DiagnosisSpend(
+            diagnosis_count=len(rows),
+            cost_usd=sum(costs) if costs else None,
+            costed_diagnosis_count=len(costs),
+            token_usage=(
+                {
+                    "prompt_tokens": sum(u["prompt_tokens"] for u in usages),
+                    "completion_tokens": sum(u["completion_tokens"] for u in usages),
+                    "total_tokens": sum(u["total_tokens"] for u in usages),
+                }
+                if usages
+                else None
+            ),
+            tokened_diagnosis_count=len(usages),
+        )
 
     @staticmethod
     def _owned(user_id: UUID):

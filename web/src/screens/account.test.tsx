@@ -28,6 +28,13 @@ function account(overrides: Record<string, unknown> = {}) {
     runs_allowed: 20,
     allowance_resets_at: "2026-04-01T00:00:00Z",
     may_read_evaluations: false,
+    total_spend: {
+      diagnosis_count: 0,
+      cost_usd: null,
+      costed_diagnosis_count: 0,
+      token_usage: null,
+      tokened_diagnosis_count: 0,
+    },
     ...overrides,
   };
 }
@@ -184,6 +191,93 @@ describe("what has been learned", () => {
     render(<AppRoutes />, { route: "/account" });
 
     expect(await screen.findByText(/Nothing yet/)).toBeInTheDocument();
+  });
+});
+
+describe("what this has cost", () => {
+  it("shows the total across every plant and diagnosis", async () => {
+    signedIn(
+      account({
+        total_spend: {
+          diagnosis_count: 2,
+          cost_usd: 0.01,
+          costed_diagnosis_count: 2,
+          token_usage: {
+            prompt_tokens: 2000,
+            completion_tokens: 744,
+            total_tokens: 2744,
+          },
+          tokened_diagnosis_count: 2,
+        },
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText(/2[,.]744 tokens/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/2[,.]000 prompt, 744 completion/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.0100/)).toBeInTheDocument();
+  });
+
+  it("says so when nothing has been diagnosed yet", async () => {
+    signedIn(
+      account({
+        total_spend: {
+          diagnosis_count: 0,
+          cost_usd: null,
+          costed_diagnosis_count: 0,
+          token_usage: null,
+          tokened_diagnosis_count: 0,
+        },
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(
+      await screen.findByText("Nothing diagnosed yet."),
+    ).toBeInTheDocument();
+  });
+
+  it("says so when diagnoses exist but nothing was measured", async () => {
+    signedIn(
+      account({
+        total_spend: {
+          diagnosis_count: 3,
+          cost_usd: null,
+          costed_diagnosis_count: 0,
+          token_usage: null,
+          tokened_diagnosis_count: 0,
+        },
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText("Not yet measured.")).toBeInTheDocument();
+  });
+
+  it("notes when the total does not cover every diagnosis", async () => {
+    signedIn(
+      account({
+        total_spend: {
+          diagnosis_count: 2,
+          cost_usd: 0.0042,
+          costed_diagnosis_count: 1,
+          token_usage: null,
+          tokened_diagnosis_count: 0,
+        },
+      }),
+    );
+
+    render(<AppRoutes />, { route: "/account" });
+
+    expect(await screen.findByText(/\$0\.0042/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Not every diagnosis recorded a full measurement/),
+    ).toBeInTheDocument();
   });
 });
 

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from core.config import Settings
 from data.models import User
+from data.repositories.diagnoses import DiagnosisRepository, DiagnosisSpend
 from data.repositories.errors import RecordNotFoundError
 from data.repositories.usage import UsageRepository
 from identity.roles import may_read_evaluations
@@ -45,6 +46,11 @@ class Account:
     # hiding the link after `evaluation_open_to_members` opened the page. Answered here
     # with the function the endpoint guards itself by, so the two cannot disagree.
     may_read_evaluations: bool
+
+    # Every diagnosis this account has ever had, across every plant, summed. Read
+    # alongside everything else here for the same reason the allowance is: a screen
+    # asking a second endpoint for this is a screen that draws twice.
+    total_spend: DiagnosisSpend
 
 
 def describe(session: Session, *, user_id: UUID, settings: Settings, now: datetime) -> Account:
@@ -74,4 +80,5 @@ def describe(session: Session, *, user_id: UUID, settings: Settings, now: dateti
         may_read_evaluations=may_read_evaluations(
             user.role, open_to_members=settings.evaluation_open_to_members
         ),
+        total_spend=DiagnosisRepository(session).total_spend(user_id),
     )

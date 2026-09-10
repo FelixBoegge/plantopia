@@ -352,6 +352,22 @@ class AnswersIn(BaseModel):
     species: ChosenSpecies | None = None
 
 
+class TotalSpendOut(BaseModel):
+    """Every diagnosis this account has, across every plant, summed.
+
+    Cost and tokens are independently ``null`` when nothing at all was measured —
+    the account-wide version of the same rule `DiagnosisOut.cost_usd` carries. The two
+    ``*_diagnosis_count`` fields are what let a client say a total is partial rather
+    than presenting it as the whole account's spend when it is not.
+    """
+
+    diagnosis_count: int
+    cost_usd: float | None
+    costed_diagnosis_count: int
+    token_usage: TokenUsageOut | None = None
+    tokened_diagnosis_count: int
+
+
 class AccountOut(BaseModel):
     """A person's own account.
 
@@ -378,6 +394,7 @@ class AccountOut(BaseModel):
     # `role`. See `services/account.Account` for why that derivation was a bug.
     may_read_evaluations: bool = False
     allowance_resets_at: datetime
+    total_spend: TotalSpendOut
 
 
 class EvaluationOut(BaseModel):

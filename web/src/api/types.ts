@@ -66,6 +66,23 @@ export interface Account {
    */
   may_read_evaluations: boolean;
   allowance_resets_at: string;
+  total_spend: TotalSpend;
+}
+
+/**
+ * Every diagnosis this account has, across every plant, summed.
+ *
+ * `cost_usd` and `token_usage` are independently `null` when nothing at all was
+ * measured — the account-wide version of the same rule a single diagnosis's own
+ * `cost_usd` carries. The two `*_diagnosis_count` fields are what let a partial total
+ * be shown as partial rather than as the whole account's spend.
+ */
+export interface TotalSpend {
+  diagnosis_count: number;
+  cost_usd: number | null;
+  costed_diagnosis_count: number;
+  token_usage: TokenUsage | null;
+  tokened_diagnosis_count: number;
 }
 
 export interface Plant {

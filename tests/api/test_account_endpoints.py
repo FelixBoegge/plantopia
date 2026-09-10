@@ -37,6 +37,108 @@ def spent(db, owner):
     return _spend
 
 
+def _diagnosed(db, owner, *, cost_usd, token_usage) -> None:
+    """A plant with one diagnosis carrying the given spend, on this owner."""
+    from agent.schemas import Candidate, Differential, Severity
+    from data.repositories.diagnoses import DiagnosisRepository
+    from data.repositories.observations import ObservationRepository
+    from data.repositories.plants import PlantRepository
+
+    now = datetime.now(UTC)
+    plant_id = PlantRepository(db).create(
+        owner,
+        name="Test plant",
+        species=None,
+        species_confidence=None,
+        location_kind="indoor",
+        location_text=None,
+        photo_ref=None,
+        now=now,
+    )
+    observation_id = ObservationRepository(db).create(
+        owner, plant_id=plant_id, kind="initial", photo_refs=["img-1"], user_notes=None, now=now
+    )
+    DiagnosisRepository(db).create(
+        owner,
+        observation_id=observation_id,
+        plant_id=plant_id,
+        differential=Differential(
+            is_healthy=False,
+            reasoning="Test reasoning.",
+            candidates=[
+                Candidate(
+                    disorder_id="overwatering",
+                    name="Overwatering",
+                    probability=0.8,
+                    supporting_evidence=["wet soil"],
+                    contradicting_evidence=[],
+                    distinguishing_test="Feel the soil three days after watering.",
+                    severity=Severity.ACT_THIS_WEEK,
+                    transmissible=False,
+                ),
+                Candidate(
+                    disorder_id="root-rot",
+                    name="Root rot",
+                    probability=0.2,
+                    supporting_evidence=["wet soil"],
+                    contradicting_evidence=["stem firm"],
+                    distinguishing_test="Unpot the plant and inspect the roots.",
+                    severity=Severity.ACT_TODAY,
+                    transmissible=False,
+                ),
+            ],
+        ),
+        contagion=None,
+        retrieved=[],
+        model="test-model",
+        now=now,
+        cost_usd=cost_usd,
+        token_usage=token_usage,
+    )
+    db.commit()
+
+
+def test_the_account_carries_the_total_spend_across_every_plant(client, db, owner):
+    _diagnosed(
+        db,
+        owner,
+        cost_usd=0.0042,
+        token_usage={"prompt_tokens": 900, "completion_tokens": 344, "total_tokens": 1244},
+    )
+    _diagnosed(
+        db,
+        owner,
+        cost_usd=0.0058,
+        token_usage={"prompt_tokens": 1100, "completion_tokens": 400, "total_tokens": 1500},
+    )
+
+    body = client.get("/api/v1/me").json()["total_spend"]
+
+    assert body["diagnosis_count"] == 2
+    assert body["cost_usd"] == pytest.approx(0.01)
+    assert body["token_usage"] == {
+        "prompt_tokens": 2000,
+        "completion_tokens": 744,
+        "total_tokens": 2744,
+    }
+
+
+def test_another_owners_diagnoses_do_not_count_toward_this_ones_total(
+    client, db, owner, other_owner
+):
+    _diagnosed(
+        db,
+        other_owner,
+        cost_usd=9.99,
+        token_usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    )
+
+    body = client.get("/api/v1/me").json()["total_spend"]
+
+    assert body["diagnosis_count"] == 0
+    assert body["cost_usd"] is None
+
+
 def test_a_signed_in_person_can_ask_who_they_are(client, db, owner):
     response = client.get("/api/v1/me")
 
@@ -106,12 +208,18 @@ def test_another_owners_runs_do_not_count_against_this_one(client, db, other_own
 
 
 def test_the_account_carries_no_secret(client, db, owner):
-    """Not the hash, not a token, not another account's anything."""
+    """Not the hash, not an access or refresh token, not another account's anything.
+
+    Checked by name rather than by the bare word "token": `total_spend.token_usage` is a
+    legitimate, non-secret field — what an LLM call cost, not an authentication token —
+    and would false-positive a blanket substring check.
+    """
     body = client.get("/api/v1/me").text
 
     assert "password" not in body
     assert "hash" not in body
-    assert "token" not in body
+    assert "access_token" not in body
+    assert "refresh_token" not in body
 
 
 def test_asking_who_i_am_without_a_session_is_refused(db, api_settings):

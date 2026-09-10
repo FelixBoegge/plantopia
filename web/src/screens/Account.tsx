@@ -9,6 +9,7 @@ import {
   useFacts,
   useForgetFact,
 } from "@/api/hooks/account";
+import type { TotalSpend } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
 import { Field } from "@/components/Field";
 import { fieldMessages, readable } from "@/api/problems";
@@ -62,6 +63,8 @@ export function Account() {
       ) : null}
 
       <LearnedFacts />
+
+      {account ? <SpendSummary spend={account.total_spend} /> : null}
 
       <YourData />
 
@@ -292,6 +295,51 @@ function DeleteAccount() {
             </Button>
           </div>
         </form>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Every diagnosis this account has, across every plant, summed.
+ *
+ * `cost_usd` and `token_usage` are independently `null` when nothing was measured at
+ * all, and the two `*_diagnosis_count` fields say whether the total is missing some of
+ * an account's diagnoses — the same distinctions `TotalCost` draws on a single plant's
+ * page, computed server-side here instead of over an array already in hand.
+ */
+function SpendSummary({ spend }: { spend: TotalSpend }) {
+  return (
+    <section aria-labelledby="spend" className="border-t pt-6">
+      <h2 id="spend" className="mb-3 text-lg font-medium">
+        What this has cost
+      </h2>
+
+      {spend.diagnosis_count === 0 ? (
+        <p className="text-muted-foreground text-sm">Nothing diagnosed yet.</p>
+      ) : !spend.cost_usd && !spend.token_usage ? (
+        <p className="text-muted-foreground text-sm">Not yet measured.</p>
+      ) : (
+        <>
+          <p className="text-sm">
+            Across every plant and diagnosis:{" "}
+            {[
+              spend.token_usage
+                ? `${spend.token_usage.total_tokens.toLocaleString()} tokens (${spend.token_usage.prompt_tokens.toLocaleString()} prompt, ${spend.token_usage.completion_tokens.toLocaleString()} completion)`
+                : null,
+              spend.cost_usd !== null ? `$${spend.cost_usd.toFixed(4)}` : null,
+            ]
+              .filter(Boolean)
+              .join(" — ")}
+          </p>
+          {spend.costed_diagnosis_count < spend.diagnosis_count ||
+          spend.tokened_diagnosis_count < spend.diagnosis_count ? (
+            <p className="text-muted-foreground text-xs">
+              Not every diagnosis recorded a full measurement; the total above
+              covers only what was.
+            </p>
+          ) : null}
+        </>
       )}
     </section>
   );

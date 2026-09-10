@@ -398,3 +398,120 @@ class TestTheSpeciesProvenance:
 
         record = repo.get(owner, diagnosis_id)
         assert record.species_method is None
+
+
+class TestTotalSpend:
+    """Every diagnosis an account has, across every plant, summed."""
+
+    def test_an_account_with_nothing_yet(self, db, owner):
+        spend = DiagnosisRepository(db).total_spend(owner)
+
+        assert spend.diagnosis_count == 0
+        assert spend.cost_usd is None
+        assert spend.token_usage is None
+
+    def test_matches_a_single_measured_diagnosis_exactly(self, db, owner, now):
+        repo = DiagnosisRepository(db)
+        _create_minimal_diagnosis(
+            repo,
+            db,
+            owner,
+            now,
+            token_usage={"prompt_tokens": 900, "completion_tokens": 344, "total_tokens": 1244},
+            cost_usd=0.0042,
+        )
+
+        spend = repo.total_spend(owner)
+
+        assert spend.diagnosis_count == 1
+        assert spend.cost_usd == 0.0042
+        assert spend.costed_diagnosis_count == 1
+        assert spend.token_usage == {
+            "prompt_tokens": 900,
+            "completion_tokens": 344,
+            "total_tokens": 1244,
+        }
+        assert spend.tokened_diagnosis_count == 1
+
+    def test_sums_several_diagnoses_across_different_plants(self, db, owner, now):
+        repo = DiagnosisRepository(db)
+        _create_minimal_diagnosis(
+            repo,
+            db,
+            owner,
+            now,
+            token_usage={"prompt_tokens": 900, "completion_tokens": 344, "total_tokens": 1244},
+            cost_usd=0.0042,
+        )
+        _create_minimal_diagnosis(
+            repo,
+            db,
+            owner,
+            now,
+            token_usage={"prompt_tokens": 1100, "completion_tokens": 400, "total_tokens": 1500},
+            cost_usd=0.0058,
+        )
+
+        spend = repo.total_spend(owner)
+
+        assert spend.diagnosis_count == 2
+        assert spend.cost_usd == pytest.approx(0.01)
+        assert spend.token_usage == {
+            "prompt_tokens": 2000,
+            "completion_tokens": 744,
+            "total_tokens": 2744,
+        }
+
+    def test_a_diagnosis_missing_one_field_still_counts_the_other(self, db, owner, now):
+        """`cost_usd` and `token_usage` are nullable independently — a diagnosis can carry
+        one without the other, and the two totals must not silently drop to zero together."""
+        repo = DiagnosisRepository(db)
+        _create_minimal_diagnosis(repo, db, owner, now, cost_usd=0.0042, token_usage=None)
+        _create_minimal_diagnosis(
+            repo,
+            db,
+            owner,
+            now,
+            cost_usd=None,
+            token_usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+        )
+
+        spend = repo.total_spend(owner)
+
+        assert spend.diagnosis_count == 2
+        assert spend.cost_usd == 0.0042
+        assert spend.costed_diagnosis_count == 1
+        assert spend.token_usage == {
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+        }
+        assert spend.tokened_diagnosis_count == 1
+
+    def test_nothing_is_measured_but_diagnoses_exist(self, db, owner, now):
+        """Distinct from an account with no diagnoses at all: something was attempted, it
+        just was not measured — from before either column was kept, or a run whose
+        provider reported no usage."""
+        repo = DiagnosisRepository(db)
+        _create_minimal_diagnosis(repo, db, owner, now)
+
+        spend = repo.total_spend(owner)
+
+        assert spend.diagnosis_count == 1
+        assert spend.cost_usd is None
+        assert spend.token_usage is None
+
+    def test_another_owners_diagnoses_are_not_counted(self, db, owner, other_owner, now):
+        repo = DiagnosisRepository(db)
+        _create_minimal_diagnosis(
+            repo,
+            db,
+            other_owner,
+            now,
+            cost_usd=1.23,
+            token_usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
+
+        spend = repo.total_spend(owner)
+
+        assert spend.diagnosis_count == 0

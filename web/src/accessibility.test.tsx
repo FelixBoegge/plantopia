@@ -35,6 +35,13 @@ const ACCOUNT = {
   runs_used: 2,
   runs_allowed: 20,
   allowance_resets_at: "2026-04-01T00:00:00Z",
+  total_spend: {
+    diagnosis_count: 0,
+    cost_usd: null,
+    costed_diagnosis_count: 0,
+    token_usage: null,
+    tokened_diagnosis_count: 0,
+  },
 };
 
 const DETAIL = {
