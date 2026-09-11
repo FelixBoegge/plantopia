@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { request } from "@/api/client";
@@ -70,10 +71,16 @@ export function useSendMessage(plantId: string) {
           if (event.event === "tool") {
             const source = (event.data as { source?: string }).source;
             if (source) {
-              setProgress((seen) => ({
-                ...seen,
-                sources: [...seen.sources, source],
-              }));
+              // Flushed rather than left to React's own batching: this loop can receive
+              // the tool event and the stream's closing frame within the same tick, and
+              // batching would let the announcement below be overwritten before a screen
+              // reader — or anybody — ever saw it announced.
+              flushSync(() =>
+                setProgress((seen) => ({
+                  ...seen,
+                  sources: [...seen.sources, source],
+                })),
+              );
             }
           } else if (event.event === "delta") {
             const text = (event.data as { text?: string }).text ?? "";
