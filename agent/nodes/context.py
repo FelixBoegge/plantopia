@@ -306,15 +306,12 @@ def make_gather_context(deps: Deps) -> NodeFn:
                 # prefilled and the owner may correct it, and the warning has to follow what
                 # is in the field rather than what the camera happened to record.
                 "stale_after_days": deps.settings.stale_photograph_days,
-                # Only when there is a decision to make. One candidate means every method,
-                # and the owner if they said anything, named the same plant — asking
-                # somebody to confirm what nobody disputed is an interruption, not a
-                # choice. The client renders this block only when it is present.
-                **(
-                    {"identification": [c.model_dump() for c in state.candidates]}
-                    if len(state.candidates) > 1
-                    else {}
-                ),
+                # Always present, whatever its length. One candidate means every method,
+                # and the owner if they said anything, named the same plant — nothing to
+                # choose between, but still worth saying plainly instead of leaving the
+                # pause silent about what this plant is going to be recorded as. The client
+                # renders a choice only above one entry, and a plain statement at one.
+                "identification": [c.model_dump() for c in state.candidates],
             }
         )
 

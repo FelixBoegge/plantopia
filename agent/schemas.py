@@ -66,6 +66,7 @@ class SpeciesMethod(StrEnum):
     VISION = "vision"  # The general-purpose vision model's guess.
     PLANTNET = "plantnet"  # The specialist identification service.
     AGREED = "agreed"  # Vision and the service named the same species.
+    ALL_AGREE = "all_agree"  # Vision, the service, and the owner all named the same species.
 
 
 class Severity(StrEnum):
@@ -172,6 +173,14 @@ class SpeciesCandidate(BaseModel):
     scientific_name: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     method: SpeciesMethod
+
+    # Populated only when ``method`` is ``AGREED`` or ``ALL_AGREE`` — each method's own
+    # confidence, kept apart from ``confidence`` above. The two methods' scores are on
+    # scales never calibrated against each other, so collapsing them into one number (the
+    # higher of the two, which is what ``confidence`` holds here) would present two
+    # independent estimates as though agreeing had somehow sharpened either of them.
+    vision_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    plantnet_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class Hypotheses(BaseModel):

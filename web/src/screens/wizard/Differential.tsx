@@ -28,14 +28,17 @@ export function Differential({ detail }: { detail: DiagnosisDetail }) {
 
   return (
     <section aria-labelledby="differential" className="grid gap-4">
-      <h2
-        id="differential"
-        ref={heading}
-        tabIndex={-1}
-        className="text-lg font-medium"
-      >
-        What this looks like
-      </h2>
+      <div className="flex flex-wrap items-center gap-3">
+        <h2
+          id="differential"
+          ref={heading}
+          tabIndex={-1}
+          className="text-lg font-medium"
+        >
+          What this looks like
+        </h2>
+        <Severity healthy={diagnosis.is_healthy} />
+      </div>
 
       {/* Above the reasoning, because which way the plant is going is the first thing
           somebody wants from a re-check and the reasoning is why. Renders nothing at all on

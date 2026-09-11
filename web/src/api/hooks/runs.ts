@@ -14,6 +14,31 @@ export function useRun(runId: string | null) {
   });
 }
 
+/**
+ * This owner's runs, most recent first — for finding one still going.
+ *
+ * Every link that opens the wizard fresh ("Diagnose a plant" in the header, the same on
+ * the plants grid) points at a bare route with no run id, because none of them know
+ * whether one is already in flight. This is how the wizard finds out for itself, rather
+ * than every one of those links having to.
+ *
+ * **`staleTime: 0`, against the app's own 30-second default.** That default is a
+ * reasonable trade for most of what this app reads — a plant's name is not going to
+ * change in the next thirty seconds — but the entire question this query answers is
+ * "is anything active *right now*", and a thirty-second-old answer to that is wrong by
+ * definition, not merely stale: a run that finished twenty seconds ago still reads as
+ * active for the rest of that window, and clicking back in through it resumes a
+ * diagnosis that has already ended instead of opening a fresh one.
+ */
+export function useRuns({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: keys.runs,
+    queryFn: () => request<Run[]>("/runs"),
+    enabled,
+    staleTime: 0,
+  });
+}
+
 export function useDiagnosis(diagnosisId: string | null) {
   return useQuery({
     queryKey: keys.diagnosis(diagnosisId ?? "none"),
@@ -31,7 +56,8 @@ export function useDiagnosis(diagnosisId: string | null) {
 export function useActivity(diagnosisId: string | null) {
   return useQuery({
     queryKey: keys.diagnosisActivity(diagnosisId ?? "none"),
-    queryFn: () => request<ActivityStep[]>(`/diagnoses/${diagnosisId}/activity`),
+    queryFn: () =>
+      request<ActivityStep[]>(`/diagnoses/${diagnosisId}/activity`),
     enabled: diagnosisId !== null,
     select: asSteps,
   });
@@ -80,7 +106,8 @@ export function useStartRun() {
       const form = new FormData();
       if (start.plantName) form.append("plant_name", start.plantName);
       form.append("location_kind", start.locationKind);
-      if (start.statedSpecies) form.append("stated_species", start.statedSpecies);
+      if (start.statedSpecies)
+        form.append("stated_species", start.statedSpecies);
       if (start.locationText) form.append("location_text", start.locationText);
       if (start.notes) form.append("user_notes", start.notes);
       if (start.plantId) form.append("plant_id", start.plantId);

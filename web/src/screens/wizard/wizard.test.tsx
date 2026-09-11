@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { PROBLEM } from "@/api/problems";
 import { AppRoutes } from "@/routes/routes";
-import { render, screen, waitFor } from "@/test/render";
+import { render, screen, waitFor, within } from "@/test/render";
 import { server } from "@/test/server";
 
 const RUN = "01a0-run";
@@ -96,12 +96,15 @@ const DETAIL = {
   ],
 };
 
-function signedIn() {
+function signedIn(runs: unknown[] = []) {
   server.use(
     http.post("/api/v1/auth/refresh", () =>
       HttpResponse.json({ access_token: "fresh" }),
     ),
     http.get("/api/v1/me", () => HttpResponse.json(ACCOUNT)),
+    // No run in progress by default. Every test that lands on the wizard with no run id
+    // in the address bar now checks for one, whether or not that test is about this.
+    http.get("/api/v1/runs", () => HttpResponse.json(runs)),
   );
 }
 
@@ -726,6 +729,28 @@ describe("the result", () => {
     expect(await screen.findByText("Act this week")).toBeInTheDocument();
   });
 
+  it("shows a healthy plant as healthy, not an empty list of candidates", async () => {
+    // A healthy differential carries no candidates at all — without its own badge,
+    // the result was reasoning text followed by silence where a finding should be.
+    signedIn();
+    watching(
+      [COMPLETED],
+      run({ status: "completed", diagnosis_id: DIAGNOSIS, plant_id: PLANT }),
+    );
+    server.use(
+      http.get(`/api/v1/diagnoses/${DIAGNOSIS}`, () =>
+        HttpResponse.json({
+          ...DETAIL,
+          diagnosis: { ...DETAIL.diagnosis, is_healthy: true, candidates: [] },
+        }),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/diagnose?run=${RUN}` });
+
+    expect(await screen.findByText("Healthy")).toBeInTheDocument();
+  });
+
   it("leads to the plant it produced", async () => {
     signedIn();
     watching(
@@ -743,6 +768,52 @@ describe("the result", () => {
     expect(
       await screen.findByRole("link", { name: "Open this plant" }),
     ).toHaveAttribute("href", `/plants/${PLANT}`);
+  });
+});
+
+describe("a run that finished after being resumed", () => {
+  it("is not resumed again once it actually has, even moments later", async () => {
+    // The run really did finish; only the cached list of runs would otherwise lag
+    // behind for as long as the app's own thirty-second default made real. Navigating
+    // through the header rather than starting a second `render()` is what actually
+    // exercises this: `SignedIn`'s header stays mounted across a route change, so the
+    // query cache underneath it survives too — precisely what clicking through the real
+    // app does, and what a fresh `render()` call, with its own cache, cannot stand in for.
+    let status: string = "running";
+    signedIn();
+    server.use(
+      http.get("/api/v1/runs", () => HttpResponse.json([run({ status })])),
+      http.get("/api/v1/plants", () => HttpResponse.json([])),
+    );
+    watching(
+      [STEP, COMPLETED],
+      run({ status: "completed", diagnosis_id: DIAGNOSIS, plant_id: PLANT }),
+    );
+    server.use(
+      http.get(`/api/v1/diagnoses/${DIAGNOSIS}`, () =>
+        HttpResponse.json(DETAIL),
+      ),
+    );
+
+    render(<AppRoutes />, { route: "/diagnose" });
+    await screen.findByText(
+      "The lower leaves are yellowing from the base upward.",
+    );
+    // The run has now finished. Nothing here refetches the list on its own — the next
+    // request for it is what has to see this, not a background clock.
+    status = "completed";
+
+    // Scoped to the header: the plants grid's own empty state offers a second link with
+    // the same name, and that one is not the one somebody clicking around actually meant.
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    await userEvent.click(within(nav).getByRole("link", { name: "My plants" }));
+    await userEvent.click(
+      within(nav).getByRole("link", { name: "Diagnose a plant" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Start the diagnosis" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -935,3 +1006,108 @@ describe("coming back to a run", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("returning without the run id in the address bar", () => {
+  // The header's own "Diagnose a plant" link, and the same on the plants grid, both point
+  // at a bare route with no run id — neither knows whether one is already in flight.
+
+  it("resumes the run still going, rather than starting a new one", async () => {
+    signedIn([run({ status: "running" })]);
+    watching([STEP]);
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByText("Checking the photographs"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Start the diagnosis" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the upload form when nothing is still going", async () => {
+    signedIn([run({ status: "completed" })]);
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByRole("button", { name: "Start the diagnosis" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not resume a run that belongs to a different plant", async () => {
+    // Re-checking one plant must not hijack into an unrelated run somewhere else.
+    signedIn([run({ status: "running", plant_id: "01a0-other-plant" })]);
+    server.use(
+      http.get(`/api/v1/plants/${PLANT}`, () =>
+        HttpResponse.json(plantDetail()),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/plants/${PLANT}/diagnose` });
+
+    expect(
+      await screen.findByRole("button", { name: "Start the diagnosis" }),
+    ).toBeInTheDocument();
+  });
+
+  it("resumes a run scoped to this same plant", async () => {
+    signedIn([run({ status: "awaiting_answers", plant_id: PLANT })]);
+    watching([QUESTIONS], run({ status: "awaiting_answers", plant_id: PLANT }));
+    server.use(
+      http.get(`/api/v1/plants/${PLANT}`, () =>
+        HttpResponse.json(plantDetail()),
+      ),
+    );
+
+    render(<AppRoutes />, { route: `/plants/${PLANT}/diagnose` });
+
+    expect(
+      await screen.findByText("How often do you water it?"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows it is still working, not still waiting, once resumed past its pause", async () => {
+    // The bug this was reported against: navigating away mid-diagnosis and back showed
+    // new steps arriving with no spinner beside them, because "still waiting" used to be
+    // read from a mutation that had never run in this mount — a fresh connection replays
+    // the questions event too, so that read as a pause still open for the rest of the run.
+    signedIn([run({ status: "running" })]);
+    watching([
+      STEP,
+      QUESTIONS,
+      'id: 3\nevent: step\ndata: {"step":"diagnosing","description":"Weighing the evidence"}\n\n',
+    ]);
+
+    render(<AppRoutes />, { route: "/diagnose" });
+
+    expect(
+      await screen.findByText("Weighing the evidence"),
+    ).toBeInTheDocument();
+    // The spinner rather than the copy: the mocked stream closes the instant its frames
+    // are sent, same as elsewhere in this file, so which of the two words it lands on is
+    // a race the spinner does not run.
+    expect(screen.getByTestId("processing-spinner")).toBeInTheDocument();
+    expect(screen.getByText(/Processing|Reconnecting…/)).toBeInTheDocument();
+  });
+});
+
+/** A plant already on record, as the wizard finds it when scoped to one. */
+function plantDetail() {
+  return {
+    plant: {
+      id: PLANT,
+      name: "Kitchen basil",
+      species: null,
+      species_confidence: null,
+      location_kind: "indoor",
+      location_text: null,
+      photo_ref: null,
+      created_at: "2026-03-01T12:00:00Z",
+    },
+    observations: [],
+    diagnoses: [],
+    roadmap_steps: [],
+    feedback_due: false,
+  };
+}

@@ -94,7 +94,9 @@ data: {"step":"identifying","description":"Identifying the species","calls":"acm
   it("keeps a step that carries neither", async () => {
     // Replayed history from a run that started before either was recorded.
     setToken("fresh");
-    serve(() => frames(step(1, "identifying", "Identifying the species"), completed(2)));
+    serve(() =>
+      frames(step(1, "identifying", "Identifying the species"), completed(2)),
+    );
 
     const { result } = renderHook(() => useRunStream(RUN));
 
@@ -150,6 +152,64 @@ data: {"step":"identifying","description":"Identifying the species","calls":"acm
 
     await waitFor(() => expect(result.current.questions).not.toBeNull());
     expect(result.current.questions?.[0]?.key).toBe("watering");
+  });
+
+  it("is paused once the questions arrive", async () => {
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often?","kind":"text","options":[]}]}\n\n',
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.questions).not.toBeNull());
+    expect(result.current.paused).toBe(true);
+  });
+
+  it("is no longer paused once a step arrives after the questions", async () => {
+    // Nothing publishes a step from inside the interrupt, so a step seen once paused can
+    // only mean the resumed pass has started — on the very same connection that saw the
+    // questions arrive, exactly as a run answered without navigating away ever produces.
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often?","kind":"text","options":[]}]}\n\n',
+        step(3, "diagnosing", "Weighing the evidence"),
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.steps).toHaveLength(2));
+    expect(result.current.paused).toBe(false);
+    // Still there, locked — only the pause has lifted.
+    expect(result.current.questions).not.toBeNull();
+  });
+
+  it("reads a run already past its pause the same way on a fresh connection", async () => {
+    // The exact shape a reconnect replays: the questions event and everything that
+    // happened after it, delivered together rather than watched live one at a time. This
+    // is what a run resumed by navigating away and back looks like — a brand new
+    // connection and a mutation that never ran, neither of which was involved when the
+    // answers were actually sent.
+    setToken("fresh");
+    serve(() =>
+      frames(
+        step(1, "checking", "Checking the photographs"),
+        'id: 2\nevent: questions\ndata: {"questions":[{"key":"watering","text":"How often?","kind":"text","options":[]}]}\n\n',
+        step(3, "diagnosing", "Weighing the evidence"),
+        step(4, "building the plan", "Building the plan"),
+      ),
+    );
+
+    const { result } = renderHook(() => useRunStream(RUN));
+
+    await waitFor(() => expect(result.current.steps).toHaveLength(3));
+    expect(result.current.paused).toBe(false);
   });
 
   it("keeps the steps already shown when the questions arrive", async () => {

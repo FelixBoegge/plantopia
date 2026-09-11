@@ -37,19 +37,18 @@ const UNKNOWN = {
   className: "bg-muted text-muted-foreground",
 };
 
-export function Severity({
-  severity,
-  className: extra,
-}: {
-  severity: string | null | undefined;
-  /** Appended, so a caller can size it. Everything else about it stays fixed. */
-  className?: string;
-}) {
-  if (!severity) return null;
-  // An unknown value still renders words. Falling back to the raw value would put
-  // `act_this_week` on a screen, which is a database value, not a sentence.
-  const { text, className } = LABELS[severity] ?? UNKNOWN;
+// Green, and its own case rather than a fourth row in `LABELS`: severity ranks how
+// urgently something needs doing, and a healthy plant has nothing to do anything about
+// — a healthy differential carries no candidates at all (the schema forbids it), so
+// there is no severity to look up in the first place. Checked first for exactly that
+// reason: `severity` is never present alongside it.
+const HEALTHY = {
+  text: "Healthy",
+  className:
+    "bg-green-200 text-green-950 dark:bg-green-300 dark:text-green-950",
+};
 
+function badge(text: string, className: string, extra?: string) {
   return (
     <span
       // `w-fit` because `inline-flex` is not enough on its own: as a grid item this
@@ -59,6 +58,27 @@ export function Severity({
       {text}
     </span>
   );
+}
+
+export function Severity({
+  severity,
+  healthy,
+  className: extra,
+}: {
+  /** Optional: a caller showing only a healthy plant has none to give. */
+  severity?: string | null;
+  /** Whether the plant was found healthy. Takes precedence over `severity`, which a
+      healthy diagnosis never carries one of anyway. */
+  healthy?: boolean;
+  /** Appended, so a caller can size it. Everything else about it stays fixed. */
+  className?: string;
+}) {
+  if (healthy) return badge(HEALTHY.text, HEALTHY.className, extra);
+  if (!severity) return null;
+  // An unknown value still renders words. Falling back to the raw value would put
+  // `act_this_week` on a screen, which is a database value, not a sentence.
+  const { text, className } = LABELS[severity] ?? UNKNOWN;
+  return badge(text, className, extra);
 }
 
 /** The words alone, for places that are already inside a sentence. */

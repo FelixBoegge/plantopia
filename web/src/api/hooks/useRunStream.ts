@@ -47,11 +47,9 @@ export interface Watched {
   steps: Step[];
   questions: Question[] | null;
   /**
-   * The identifications to choose between, when there is a choice.
-   *
-   * `null` covers two different situations that want the same treatment: the run has not
-   * paused yet, and the run paused with every method naming the same plant. Neither is a
-   * question to put to anybody.
+   * Every candidate the run considered, once it has paused. `null` only until then — the
+   * pause always carries at least one candidate once it arrives, whether or not there is
+   * a real choice among them.
    */
   identification: SpeciesCandidate[] | null;
   /**
@@ -61,6 +59,27 @@ export interface Watched {
    * move it without a rebuild. `null` until the run pauses.
    */
   staleAfterDays: number | null;
+  /**
+   * Whether the run is, right now, sitting at the interrupt unanswered.
+   *
+   * Not the same question as "have `questions` ever arrived" — nothing clears those once
+   * they have, on purpose (`Wizard.tsx` still shows what was answered, locked, after the
+   * pause is over). `paused` is instead cleared the moment any step arrives once it has
+   * been set: nothing publishes a step from inside the interrupt itself, so a step seen
+   * afterwards can only mean the pause is over, whichever connection saw it happen.
+   *
+   * That "whichever connection" is the reason this exists as its own field rather than
+   * being answered from `questions !== null` and a mutation's own "did I just submit
+   * this" memory, which is what it used to be answered from. That memory is client-local
+   * state and does not survive the component unmounting — which navigating away from a
+   * running diagnosis and back now deliberately causes, to resume it (`Wizard.tsx`). A
+   * fresh connection replays the questions event too, so the old answer read the pause as
+   * still open on every run resumed that way, and stopped saying it was working for the
+   * rest of it. Sequence order is what a reconnect cannot lose either way: replay delivers
+   * the questions event and whatever came after it in the same order it originally
+   * happened, so a later step is exactly as trustworthy read cold as it was watched live.
+   */
+  paused: boolean;
   /** Set when the run ends, whatever the ending. */
   ending: {
     kind: "completed" | "failed" | "cancelled";
@@ -78,6 +97,7 @@ const NOTHING: Watched = {
   questions: null,
   identification: null,
   staleAfterDays: null,
+  paused: false,
   ending: null,
   connected: false,
 };
@@ -161,10 +181,17 @@ export function useRunStream(runId: string | null): Watched {
           //
           // Consecutive only: a step that genuinely recurs later in a run is a different
           // thing from a node boundary, and is still worth showing.
-          if (seen.steps.at(-1)?.id === id) return seen;
+          if (seen.steps.at(-1)?.id === id) {
+            // Nothing new to show, but a step arriving at all still proves the pause is
+            // over — checked separately so this remains a no-op once it already is.
+            return seen.paused ? { ...seen, paused: false } : seen;
+          }
 
           return {
             ...seen,
+            // Nothing publishes a step from inside the interrupt, so any step seen once
+            // `paused` is set can only mean it no longer applies.
+            paused: false,
             steps: [
               ...seen.steps,
               {
@@ -190,6 +217,7 @@ export function useRunStream(runId: string | null): Watched {
       if (kind === "questions") {
         setWatched((seen) => ({
           ...seen,
+          paused: true,
           questions: (payload.questions as Question[]) ?? [],
           // Absent when the methods agreed, which is why this reads the key rather than
           // the length: an empty array and no array mean the same thing here, and only one

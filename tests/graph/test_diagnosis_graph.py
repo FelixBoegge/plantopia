@@ -238,11 +238,14 @@ class TestStudioEntryPoint:
 
 
 class TestTheIdentificationAtThePause:
-    """Whether the owner is asked which plant it is, driven through the real graph.
+    """Whether the owner is asked *which* plant it is, driven through the real graph.
 
-    The rule is only ever "how many candidates survived": one means every method, and the
-    owner if they said anything, named the same plant, and asking somebody to confirm what
-    nobody disputed is an interruption rather than a choice.
+    `identification` is always on the pause, whatever its length — the client is the one
+    that decides, from how many candidates survived, whether that means a choice to make
+    or a single answer worth stating plainly. One candidate means every method, and the
+    owner if they said anything, named the same plant, so there is nothing to choose
+    between — asking somebody to confirm what nobody disputed would be an interruption
+    rather than a choice — but the pause should not go silent about what it is either.
     """
 
     def _graph(self, make_deps, pipeline_models, **overrides):
@@ -275,7 +278,7 @@ class TestTheIdentificationAtThePause:
         # And the questions are still there: one pause, both things.
         assert payload["questions"]
 
-    def test_agreement_asks_nothing_about_the_species(
+    def test_agreement_offers_no_choice_but_still_says_what_it_is(
         self, make_deps, sample_images, pipeline_models, config
     ):
         from agent.schemas import SpeciesCandidate, SpeciesMethod
@@ -296,10 +299,13 @@ class TestTheIdentificationAtThePause:
         result = graph.invoke(_initial(sample_images), config)
 
         payload = result["__interrupt__"][0].value
-        assert "identification" not in payload
+        # Present, and a single entry: nothing to choose between, but the pause should not
+        # go silent about what this plant is going to be recorded as either.
+        assert len(payload["identification"]) == 1
+        assert payload["identification"][0]["method"] == "agreed"
         assert payload["questions"]
 
-    def test_one_method_alone_asks_nothing_about_the_species(
+    def test_one_method_alone_also_says_what_it_is(
         self, make_deps, sample_images, pipeline_models, config
     ):
         """The shape of every run on a deployment with no key for the second service."""
@@ -307,7 +313,9 @@ class TestTheIdentificationAtThePause:
 
         result = graph.invoke(_initial(sample_images), config)
 
-        assert "identification" not in result["__interrupt__"][0].value
+        payload = result["__interrupt__"][0].value
+        assert len(payload["identification"]) == 1
+        assert payload["identification"][0]["method"] == "vision"
 
     def test_the_question_shape_is_untouched_by_any_of_this(
         self, make_deps, sample_images, pipeline_models, config

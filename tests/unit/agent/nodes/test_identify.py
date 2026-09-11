@@ -262,6 +262,40 @@ class TestWhatTheTwoMethodsProduce:
         assert result["candidates"][0].method is SpeciesMethod.AGREED
         assert result["candidates"][0].confidence == pytest.approx(0.91)
 
+    def test_an_agreed_candidate_carries_each_methods_own_confidence(
+        self, make_deps, sample_images
+    ):
+        """`confidence` above blends the two into the higher of them; a reader wanting to
+        know what each method actually said needs both, not the number that survived."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen(confidence=0.6)]),
+            identify_species=lambda _: [_candidate("Sweet basil", "Ocimum basilicum", 0.91)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        [candidate] = result["candidates"]
+        assert candidate.vision_confidence == pytest.approx(0.6)
+        assert candidate.plantnet_confidence == pytest.approx(0.91)
+
+    def test_a_trailing_variety_is_still_the_same_species(self, make_deps, sample_images):
+        """A cultivar or variety named on top of a species both methods already agree on
+        is not a second plant — offering it as a choice asks somebody to pick between a
+        plant and a variety of itself."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel(
+                [_seen("Jewel plant", "Euphorbia leuconeura")]
+            ),
+            identify_species=lambda _: [
+                _candidate("Euphorbia leuconeura", "Euphorbia leuconeura variegata", 0.8)
+            ],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images))
+
+        assert len(result["candidates"]) == 1
+        assert result["candidates"][0].method is SpeciesMethod.AGREED
+
     def test_a_hybrid_marker_written_two_ways_is_still_one_plant(self, make_deps, sample_images):
         """Found in use, on a strawberry.
 
@@ -599,6 +633,25 @@ class TestWhenThereIsNothingToAsk:
         result = make_identify_plant(deps)(_state(sample_images, stated_species="Ocimum basilicum"))
 
         assert len(result["candidates"]) == 1
+
+    def test_all_three_agreeing_says_so_rather_than_reading_as_a_bare_typed_guess(
+        self, make_deps, sample_images
+    ):
+        """Vision and the specialist had already agreed before the owner's guess was ever
+        compared against anything — a stronger claim than the owner agreeing with whichever
+        one method happened to answer, and the old behaviour discarded it: the candidate
+        collapsed to a bare `TYPED` that said nothing about the other two having concurred."""
+        deps = make_deps(
+            vision_model=ScriptedStructuredModel([_seen("Basil", "Ocimum basilicum", 0.85)]),
+            identify_species=lambda _: [_candidate("Sweet basil", "Ocimum basilicum", 0.9)],
+        )
+
+        result = make_identify_plant(deps)(_state(sample_images, stated_species="Ocimum basilicum"))
+
+        [candidate] = result["candidates"]
+        assert candidate.method is SpeciesMethod.ALL_AGREE
+        assert candidate.vision_confidence == pytest.approx(0.85)
+        assert candidate.plantnet_confidence == pytest.approx(0.9)
 
     def test_one_dissenter_is_enough_to_ask(self, make_deps, sample_images):
         deps = make_deps(

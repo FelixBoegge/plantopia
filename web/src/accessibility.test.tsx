@@ -145,6 +145,8 @@ function everything() {
     http.get(`/api/v1/plants/${PLANT}/messages`, () => HttpResponse.json([])),
     http.get("/api/v1/profile/facts", () => HttpResponse.json([])),
     http.get(`/api/v1/runs/${RUN}`, () => HttpResponse.json({})),
+    // The wizard checks for a run already in progress before showing its upload form.
+    http.get("/api/v1/runs", () => HttpResponse.json([])),
   );
 }
 

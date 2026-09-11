@@ -6,8 +6,9 @@ import type { SpeciesCandidate } from "@/api/types";
  * Which plant this is, when the methods did not agree.
  *
  * Shown only when there is a decision to make. Where every method — and the owner, if they
- * said anything — named the same plant, the run does not offer this at all and nobody is
- * asked to confirm what nobody disputed.
+ * said anything — named the same plant, `IdentifiedAs` says so instead: nobody is asked
+ * to confirm what nobody disputed, but the pause should not go silent about what this
+ * plant is going to be recorded as either.
  *
  * **Each answer says how it was reached, not which product reached it.** "Read from your
  * photo" and "matched against a plant database" mean something to a person holding a plant;
@@ -24,7 +25,7 @@ import type { SpeciesCandidate } from "@/api/types";
  */
 
 /** How each answer was arrived at, in words an owner can weigh. */
-const EVIDENCE: Record<SpeciesCandidate["method"], string> = {
+export const EVIDENCE: Record<SpeciesCandidate["method"], string> = {
   typed: "What you told us",
   vision: "Read from your photo",
   plantnet: "Matched against a plant database",
@@ -43,6 +44,11 @@ const EVIDENCE: Record<SpeciesCandidate["method"], string> = {
   // Still "your photo" rather than "the vision model": the owner took the photograph, and
   // which model read it is not a fact they can weigh.
   agreed: "Your photo and Pl@ntNet's database independently agree",
+  // The strongest of the three: the owner's own guess landed on the same plant the other
+  // two had already, independently, agreed on. Named in full for exactly the same reason
+  // `agreed` is — this is the moment the words carry the most, not the one to be vaguest
+  // about.
+  all_agree: "You, your photo, and Pl@ntNet's database all agree",
 };
 
 /**
@@ -59,11 +65,32 @@ export function confidenceText(confidence: number): string {
   return "little more than a guess";
 }
 
+/**
+ * How sure a candidate is, in words — two figures where both are known.
+ *
+ * An agreed or all-agree candidate blends vision and Pl@ntNet into whichever was higher;
+ * showing only that number would discard what each method actually said in favour of the
+ * more flattering half. Nothing for what somebody typed: they are not estimating a
+ * likelihood, they are telling you what their plant is.
+ */
+export function confidenceLine(candidate: SpeciesCandidate): string | null {
+  if (candidate.method === "typed") return null;
+  if (
+    candidate.vision_confidence != null &&
+    candidate.plantnet_confidence != null
+  ) {
+    return `${confidenceText(candidate.vision_confidence)} from your photo, ${confidenceText(candidate.plantnet_confidence)} from Pl@ntNet`;
+  }
+  return confidenceText(candidate.confidence);
+}
+
 /** Whether anything on screen came from the service that must be credited. */
-function creditsPlantnet(candidates: SpeciesCandidate[]): boolean {
+export function creditsPlantnet(candidates: SpeciesCandidate[]): boolean {
   return candidates.some(
     (candidate) =>
-      candidate.method === "plantnet" || candidate.method === "agreed",
+      candidate.method === "plantnet" ||
+      candidate.method === "agreed" ||
+      candidate.method === "all_agree",
   );
 }
 
@@ -130,9 +157,9 @@ export function Identification({
                   {/* No confidence for what somebody typed. They are not estimating a
                       likelihood, they are telling you what their plant is, and dressing
                       that up as a score would invent a measurement. */}
-                  {candidate.method === "typed"
-                    ? null
-                    : `, ${confidenceText(candidate.confidence)}`}
+                  {confidenceLine(candidate)
+                    ? `, ${confidenceLine(candidate)}`
+                    : null}
                 </span>
               </span>
             </label>

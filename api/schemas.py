@@ -96,7 +96,7 @@ class DiagnosisOut(BaseModel):
     # Where the species this was reasoned from came from, and whether a person agreed to
     # it. `null` means unknown, which is what every diagnosis made before this was recorded
     # honestly says about itself.
-    species_method: Literal["typed", "vision", "plantnet", "agreed"] | None = None
+    species_method: Literal["typed", "vision", "plantnet", "agreed", "all_agree"] | None = None
 
     # How a re-check compared with the diagnosis before it. `null` on a first diagnosis,
     # which has nothing to compare against, and on any made before this was recorded.

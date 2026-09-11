@@ -4,6 +4,7 @@ import { readable } from "@/api/problems";
 import type { Question as Asked, SpeciesCandidate } from "@/api/types";
 import { Notice } from "@/components/Notice";
 import { Identification } from "@/screens/wizard/Identification";
+import { IdentifiedAs } from "@/screens/wizard/IdentifiedAs";
 import { Question } from "@/screens/wizard/Question";
 import { CAPTURE_KEY, Staleness } from "@/screens/wizard/Staleness";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,11 @@ export function Questions({
   failure,
 }: {
   questions: Asked[];
-  /** The identifications to choose between, or `null` when they agreed. */
+  /**
+   * Every candidate the run considered — always at least one once the pause has
+   * actually arrived. `null` only means the pause has not happened yet; whether there
+   * is a real choice to make is a question of length, not presence, answered below.
+   */
   identification: SpeciesCandidate[] | null;
   /** How old a photograph may be before it is worth saying so. */
   staleAfterDays: number | null;
@@ -105,11 +110,15 @@ export function Questions({
       */}
       <fieldset disabled={locked} className="grid min-w-0 gap-4 border-0 p-0">
         {identification && species ? (
-          <Identification
-            candidates={identification}
-            chosen={species}
-            onChoose={setSpecies}
-          />
+          identification.length > 1 ? (
+            <Identification
+              candidates={identification}
+              chosen={species}
+              onChoose={setSpecies}
+            />
+          ) : (
+            <IdentifiedAs candidate={species} />
+          )
         ) : null}
 
         <form

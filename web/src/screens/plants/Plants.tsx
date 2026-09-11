@@ -88,6 +88,7 @@ export function Plants() {
                     <div className="flex flex-col items-start gap-1 overflow-hidden">
                       <Severity
                         severity={latest_diagnosis?.candidates?.[0]?.severity}
+                        healthy={latest_diagnosis?.is_healthy}
                         className="text-sm"
                       />
                       {pending_step_count > 0 ? (

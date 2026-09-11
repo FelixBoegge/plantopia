@@ -48,7 +48,10 @@ export function PlantDetail() {
           {speciesLine(plant) ? (
             <p className="text-muted-foreground italic">{speciesLine(plant)}</p>
           ) : null}
-          <Severity severity={latest?.candidates?.[0]?.severity} />
+          <Severity
+            severity={latest?.candidates?.[0]?.severity}
+            healthy={latest?.is_healthy}
+          />
         </div>
         {/* Both actions together on the right, rather than one here and one under the
             name. Two buttons for the same plant reading as one group is worth more than

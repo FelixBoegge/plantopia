@@ -7,6 +7,7 @@ import {
   useCancelRun,
   useDiagnosis,
   useRun,
+  useRuns,
   useStartRun,
 } from "@/api/hooks/runs";
 import { hasFinished, useRunStream } from "@/api/hooks/useRunStream";
@@ -27,6 +28,16 @@ import { Upload } from "@/screens/wizard/Upload";
  * The run's identifier lives in the address bar. That is what makes a reload survivable and
  * a link to a run shareable with oneself — and it is why this screen reads a status from the
  * server rather than remembering one, because after a reload it has nothing to remember.
+ *
+ * **Arriving with no run id in the address bar does not mean there isn't one.** Every link
+ * that opens this screen fresh — "Diagnose a plant" in the header, the same on the plants
+ * grid — points at a bare route, because none of them know whether a diagnosis is already
+ * in flight. Landing here used to always mean the upload form, which is right the first
+ * time and wrong every time after: navigate away mid-diagnosis and back through one of
+ * those links, and the run kept running with nobody watching, landing you back at the
+ * start of a new one instead of the progress of the old. So this checks for one still going
+ * before ever showing the form, scoped to this plant when the route names one — re-checking
+ * Kitchen basil should not hijack into an unrelated run on a different plant.
  */
 export function Wizard() {
   const { plantId } = useParams();
@@ -37,8 +48,38 @@ export function Wizard() {
   const { data: run } = useRun(runId);
   const plant = usePlant(plantId);
   const { data: account } = useAccount();
+  const runs = useRuns({ enabled: runId === null });
 
   const left = allowance(account);
+
+  // The most recent run still going, if any — the one worth resuming into rather than
+  // starting over. `runs` is newest first, so the first match is the most recent one.
+  //
+  // **Not computed from data still being revalidated.** `useRuns` forces `staleTime: 0`
+  // specifically so a remount always rechecks rather than trusting a cache that can be
+  // thirty seconds behind — but the cached (stale) answer is what a query returns
+  // immediately while that recheck is still in flight, on this very first render. Acting
+  // on it then means setting the run into the address bar from data already known to be
+  // suspect, and nothing afterwards would take it back out once the fresh answer
+  // disagreed: a run that had actually finished stayed resumed for the rest of this
+  // component's life, moments after the cache that caused it was corrected. So this
+  // waits for `isFetching` to clear — true for exactly as long as that recheck takes,
+  // cached data or not — rather than for `data` to merely exist.
+  const active =
+    runId || runs.isFetching
+      ? undefined
+      : runs.data?.find(
+          (candidate) =>
+            !hasFinished(candidate.status) &&
+            (!plantId || candidate.plant_id === plantId),
+        );
+
+  // Into the address bar, the same as a freshly started run: this screen reads a run from
+  // the URL and nowhere else, so finding one still going is only half the fix without
+  // also putting it where the rest of this component looks.
+  useEffect(() => {
+    if (active) setParams({ run: active.id }, { replace: true });
+  }, [active, setParams]);
 
   // Diagnosing a named plant means the form is shaped by what that plant already is: it
   // stops asking for a species and a location that are on record. Rendering before the
@@ -46,6 +87,17 @@ export function Wizard() {
   // reads as the page changing its mind.
   if (!runId && plantId && plant.isPending) {
     return <p role="status">Loading this plant…</p>;
+  }
+
+  // Waiting to know whether one is already going, so the upload form does not flash before
+  // being replaced by the progress of a run that was already in flight — and so a stale
+  // cache is never the thing this decision got made from, on a remount that revalidates it.
+  if (!runId && runs.isFetching) {
+    return <p role="status">Checking for a diagnosis already in progress…</p>;
+  }
+
+  if (active) {
+    return <Watching runId={active.id} finished={hasFinished(active.status)} />;
   }
 
   return runId ? (
@@ -118,17 +170,22 @@ function Watching({ runId, finished }: { runId: string; finished: boolean }) {
   /**
    * Waiting for the person, which is not the same as not working.
    *
-   * Nothing clears `questions` from the stream's state once they are answered — only the
-   * run ending does — so "questions have arrived" cannot stand for "the run is paused".
-   * It did, and the sidebar therefore went quiet for the *whole resumed pass*: `diagnose`
-   * and `plan` both run after the interrupt and either can take a minute, so the page
-   * stopped saying anything exactly when it had the most to wait for.
+   * `watched.paused` is the stream's own answer to this, current across a reconnect —
+   * unlike `questions !== null`, which this used to be, and which never clears once
+   * true. That reads as still-waiting for the entire resumed pass on a connection that
+   * has been open the whole time, which is exactly wrong when `diagnose` and `plan` both
+   * run after the interrupt and either can take a minute — the sidebar went quiet
+   * precisely when it had the most to wait for.
    *
-   * The mutation having succeeded is what says the run was handed back. One mandatory
-   * interrupt per run is what makes that sufficient; a second would need the answered set
-   * tracked, because this never goes false again once it is true.
+   * `!answer.isSuccess` covers the gap `paused` cannot: the moment right after
+   * submitting, before the resumed pass has published anything at all to prove it on the
+   * stream. Both are needed, because navigating away and back resumes into a *new*
+   * connection with a *new* mutation that never ran — its own `isSuccess` is false
+   * whether or not the answers were actually sent, so relying on it alone reintroduces
+   * the same bug for a run reopened this way while `paused` alone would reintroduce it
+   * for the first few seconds after answering.
    */
-  const awaitingAnswers = watched.questions !== null && !answer.isSuccess;
+  const awaitingAnswers = watched.paused && !answer.isSuccess;
   const diagnosisId = ending?.diagnosisId ?? run?.diagnosis_id ?? null;
   const { data: detail } = useDiagnosis(diagnosisId);
 

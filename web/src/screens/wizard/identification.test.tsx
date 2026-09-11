@@ -56,6 +56,24 @@ const AGREED = {
   confidence: 0.9,
   method: "agreed" as const,
 };
+// The same agreement, but carrying each method's own confidence rather than the blended
+// figure above — the shape a real diagnosis actually produces. Deliberately in different
+// bands (0.85 -> "very confident", 0.65 -> "fairly confident") so a test asserting both
+// words actually distinguishes them being shown independently from a coincidence where
+// they happened to land in the same band.
+const AGREED_WITH_BOTH_CONFIDENCES = {
+  ...AGREED,
+  vision_confidence: 0.85,
+  plantnet_confidence: 0.65,
+};
+const ALL_AGREE = {
+  common_name: "Basil",
+  scientific_name: "Ocimum basilicum",
+  confidence: 0.9,
+  method: "all_agree" as const,
+  vision_confidence: 0.85,
+  plantnet_confidence: 0.65,
+};
 
 const STEP = `id: 1\nevent: step\ndata: {"step":"checking","description":"Checking the photographs"}\n\n`;
 
@@ -226,25 +244,92 @@ describe("when the methods disagree", () => {
   });
 });
 
-describe("when they agree", () => {
-  it("asks nothing about the species", async () => {
-    watching([STEP, pause(null)]);
+describe("when there is nothing to choose between", () => {
+  it("says what this will be recorded as instead of offering a choice", async () => {
+    // The pause used to say nothing about the species at all here, which read as this
+    // step having nothing to do with identification — when in fact it had already been
+    // settled, just never said.
+    watching([STEP, pause([AGREED])]);
 
     open();
 
-    await screen.findByLabelText("How often do you water it?");
+    expect(
+      await screen.findByRole("heading", {
+        name: "What this will be recorded as",
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Which plant is this?" }),
     ).not.toBeInTheDocument();
   });
 
+  it("names the plant and how it was reached", async () => {
+    watching([STEP, pause([AGREED])]);
+
+    open();
+
+    expect(await screen.findByText("Basil")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Your photo and Pl@ntNet's database independently agree/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("still asks the questions", async () => {
-    watching([STEP, pause(null)]);
+    watching([STEP, pause([AGREED])]);
 
     open();
 
     expect(
       await screen.findByLabelText("How often do you water it?"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows each method's own confidence rather than one blended figure", async () => {
+    watching([STEP, pause([AGREED_WITH_BOTH_CONFIDENCES])]);
+
+    open();
+
+    expect(
+      await screen.findByText(
+        "Your photo and Pl@ntNet's database independently agree, very confident from your photo, fairly confident from Pl@ntNet",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("credits Pl@ntNet here too", async () => {
+    watching([STEP, pause([AGREED])]);
+
+    open();
+
+    expect(await screen.findByText(/powered by Pl@ntNet/i)).toBeInTheDocument();
+  });
+});
+
+describe("when the owner's guess and both methods all agree", () => {
+  it("says so, distinctly from the owner agreeing with only one of them", async () => {
+    watching([STEP, pause([ALL_AGREE])]);
+
+    open();
+
+    expect(
+      await screen.findByText(
+        /You, your photo, and Pl@ntNet's database all agree/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("still shows each method's own confidence", async () => {
+    watching([STEP, pause([ALL_AGREE])]);
+
+    open();
+
+    expect(
+      await screen.findByText(/very confident from your photo/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/fairly confident from Pl@ntNet/),
     ).toBeInTheDocument();
   });
 });

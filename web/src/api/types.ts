@@ -201,7 +201,8 @@ export interface Diagnosis {
   reasoning: string;
   candidates: Candidate[];
   /** Which method produced the species this was reasoned from; null means unknown. */
-  species_method: "typed" | "vision" | "plantnet" | "agreed" | null;
+  species_method:
+    "typed" | "vision" | "plantnet" | "agreed" | "all_agree" | null;
   /**
    * How this compared with the diagnosis before it.
    *
@@ -322,7 +323,16 @@ export interface SpeciesCandidate {
   common_name: string;
   scientific_name: string | null;
   confidence: number;
-  method: "typed" | "vision" | "plantnet" | "agreed";
+  method: "typed" | "vision" | "plantnet" | "agreed" | "all_agree";
+  /**
+   * Each method's own confidence, present only when `method` is `agreed` or
+   * `all_agree`. `confidence` above is the higher of the two in that case — kept
+   * separately because the two methods' scores are on scales never calibrated
+   * against each other, so a reader wanting to know what each actually said needs
+   * both, not the one number that happened to be larger.
+   */
+  vision_confidence: number | null;
+  plantnet_confidence: number | null;
 }
 
 export interface Question {

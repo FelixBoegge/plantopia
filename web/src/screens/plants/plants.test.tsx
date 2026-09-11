@@ -135,6 +135,24 @@ describe("the plant grid", () => {
     expect(await screen.findByText("Act this week")).toBeInTheDocument();
   });
 
+  it("shows a healthy plant as healthy, not blank", async () => {
+    // A healthy differential carries no candidates, so there is no severity to fall
+    // back to — without its own badge this showed nothing at all beside a plant that
+    // was actually fine.
+    signedIn();
+    withPlants([
+      {
+        plant: BASIL,
+        latest_diagnosis: { ...DIAGNOSIS, is_healthy: true, candidates: [] },
+        pending_step_count: 0,
+      },
+    ]);
+
+    render(<AppRoutes />, { route: "/" });
+
+    expect(await screen.findByText("Healthy")).toBeInTheDocument();
+  });
+
   it("says how much is left to do", async () => {
     signedIn();
     withPlants([
@@ -240,6 +258,18 @@ describe("one plant", () => {
         "The lower leaves are yellowing from the base upward.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("shows a healthy plant as healthy at the top, where a severity would sit", async () => {
+    signedIn();
+    withPlant({
+      ...DETAIL,
+      diagnoses: [{ ...DIAGNOSIS, is_healthy: true, candidates: [] }],
+    });
+
+    render(<AppRoutes />, { route: `/plants/${BASIL.id}` });
+
+    expect(await screen.findByText("Healthy")).toBeInTheDocument();
   });
 
   it("says so when nothing has been diagnosed yet", async () => {

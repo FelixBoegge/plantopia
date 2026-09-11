@@ -188,6 +188,25 @@ def _ranked(candidates: list[SpeciesCandidate], stated: str | None) -> list[Spec
     the other way, rather than being resolved quietly in either direction.
     """
     if stated:
+        matched = next((c for c in candidates if _matches_typed(stated, c)), None)
+        # Not any match — specifically one that is already `AGREED`, meaning vision and
+        # the specialist had already independently concurred before the owner's guess was
+        # ever compared against anything. That is a stronger claim than the owner agreeing
+        # with whichever single method happened to answer, which is the case below, and
+        # earns its own name rather than being folded into a plain `TYPED` that would say
+        # nothing about the other two.
+        if matched is not None and matched.method is SpeciesMethod.AGREED:
+            all_agree = SpeciesCandidate(
+                common_name=matched.common_name,
+                scientific_name=matched.scientific_name,
+                confidence=matched.confidence,
+                method=SpeciesMethod.ALL_AGREE,
+                vision_confidence=matched.vision_confidence,
+                plantnet_confidence=matched.plantnet_confidence,
+            )
+            rest = [c for c in candidates if c is not matched]
+            return [all_agree, *rest]
+
         typed = SpeciesCandidate(
             common_name=stated,
             scientific_name=None,
@@ -260,6 +279,11 @@ def _merged(vision: SpeciesCandidate, found: list[SpeciesCandidate]) -> list[Spe
                 # weaker evidence than either alone, which averaging them would imply.
                 confidence=max(vision.confidence, candidate.confidence),
                 method=SpeciesMethod.AGREED,
+                # Each method's own estimate, kept alongside the blended figure above so a
+                # reader can see what each actually said rather than one number standing in
+                # for both.
+                vision_confidence=vision.confidence,
+                plantnet_confidence=candidate.confidence,
             )
             rest = [other for other in found if other is not candidate]
             return [agreed, *rest]
@@ -301,11 +325,17 @@ def _same_plant(one: SpeciesCandidate, other: SpeciesCandidate) -> bool:
     On the scientific name where both have one, because that is what makes two spellings
     comparable — the recorded fixture has two different plants sharing the common name
     "Mini monstera".
+
+    **A trailing qualifier does not make it a disagreement.** "Euphorbia leuconeura" and
+    "Euphorbia leuconeura variegata" is a cultivar or variety named on top of a species
+    both methods already agree on, not two different plants — and offering that as a
+    choice asks somebody to pick between a plant and a variety of itself. Checked as a
+    prefix in either direction, since either method can be the one that went further.
     """
     if one.scientific_name and other.scientific_name:
-        return _without_hybrid_markers(one.scientific_name) == _without_hybrid_markers(
-            other.scientific_name
-        )
+        a = _without_hybrid_markers(one.scientific_name)
+        b = _without_hybrid_markers(other.scientific_name)
+        return a == b or a.startswith(f"{b} ") or b.startswith(f"{a} ")
     return _without_hybrid_markers(one.common_name) == _without_hybrid_markers(other.common_name)
 
 

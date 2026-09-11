@@ -36,8 +36,8 @@ def test_the_client_declares_every_field_a_candidate_carries():
 def test_the_client_knows_every_method_that_can_produce_one():
     """A method the client does not know is a candidate it cannot attribute — and the
     provenance is the entire reason the choice is worth showing."""
-    declared = re.search(r'method:\s*((?:"[a-z]+"\s*\|?\s*)+);', _interface())
+    declared = re.search(r'method:\s*((?:"[a-z_]+"\s*\|?\s*)+);', _interface())
     assert declared is not None, "the client's method union could not be found"
 
-    known = set(re.findall(r'"([a-z]+)"', declared.group(1)))
+    known = set(re.findall(r'"([a-z_]+)"', declared.group(1)))
     assert known == {method.value for method in SpeciesMethod}

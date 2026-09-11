@@ -54,6 +54,9 @@ function signedIn(who = account(), facts: unknown[] = []) {
     ),
     http.get("/api/v1/me", () => HttpResponse.json(who)),
     http.get("/api/v1/profile/facts", () => HttpResponse.json(facts)),
+    // The wizard checks for a run already in progress before showing its upload form,
+    // even for these tests, which are not about that.
+    http.get("/api/v1/runs", () => HttpResponse.json([])),
   );
 }
 

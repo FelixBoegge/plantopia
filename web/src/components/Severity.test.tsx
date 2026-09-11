@@ -38,6 +38,22 @@ describe("a severity", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("renders a healthy plant as its own green badge, not a severity", () => {
+    // A healthy differential carries no candidates at all — there is no severity to
+    // fall back to, only silence, which read as nothing having been found rather than
+    // as a good result.
+    render(<Severity severity={null} healthy />);
+
+    expect(screen.getByText("Healthy")).toBeInTheDocument();
+  });
+
+  it("prefers healthy over a severity if somehow both are given", () => {
+    render(<Severity severity="act_today" healthy />);
+
+    expect(screen.getByText("Healthy")).toBeInTheDocument();
+    expect(screen.queryByText("Act today")).not.toBeInTheDocument();
+  });
+
   it("offers the same words for a sentence", () => {
     expect(severityText("act_today")).toBe("Act today");
     expect(severityText(null)).toBeNull();
@@ -57,7 +73,10 @@ describe("everywhere else", () => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const path = join(dir, entry.name);
         if (entry.isDirectory()) walk(path);
-        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+        else if (
+          /\.tsx?$/.test(entry.name) &&
+          !/\.test\.tsx?$/.test(entry.name)
+        ) {
           if (path.includes("Severity")) continue;
           const source = readFileSync(path, "utf8");
           // A severity's stored values, appearing anywhere but the component that maps them.

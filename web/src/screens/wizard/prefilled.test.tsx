@@ -110,6 +110,9 @@ function knownPlant(overrides: {
         feedback_due: false,
       }),
     ),
+    // The wizard checks for a run already in progress on this plant before showing its
+    // upload form, even for these tests, which are not about that.
+    http.get("/api/v1/runs", () => HttpResponse.json([])),
   );
 }
 
