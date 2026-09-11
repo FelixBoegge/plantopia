@@ -1,4 +1,4 @@
-# 🌿 Plantopia
+![Plantopia](design/plantopia-banner-source.png)
 
 An AI plant-health agent. Upload photos of an ailing plant; Plantopia identifies the
 species, asks the questions a photograph cannot answer, and returns a ranked
