@@ -283,9 +283,7 @@ class TestWhatTheTwoMethodsProduce:
         is not a second plant — offering it as a choice asks somebody to pick between a
         plant and a variety of itself."""
         deps = make_deps(
-            vision_model=ScriptedStructuredModel(
-                [_seen("Jewel plant", "Euphorbia leuconeura")]
-            ),
+            vision_model=ScriptedStructuredModel([_seen("Jewel plant", "Euphorbia leuconeura")]),
             identify_species=lambda _: [
                 _candidate("Euphorbia leuconeura", "Euphorbia leuconeura variegata", 0.8)
             ],
