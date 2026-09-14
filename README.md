@@ -852,6 +852,25 @@ re-run.
 `ragas` and `pyyaml`, used only by the harness, are `dev`-dependency-group packages —
 the shipped app never imports them.
 
+## Deployment
+
+The database is no longer local-only. Domain data, both LangGraph checkpointers and the
+disorder corpus — vectors included — were migrated from the local `docker compose` Postgres
+to a managed Supabase Postgres project: same schema, same rows, verified row-for-row and
+byte-for-byte after the move (2026-09-14). `PLANTOPIA_DATABASE_URL` in `.env` now points at
+Supabase's session pooler.
+
+The local container is not retired — it is narrower than it used to be. It now exists only
+for development and the test suite, which is what it was always closest to: `tests/postgres.py`
+builds its own `Settings(_env_file=None, ...)`, so the suite never reads `PLANTOPIA_DATABASE_URL`
+from `.env` and always runs against a throwaway database on the local container, never against
+Supabase. `docker compose up -d db` stays a prerequisite for `pytest`, exactly as before.
+
+A multi-stage `Dockerfile` builds the API — `uv sync --frozen` into a slim runtime image
+that runs as a non-root user and reads Cloud Run's `$PORT`. There is still no Dockerfile
+for the frontend, no `api` or `frontend` service in `docker-compose.yml`, and the application
+is not yet deployed anywhere. `docs/deployment-readiness.md` tracks what remains.
+
 ## Project structure
 
 | Directory | Responsibility |

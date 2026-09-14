@@ -1,13 +1,17 @@
 # Deployment readiness
 
 What has to be true before Plantopia is reachable at a public URL. Written 2026-09-07,
-against the tree at that date.
+against the tree at that date. Updated 2026-09-14: the API `Dockerfile` landed and the
+database moved off the local container — both noted in place below rather than rewritten
+around, so this still reads as the record it was.
 
-The short version: the application is feature-complete and verified by CI, and **nothing in
-this repository produces a runnable artefact**. There is no Dockerfile, and
-`docker-compose.yml` brings up only the database. That is `M51`, recorded deliberately on
-2026-09-01 — the capstone review came first, and a running instance means a public URL
-against paid OpenRouter and Pl@ntNet keys. This document is the list that closes it.
+The short version: the application is feature-complete and verified by CI. Two of `M51`'s
+three gaps are closed — an API `Dockerfile` exists, and the database is a managed Supabase
+Postgres rather than the local compose container — but the third is not: no frontend
+Dockerfile, no `api`/`frontend` service in `docker-compose.yml`, and nothing deployed at a
+public URL yet. That gap was recorded deliberately on 2026-09-01 — the capstone review came
+first, and a running instance means a public URL against paid OpenRouter and Pl@ntNet keys.
+This document is the list that closes what remains.
 
 Items are grouped by what happens if you skip them: the first group breaks the deployment,
 the second lets it run wrongly, the third is what you would regret in a month.
@@ -18,15 +22,18 @@ the second lets it run wrongly, the third is what you would regret in a month.
 
 ### 1.1 Build artefacts
 
-- [ ] **Multi-stage `Dockerfile` for the API.** Python 3.12, `uv sync --frozen`, then
+- [x] **Multi-stage `Dockerfile` for the API.** Python 3.12, `uv sync --frozen`, then
       `uvicorn api.main:create_app --factory`. Note that there is deliberately no
       module-level `app` — `api/main.py` says why — so the `--factory` flag is not optional.
+      Landed 2026-09-14, ahead of the rest of this section — it builds and runs, but nothing
+      has pushed the image anywhere yet.
 - [ ] **Multi-stage `Dockerfile` for the frontend.** `npm ci && npm run build` produces
       `web/dist`; the runtime stage is a static server or a reverse proxy.
 - [ ] **`api` and `frontend` services in `docker-compose.yml`.** The compose file's own
       comment already anticipates this ("The API container joins this network later"). Inside
       the network the database is `db:5432`, not `localhost:5433` — the published port exists
-      only for host access.
+      only for host access. Note that this is no longer the production database either way
+      (see 1.3) — this item is about composing a local all-in-one stack, not about deployment.
 
 ### 1.2 The frontend and the API must be same-origin
 
@@ -52,16 +59,36 @@ would not receive it at all, so sessions could never be renewed.
 
 ### 1.3 Database schema and corpus
 
-- [ ] **`alembic upgrade head` on API start**, before the server accepts traffic.
+**Done, for the database this deployment will use.** `PLANTOPIA_DATABASE_URL` points at a
+Supabase Postgres project as of 2026-09-14, and every table — schema, domain rows, both
+LangGraph checkpointers, and `corpus_chunks` with its 1536-dim vectors — was migrated there
+from the local compose database and verified: row counts match exactly, `blobs` matches by
+combined MD5, `corpus_chunks` matches by an order-independent hash of every embedding, and
+`alembic_version` is at the same head revision (`139fad2ecae2`) on both sides. There is no
+separate corpus to ingest for this database; it travelled with the rest of the migration.
+
+The steps below are the general procedure for provisioning a schema and corpus from
+scratch — a different environment, or this one if Supabase is ever replaced. They are not
+outstanding work for the current database.
+
+- [x] **`alembic upgrade head` on API start**, before the server accepts traffic.
       `data/migrations/env.py:31` reads the URL from `Settings`, so no `sqlalchemy.url` in
-      `alembic.ini` needs setting — only `PLANTOPIA_DATABASE_URL`.
-- [ ] **`python -m knowledge.ingest_corpus` as a one-shot** after the migration. This
-      **makes model calls** — one embedding request per batch for 301 sections, roughly
-      $0.0005 — so it needs the OpenRouter key present. It is idempotent by
-      `doc_id::section`, so re-running it is safe.
+      `alembic.ini` needs setting — only `PLANTOPIA_DATABASE_URL`. True for whichever
+      database that variable names; done for Supabase via the migration, not by running
+      this on a live API start.
+- [ ] **`python -m knowledge.ingest_corpus` as a one-shot**, only if standing up a database
+      that does not already have `corpus_chunks` populated. This **makes model calls** — one
+      embedding request per batch for 301 sections, roughly $0.0005 — so it needs the
+      OpenRouter key present. It is idempotent by `doc_id::section`, so re-running it is safe.
 - [ ] **Confirm the corpus landed:** 301 chunks across 43 documents at 1536 dimensions.
+      Against the local dev database:
       ```
-      docker compose exec -T db psql -U plantopia -d plantopia         -c "SELECT count(*), count(DISTINCT doc_id) FROM corpus_chunks;"
+      docker compose exec -T db psql -U plantopia -d plantopia -c "SELECT count(*), count(DISTINCT doc_id) FROM corpus_chunks;"
+      ```
+      Against Supabase, the same query via the CLI rather than `docker compose exec` —
+      there is no local container to exec into:
+      ```
+      npx supabase db query --linked "SELECT count(*), count(DISTINCT doc_id) FROM corpus_chunks;"
       ```
       This is a hard gate, not a sanity check. Since 2026-09-07 `corpus_chunks` is the
       *only* place retrieval reads, so a migrated-but-not-ingested database serves every
@@ -172,7 +199,7 @@ signup form — the defaults exist for that reason, but they were chosen for one
 | Setting | Default | Why it needs a decision |
 |---|---|---|
 | `PLANTOPIA_APP_URL` | `http://localhost:5173` | Every email link (see 1.4) |
-| `PLANTOPIA_DATABASE_URL` | `…@localhost:5433/plantopia` | Host-published dev port; inside compose it is `db:5432` |
+| `PLANTOPIA_DATABASE_URL` | `…@localhost:5433/plantopia` in `core/config.py`; overridden to a Supabase session-pooler URL in this environment's `.env` | The default is the dev container; production points at Supabase instead, not at `db:5432` inside a compose network |
 | `PLANTOPIA_CORS_ORIGINS` | empty | Keep empty if same-origin (1.2) |
 | `PLANTOPIA_LOG_LEVEL` | `INFO` | `INFO` logs the console mailer's full message bodies |
 | `PLANTOPIA_CONSENT_VERSION` | `2026-08-25` | Stored per account; bump only when the notice actually changes |
@@ -192,8 +219,11 @@ capability just does not happen, and nothing on the page says so.
 ## 3. Operational, and worth having before you need it
 
 - [ ] **Database backups.** One Postgres holds the domain tables, the corpus vectors and both
-      LangGraph checkpointers. `pgdata` is a compose volume; a `docker compose down -v`
-      destroys every account.
+      LangGraph checkpointers — as of 2026-09-14, Supabase's, not the compose container's.
+      Confirm what the project's Supabase plan actually provides (automatic backups and PITR
+      are plan-gated) rather than assuming they exist. The compose volume (`pgdata`) now holds
+      only dev/test data — a `docker compose down -v` no longer touches a real account, but it
+      also means that volume is not where a production backup story lives anymore.
 - [ ] **LangSmith project separation.** As of 2026-09-07 the application itself traces, not
       just the evaluation harness — so this now decides where real user traffic is recorded.
       `PLANTOPIA_LANGSMITH_PROJECT` points at a sprint-scoped project; give production its
