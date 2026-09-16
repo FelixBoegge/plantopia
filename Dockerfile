@@ -52,4 +52,12 @@ ENV PATH="/app/.venv/bin:$PATH" \
 EXPOSE 8080
 
 # Cloud Run injects $PORT (defaults to 8080 elsewhere); shell form so it expands.
-CMD exec uvicorn api.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8080}
+#
+# --proxy-headers --forwarded-allow-ips='*' so api/rate_limit.py's source_of() sees the real
+# visitor IP from X-Forwarded-For instead of Cloud Run's own internal edge address — every
+# request reaching this container has already passed through Cloud Run's front end, which is
+# the only thing '*' trusts here. Does not (and cannot, from this container alone) stop a
+# caller hitting the API's own public URL directly from forging that header; that gap is
+# accepted for now and recorded in docs/deployment-readiness.md §2.2.
+CMD exec uvicorn api.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8080} \
+    --proxy-headers --forwarded-allow-ips='*'

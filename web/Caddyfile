@@ -1,0 +1,28 @@
+# Cloud Run terminates TLS itself and expects the container to speak plain HTTP on $PORT.
+{
+	auto_https off
+}
+
+http://:{$PORT} {
+	# API_ORIGIN is the plantopia-api Cloud Run service's own URL, set as an env var rather
+	# than baked in here so a URL change (a custom domain, a redeploy) is a Cloud Run config
+	# update, not a rebuild of this image.
+	@api path /api/*
+	handle @api {
+		reverse_proxy {$API_ORIGIN} {
+			# Chat and diagnosis runs stream over SSE. Caddy already flushes a response it
+			# recognises as streaming immediately, but this is stated rather than relied on —
+			# a buffered SSE stream is a silent failure, not an error anyone would see here.
+			flush_interval -1
+		}
+	}
+
+	# The SPA fallback: any path that is not a static file is a client-side route, and
+	# react-router resolves it after index.html loads.
+	handle {
+		encode gzip
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -80,10 +80,18 @@ window = SlidingWindow()
 def source_of(request: Request) -> str:
     """Who is asking, as far as the limiter is concerned.
 
-    The socket's address. Behind a proxy this is the proxy unless it is configured to pass
-    the original on, which makes the limit global rather than per-source — a failure in the
-    direction of refusing too much rather than too little, and one the deployment change
-    fixes by configuring forwarded headers.
+    The socket's address — but every request here has already passed through uvicorn's
+    `ProxyHeadersMiddleware` (`--proxy-headers --forwarded-allow-ips='*'` in the `Dockerfile`
+    `CMD`), which rewrites it from `X-Forwarded-For` before this function ever runs. Without
+    that flag this would be Cloud Run's own internal edge address for every request, making
+    the limit global rather than per-source — a failure in the direction of refusing too much
+    rather than too little, but still wrong.
+
+    That flag trusts `X-Forwarded-For` from whatever reaches this container, which is correct
+    for traffic through the frontend proxy but not airtight: the API also has its own public
+    Cloud Run URL, and a caller hitting that directly could potentially forge the header.
+    Closing that needs IAM-gating the API or a network-level ingress restriction — accepted
+    as an open gap for now; see `docs/deployment-readiness.md` §2.2.
     """
     return request.client.host if request.client else "unknown"
 

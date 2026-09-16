@@ -39,5 +39,13 @@ tests/e2e/mail.jsonl
 web/test-results/
 web/playwright-report/
 
+# The root package.json exists only for the Supabase CLI (`npx supabase ...`).
+node_modules/
+
+# The Supabase CLI's own local cache for `supabase link` — machine-local, and holds the
+# project's pooler connection string and project ref, so it belongs in .gitignore rather
+# than in a commit.
+supabase/.temp/
+
 # Worktrees created for isolated task execution.
 .claude/worktrees/

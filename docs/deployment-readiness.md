@@ -2,16 +2,32 @@
 
 What has to be true before Plantopia is reachable at a public URL. Written 2026-09-07,
 against the tree at that date. Updated 2026-09-14: the API `Dockerfile` landed and the
-database moved off the local container — both noted in place below rather than rewritten
-around, so this still reads as the record it was.
+database moved off the local container. Updated 2026-09-15: the API and the frontend are
+deployed and live, real mail delivery via Resend is configured, and the app is reachable at
+its own custom domain, `https://plantopia-ai.com` — noted in place below rather than
+rewritten around, so this still reads as the record it was.
 
-The short version: the application is feature-complete and verified by CI. Two of `M51`'s
-three gaps are closed — an API `Dockerfile` exists, and the database is a managed Supabase
-Postgres rather than the local compose container — but the third is not: no frontend
-Dockerfile, no `api`/`frontend` service in `docker-compose.yml`, and nothing deployed at a
-public URL yet. That gap was recorded deliberately on 2026-09-01 — the capstone review came
-first, and a running instance means a public URL against paid OpenRouter and Pl@ntNet keys.
-This document is the list that closes what remains.
+The short version: the application is feature-complete and verified by CI, and it is now
+publicly reachable end to end at `https://plantopia-ai.com`. `M51`'s three gaps are closed:
+the API `Dockerfile` builds and runs, the database is a managed Supabase Postgres, and both
+services are deployed to Cloud Run — API in `europe-west3` at
+`https://plantopia-api-412420541766.europe-west3.run.app` (`min-instances=0,
+max-instances=1`, service account `plantopia-api-run@plantopia-508709.iam.gserviceaccount.com`,
+secrets in Secret Manager under the `plantopia-*` names), frontend in `europe-west1`, mapped
+to `plantopia-ai.com` (its Cloud Run URL,
+`https://plantopia-web-412420541766.europe-west1.run.app`, still works too —
+`PLANTOPIA_APP_URL` points at the custom domain). The frontend moved from `europe-west3` (its
+original region) to `europe-west1` specifically to support Cloud Run's native domain mapping,
+which `europe-west3` doesn't offer — see §3's "Custom domain" item for the full record. The
+frontend service is a Caddy
+container (`web/Dockerfile`, `web/Caddyfile`) that serves the built static files and
+reverse-proxies `/api/**` to the API service — chosen over Firebase Hosting specifically
+because Firebase's rewrite-to-Cloud-Run buffers the whole response and cannot carry the SSE
+streams `runs/bus.py` depends on for chat and diagnosis. `PLANTOPIA_CORS_ORIGINS` stays empty
+— the browser only ever talks to one origin. Mail is configured and live: `ResendMailer` is
+active with a verified sender (`mail.plantopia-ai.com`), not the shared/restricted default —
+see §1.4. This document is the
+list that closes what remains.
 
 Items are grouped by what happens if you skip them: the first group breaks the deployment,
 the second lets it run wrongly, the third is what you would regret in a month.
@@ -27,8 +43,11 @@ the second lets it run wrongly, the third is what you would regret in a month.
       module-level `app` — `api/main.py` says why — so the `--factory` flag is not optional.
       Landed 2026-09-14, ahead of the rest of this section — it builds and runs, but nothing
       has pushed the image anywhere yet.
-- [ ] **Multi-stage `Dockerfile` for the frontend.** `npm ci && npm run build` produces
-      `web/dist`; the runtime stage is a static server or a reverse proxy.
+- [x] **Multi-stage `Dockerfile` for the frontend.** `npm ci && npm run build` produces
+      `web/dist`; the runtime stage is a static server or a reverse proxy. Landed
+      2026-09-15 as `web/Dockerfile`: builds with `node:22-slim`, serves with `caddy:2-alpine`
+      (`web/Caddyfile`). Deployed to Cloud Run as `plantopia-web`, not composed locally — the
+      item below is still open for that.
 - [ ] **`api` and `frontend` services in `docker-compose.yml`.** The compose file's own
       comment already anticipates this ("The API container joins this network later"). Inside
       the network the database is `db:5432`, not `localhost:5433` — the published port exists
@@ -49,13 +68,16 @@ Reinforcing the same conclusion: the refresh cookie is `SameSite=Strict`
 (`api/cookies.py`), and Vite's config comments say so explicitly — a cross-origin frontend
 would not receive it at all, so sessions could never be renewed.
 
-- [ ] **Serve both behind one origin.** A reverse proxy (nginx, Caddy, Traefik) that serves
+- [x] **Serve both behind one origin.** A reverse proxy (nginx, Caddy, Traefik) that serves
       `web/dist` at `/` and proxies `/api` to the API container. Splitting them across two
       hostnames means rewriting the client's base URL *and* relaxing the cookie to `Lax`,
-      which is a security change, not a configuration one.
-- [ ] Leave `PLANTOPIA_CORS_ORIGINS` **empty** if you do this. Same-origin needs no CORS,
+      which is a security change, not a configuration one. Done 2026-09-15 via `web/Caddyfile`
+      — `reverse_proxy {$API_ORIGIN}` with `flush_interval -1` so SSE isn't buffered. Firebase
+      Hosting was considered and rejected for this specific reason: its Cloud Run rewrite
+      buffers the whole response.
+- [x] Leave `PLANTOPIA_CORS_ORIGINS` **empty** if you do this. Same-origin needs no CORS,
       and `api/main._add_cors` skips the middleware entirely when nothing is configured —
-      the absence of the middleware is the policy.
+      the absence of the middleware is the policy. Confirmed empty on the live deployment.
 
 ### 1.3 Database schema and corpus
 
@@ -97,30 +119,67 @@ outstanding work for the current database.
 
 ### 1.4 A real mail provider
 
-**Without this nobody but you can sign in.** `identity/accounts.authenticate` treats an
-unverified account exactly like an unknown address or a wrong password — one refusal for all
-three — and registration creates the account unverified. Absent `resend_api_key`,
-`core/mail.build_mailer` returns `ConsoleMailer`, which writes the verification link to the
-log. That is correct for development and useless for anybody who is not reading your
-container logs.
+**Done as of 2026-09-15.** `identity/accounts.authenticate` treats an unverified account
+exactly like an unknown address or a wrong password — one refusal for all three — and
+registration creates the account unverified, so without a real mailer nobody but the person
+reading container logs could ever sign in. `PLANTOPIA_RESEND_API_KEY` is now set (Secret
+Manager, `plantopia-resend-api-key`), so `core/mail.build_mailer` returns `ResendMailer`
+rather than `ConsoleMailer` in production.
 
-- [ ] Set `PLANTOPIA_RESEND_API_KEY` and `PLANTOPIA_MAIL_FROM` to a verified sender.
-      The default, `Plantopia <onboarding@resend.dev>`, is Resend's shared testing sender.
-- [ ] Set `PLANTOPIA_APP_URL` to the real public address. **Every link in every email is
+- [x] Set `PLANTOPIA_RESEND_API_KEY` and `PLANTOPIA_MAIL_FROM` to a verified sender. Not the
+      shared `onboarding@resend.dev` testing sender (which only delivers to the address on
+      the Resend account itself) — `plantopia-ai.com` was registered specifically for this,
+      with a dedicated sending subdomain (`mail.plantopia-ai.com`) verified in Resend via
+      DKIM/SPF/MX records added in Cloudflare. `PLANTOPIA_MAIL_FROM` is
+      `Plantopia <noreply@mail.plantopia-ai.com>`. This reaches *any* registrant, not just
+      one address — open public sign-up works. There is still no SMTP adapter in
+      `core/mail.py` (only `ResendMailer` and `ConsoleMailer`) — moot now that Resend is
+      configured with a verified domain; an SMTP adapter was considered earlier and dropped
+      in favour of this.
+- [x] Set `PLANTOPIA_APP_URL` to the real public address. **Every link in every email is
       built from it**, so the default `http://localhost:5173` produces verification links
-      that nobody can follow and that nothing warns you about.
-- [ ] Register once against the deployment and follow the link from a real inbox.
+      that nobody can follow and that nothing warns you about. History, all 2026-09-15: set
+      to the API's own URL first, then to the frontend's `europe-west3` URL once that service
+      existed, then to its `europe-west1` URL once the frontend moved there, then to
+      `https://plantopia-ai.com` once that domain's certificate finished provisioning (§3's
+      "Custom domain"). **Current value:** `https://plantopia-ai.com`.
+- [x] Register once against the deployment and follow the link from a real inbox. Confirmed
+      2026-09-15 by the user against `https://plantopia-ai.com`: registered, the verification
+      email arrived from `Plantopia <noreply@mail.plantopia-ai.com>`, the link worked, and the
+      account could log in. End to end, for real.
 
 ### 1.5 Required secrets with no defaults
 
 The application refuses to construct `Settings` without these two, which is the intended
 behaviour — a missing secret should stop the process, not start a broken one.
 
-- [ ] `PLANTOPIA_OPENROUTER_API_KEY` — every model call in the application goes through it.
-- [ ] `PLANTOPIA_JWT_SECRET` — at least 32 characters (RFC 7518's floor for HMAC-SHA256).
+- [x] `PLANTOPIA_OPENROUTER_API_KEY` — every model call in the application goes through it.
+      In Secret Manager as `plantopia-openrouter-api-key` since 2026-09-15. **Temporary
+      value, expires in a few days from 2026-09-15** — it is a provided/college-issued key,
+      not the user's own. A personal OpenRouter key is coming and must replace it before
+      expiry, or every model call (diagnosis, chat, embeddings) starts failing with no
+      frontend-visible warning ahead of time. Rotate with:
+      ```
+      grep -m1 "^PLANTOPIA_OPENROUTER_API_KEY=" .env | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' | tr -d '\n' \
+        | gcloud secrets versions add plantopia-openrouter-api-key --data-file=- --project=plantopia-508709
+      ```
+      then redeploy (`gcloud run deploy` with the same image and no other flags — Cloud Run
+      keeps the rest of the service config unless a flag overrides it) so the new revision
+      resolves `:latest` again. Also
+      re-probe the model slugs in `core/config.py` (`gate_model`, `vision_model`,
+      `reasoning_model`) once on a personal key — the current defaults were chosen
+      specifically because they work on a *restricted* college-issued key, and a personal
+      key may support the stronger models documented as commented-out overrides there.
+- [x] `PLANTOPIA_JWT_SECRET` — at least 32 characters (RFC 7518's floor for HMAC-SHA256).
       **It must be stable across restarts and identical in every process.** A generated one
       works perfectly in development and logs everybody out at random in production. Store
-      it in the platform's secret manager, not in an image layer.
+      it in the platform's secret manager, not in an image layer. In Secret Manager as
+      `plantopia-jwt-secret` since 2026-09-15. **Gotcha hit during setup:** a
+      `grep | cut | sed | gcloud secrets create` pipeline (and `openssl rand -base64 ... |
+      gcloud secrets create`) leaves a trailing newline in the stored secret — pipe through
+      `tr -d '\n'` before `--data-file=-`, or every value silently carries an extra byte
+      (broke the database connection outright; would have broken the `Authorization` header
+      for API keys too).
 
 ### 1.6 Do not run more than one API process
 
@@ -130,7 +189,8 @@ would permit twice the rate limit, run twice the configured pool, and — the on
 notices — leave a client connected to process B watching a run on process A, seeing an empty
 stream.
 
-- [ ] **One replica, one worker.** No `--workers 2`, no horizontal autoscaling.
+- [x] **One replica, one worker.** No `--workers 2`, no horizontal autoscaling. Enforced via
+      Cloud Run `--min-instances=0 --max-instances=1` since 2026-09-15.
 - [ ] If you ever need a second process, substitute first: Redis or `LISTEN`/`NOTIFY` for the
       bus, Redis or the proxy for the limiter, a real worker behind `RunExecutor` (which is
       already behind a port for exactly this). Then set
@@ -170,9 +230,25 @@ Every visitor then shares one budget of 10 requests per 300 seconds on the three
 unauthenticated auth endpoints — so the first few visitors lock out the rest. `M28` calls
 this the part that "matters sooner".
 
-- [ ] Configure `--proxy-headers` and `--forwarded-allow-ips` on uvicorn, and make the proxy
+- [x] Configure `--proxy-headers` and `--forwarded-allow-ips` on uvicorn, and make the proxy
       set `X-Forwarded-For` — or move rate limiting into the proxy and leave the in-process
-      limiter as a backstop.
+      limiter as a backstop. Done 2026-09-15: `Dockerfile`'s `CMD` adds
+      `--proxy-headers --forwarded-allow-ips='*'`, which fixes attribution for the normal
+      path (browser → `plantopia-web` Caddy proxy → `plantopia-api`).
+
+      **Not fully closed — accepted gap.** The API also keeps its own public Cloud Run URL
+      (`--allow-unauthenticated`). Google's own docs hedge ("generally") on whether Cloud
+      Run's default ingress sanitizes a client-supplied `X-Forwarded-For` before adding the
+      real one, so a caller hitting that URL directly could plausibly forge the header and
+      dodge the auth-endpoint rate limit. Closing it needs either IAM-gating the API
+      (`--no-allow-unauthenticated` + `roles/run.invoker` for the frontend's service account,
+      with the frontend attaching a signed identity token — Caddy has no built-in way to do
+      this, it would need a custom build/plugin or a different proxy) or a network-level
+      `--ingress=internal` restriction (which itself needs Direct VPC egress from the
+      frontend — a VPC/connector to stand up). Both are real, separate infrastructure work.
+      Accepted as low-risk for now: traffic is near zero, and the endpoints this protects
+      (register/login/reset) are cheap regardless — the expensive ones (diagnosis/chat) are
+      bounded by the daily spend cap (§2.4) independent of IP. Revisit before real traffic.
 
 ### 2.3 Cookies over HTTPS
 
@@ -193,6 +269,18 @@ signup form — the defaults exist for that reason, but they were chosen for one
       from its own `usage_events` ledger; a bug there is a bug in your only brake.
 - [ ] Decide what `PLANTOPIA_TIER_ALLOWANCES` should hold, if anything. A tier absent from it
       gets the default, deliberately.
+- [ ] **Alert in GCP when the daily spend cap is actually enforced**, so hitting it is
+      something you're told about rather than something a user discovers. Not wired up yet,
+      and not quite a one-step Cloud Monitoring alert: `services/limits.check` raises
+      `DailyCapReachedError`, and `api/errors.py:_daily_cap` turns it into a `503` — but
+      neither logs anything distinguishable. A Cloud Run alert on the 5xx rate would fire on
+      *any* 503, not specifically this one. The precise version needs a small code change
+      first — a `logger.warning(...)` call in `_daily_cap` naming the cap and the spend — then
+      a **log-based metric** in Cloud Logging counting that line, and a **Cloud Monitoring
+      alert policy** on that metric (Monitoring → Alerting → Create Policy, or
+      `gcloud alpha monitoring policies create`). This is separate from a GCP **billing
+      budget** alert (Billing → Budgets & alerts), which watches GCP's own infrastructure
+      spend, not OpenRouter usage — worth having too, but answers a different question.
 
 ### 2.5 Settings whose defaults are development choices
 
@@ -218,6 +306,21 @@ capability just does not happen, and nothing on the page says so.
 
 ## 3. Operational, and worth having before you need it
 
+- [x] **Custom domain.** Done 2026-09-15. `plantopia-ai.com` was registered (Cloudflare) and
+      mapped to `plantopia-web` via `gcloud beta run domain-mappings create
+      --domain=plantopia-ai.com --region=europe-west1` — at the root, not a subdomain. This
+      required moving the frontend service from `europe-west3` to `europe-west1`: Cloud Run's
+      native domain-mapping feature does not support `europe-west3` (supported EU regions:
+      `europe-west1`, `europe-west4`, `europe-north1`); the API stayed in `europe-west3`, only
+      the frontend moved. The old `europe-west3` frontend service was deleted. DNS (4 A + 4
+      AAAA records, at `@`, DNS-only in Cloudflare) resolved correctly from the start; Google's
+      managed TLS certificate took about an hour to provision (`CertificatePending` →
+      `Ready: True` / `CertificateProvisioned: True`, confirmed via `gcloud beta run
+      domain-mappings describe --domain=plantopia-ai.com --region=europe-west1`).
+      `https://plantopia-ai.com` verified serving both the static frontend and the proxied API
+      (`/api/v1/ready` returns `200`). §1.2's same-origin constraint holds — the domain points
+      at the same Caddy service doing the same reverse proxy. `PLANTOPIA_APP_URL` updated to
+      `https://plantopia-ai.com` and the API redeployed.
 - [ ] **Database backups.** One Postgres holds the domain tables, the corpus vectors and both
       LangGraph checkpointers — as of 2026-09-14, Supabase's, not the compose container's.
       Confirm what the project's Supabase plan actually provides (automatic backups and PITR
@@ -235,8 +338,10 @@ capability just does not happen, and nothing on the page says so.
       opt-out; nothing else changes.
 - [ ] **Health check.** `api/routers/health.py` is already mounted under the prefix — point
       the platform's probe at it.
-- [ ] **Log retention and access.** At `INFO`, and with `ConsoleMailer` in play for any
-      environment without a mail key, logs contain password-reset and verification links.
+- [ ] **Log retention and access.** Production no longer logs live links — `ResendMailer` is
+      active there (§1.4). Still true for any environment without a mail key (local dev,
+      tests): at `INFO`, `ConsoleMailer` puts password-reset and verification links straight
+      into the logs.
 - [ ] **A staging pass.** Register, verify, diagnose, chat, export, delete an account — the
       whole path, on the real deployment, once.
 - [ ] **No volume for a vector store.** Retrieval moved to pgvector on 2026-09-07, so

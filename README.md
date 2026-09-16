@@ -103,16 +103,20 @@ discovered by its symptom.
 Registration is open and every account starts unverified; nothing owner-scoped is reachable
 until the address is proven.
 
-**No confirmation email will arrive, and nothing is wrong when it does not.** Which mailer
-runs is decided by whether a provider is configured rather than by a flag somebody has to
-remember, and none is configured by default — so `core/mail.py` falls back to a mailer that
-writes the message to the application log instead of sending it. A checkout that has never
-been given a key cannot mail a real person by accident. Registering with your own address
-is safe: nothing leaves the machine.
+**On the deployed instance, a real confirmation email arrives** — production has
+`PLANTOPIA_RESEND_API_KEY` set and sends from a verified domain (`mail.plantopia-ai.com`),
+so this works for any registrant, not just one address. **Locally, by default, no email
+arrives, and nothing is wrong when it does not.** Which mailer runs is decided by whether a
+provider is configured rather than by a flag somebody has to remember, and none is configured
+by default in a fresh clone — so `core/mail.py` falls back to a mailer that writes the
+message to the application log instead of sending it. A checkout that has never been given a
+key cannot mail a real person by accident. Registering with your own address in this mode is
+safe: nothing leaves the machine.
 
-To activate an account from the web client, register at `http://localhost:5173/register` as
-you normally would. The screen will tell you to check your inbox — ignore it, and look at
-the terminal running uvicorn, where the whole message is waiting:
+To activate an account from the web client against a local, unconfigured server, register at
+`http://localhost:5173/register` as you normally would. The screen will tell you plainly that
+no email provider is configured and to check the server log instead — look at the terminal
+running uvicorn, where the whole message is waiting:
 
 ```
 INFO core.mail: email not sent (no provider configured); to=you@example.com subject=Confirm your Plantopia address
@@ -134,9 +138,11 @@ uv run uvicorn api.main:create_app --factory --reload --port 8000 | tee api.log
 grep -A6 "Confirm your Plantopia address" api.log
 ```
 
-Setting `PLANTOPIA_RESEND_API_KEY` switches to real delivery, with the caveat that Resend's
-default sender only reaches the address that owns the Resend account — mailing anyone else
-needs a verified domain. Password reset works the same way and lands in the same log.
+Setting `PLANTOPIA_RESEND_API_KEY` locally switches that clone to real delivery too. Absent a
+verified custom domain, Resend's shared `onboarding@resend.dev` sender only reaches the
+address that owns the Resend account — the production deployment avoids this by sending from
+a verified domain instead. Password reset works the same way, and follows whichever of the
+two paths above is active.
 
 The same three steps over the API, for anyone working without the web client:
 
@@ -866,10 +872,20 @@ builds its own `Settings(_env_file=None, ...)`, so the suite never reads `PLANTO
 from `.env` and always runs against a throwaway database on the local container, never against
 Supabase. `docker compose up -d db` stays a prerequisite for `pytest`, exactly as before.
 
-A multi-stage `Dockerfile` builds the API — `uv sync --frozen` into a slim runtime image
-that runs as a non-root user and reads Cloud Run's `$PORT`. There is still no Dockerfile
-for the frontend, no `api` or `frontend` service in `docker-compose.yml`, and the application
-is not yet deployed anywhere. `docs/deployment-readiness.md` tracks what remains.
+**The application is deployed and live**, as of 2026-09-15. A multi-stage `Dockerfile` builds
+the API — `uv sync --frozen` into a slim runtime image that runs as a non-root user and reads
+Cloud Run's `$PORT` — deployed to Cloud Run in `europe-west3`. `web/Dockerfile` builds the
+frontend into a Caddy container that serves the static build and reverse-proxies `/api/**` to
+the API (so the browser only ever sees one origin, which the refresh cookie's
+`SameSite=Strict` requires), deployed to Cloud Run in `europe-west1` — a different region
+from the API specifically because Cloud Run's native custom-domain mapping isn't available in
+`europe-west3`. The application is reachable at its own domain,
+**`https://plantopia-ai.com`** — mapped to the frontend service, Google-managed certificate
+provisioned. Real mail delivery is configured too, via Resend with a verified sending domain
+(`mail.plantopia-ai.com`), not the default shared sender. There is still no `api`/`frontend`
+service in `docker-compose.yml` —
+that compose file remains dev/test-only, unrelated to the actual deployment.
+`docs/deployment-readiness.md` has the full record and what remains.
 
 ## Project structure
 
