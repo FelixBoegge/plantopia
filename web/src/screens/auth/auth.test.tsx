@@ -317,31 +317,18 @@ describe("the theme on the way in", () => {
     document.documentElement.classList.remove("dark");
   });
 
-  it("applies a dark choice made before signing out", async () => {
-    // The choice lives in the browser rather than the account, so it is known before
-    // anybody signs in — and the screens you reach without a session used to ignore it,
-    // because the only thing that applied it was the signed-in header.
+  it("offers no theme toggle here — only the signed-in header switches it", async () => {
+    // These screens sit on a light background image with no toggle of their own; a dark
+    // choice made before signing out is picked back up once somebody is signed in again.
     window.localStorage.setItem("plantopia-theme", "dark");
     signedOut();
 
     render(<AppRoutes />, { route: "/login" });
     await screen.findByRole("heading", { name: "Sign in" });
 
-    expect(document.documentElement).toHaveClass("dark");
-  });
-
-  it("switches the theme from the sign-in screen", async () => {
-    signedOut();
-
-    render(<AppRoutes />, { route: "/login" });
-    const toggle = await screen.findByRole("button", { name: "Dark mode" });
-    await userEvent.click(toggle);
-
-    expect(document.documentElement).toHaveClass("dark");
-    expect(window.localStorage.getItem("plantopia-theme")).toBe("dark");
     expect(
-      screen.getByRole("button", { name: "Light mode" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /dark mode|light mode/i }),
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -91,10 +91,7 @@ export function SignIn() {
           <Button type="submit" className="h-10 text-base" disabled={busy}>
             {busy ? "Signing in…" : "Sign in"}
           </Button>
-          <TextLink
-            to="/reset-password"
-            className="text-center text-sm text-muted-foreground"
-          >
+          <TextLink to="/reset-password" className="text-center text-sm">
             Forgot your password?
           </TextLink>
         </div>

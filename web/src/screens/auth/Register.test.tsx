@@ -174,6 +174,46 @@ describe("where the link actually went", () => {
     expect(screen.queryByText(/already/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/taken/i)).not.toBeInTheDocument();
   });
+
+  it("offers a way to sign in once the address can be verified", async () => {
+    // Whichever way somebody learns to verify — an inbox or the server log — they land
+    // on a screen with no way back to the form that got them here.
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          { ...ACCEPTED, email_configured: true },
+          { status: 202 },
+        ),
+      ),
+    );
+
+    render(<Register />);
+    await fillIn();
+
+    expect(
+      await screen.findByRole("button", { name: "Sign in" }),
+    ).toHaveAttribute("href", "/login");
+  });
+
+  it("offers the same way in from the server-log fallback", async () => {
+    signedOut();
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          { ...ACCEPTED, email_configured: false },
+          { status: 202 },
+        ),
+      ),
+    );
+
+    render(<Register />);
+    await fillIn();
+
+    expect(
+      await screen.findByRole("button", { name: "Sign in" }),
+    ).toHaveAttribute("href", "/login");
+  });
 });
 
 describe("a refusal lands on the control that caused it", () => {

@@ -202,6 +202,35 @@
   --sidebar-ring: oklch(0.545 0.1 152);
 }
 
+/* Pins a subtree to the light palette regardless of an ancestor `.dark` — for the
+   auth screens, which no longer offer a toggle and sit on a light background image. A
+   custom property declared on an element always wins over one it would otherwise
+   inherit from `.dark` further up the tree, so this does not depend on selector
+   specificity. Kept identical to `:root` below except `--card`, which is warmed
+   toward green for the translucent card on the auth background (`AuthShell`) — a
+   palette change to any other value below needs the same change here. */
+.light {
+  color-scheme: light;
+  --background: oklch(0.945 0.022 150);
+  --foreground: oklch(0.255 0.035 152);
+  --card: oklch(0.93 0.038 120);
+  --card-foreground: oklch(0.255 0.035 152);
+  --popover: oklch(0.895 0.038 150);
+  --popover-foreground: oklch(0.255 0.035 152);
+  --primary: oklch(0.435 0.098 152);
+  --primary-foreground: oklch(0.98 0.012 150);
+  --secondary: oklch(0.855 0.045 150);
+  --secondary-foreground: oklch(0.29 0.038 152);
+  --muted: oklch(0.87 0.032 150);
+  --muted-foreground: oklch(0.445 0.038 152);
+  --accent: oklch(0.84 0.055 150);
+  --accent-foreground: oklch(0.27 0.038 152);
+  --destructive: oklch(0.505 0.2 27);
+  --border: oklch(0.775 0.042 150);
+  --input: oklch(0.775 0.042 150);
+  --ring: oklch(0.545 0.1 152);
+}
+
 .dark {
   --background: oklch(0.168 0.022 155);
   --foreground: oklch(0.945 0.014 150);

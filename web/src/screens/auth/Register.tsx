@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { request } from "@/api/client";
 import { fieldMessages, readable } from "@/api/problems";
@@ -74,6 +75,13 @@ export function Register() {
           “Confirm your Plantopia address” and open the link in it. The link
           works for the next 24 hours.
         </p>
+        <Button
+          className="h-10 text-base"
+          nativeButton={false}
+          render={<Link to="/login" />}
+        >
+          Sign in
+        </Button>
       </AuthShell>
     ) : (
       <AuthShell title="Check your email">
@@ -84,6 +92,13 @@ export function Register() {
         <p className="text-muted-foreground text-sm">
           The link works for the next 24 hours.
         </p>
+        <Button
+          className="h-10 text-base"
+          nativeButton={false}
+          render={<Link to="/login" />}
+        >
+          Sign in
+        </Button>
       </AuthShell>
     );
   }
