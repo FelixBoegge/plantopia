@@ -387,6 +387,49 @@ agent's web search) never passes through `api/`'s request handling at all.
       (`/api/v1/ready` returns `200`). §1.2's same-origin constraint holds — the domain points
       at the same Caddy service doing the same reverse proxy. `PLANTOPIA_APP_URL` updated to
       `https://plantopia-ai.com` and the API redeployed.
+- [ ] **A full CI/CD pipeline — CI stops at the gates, deployment is still a person.**
+      `.github/workflows/ci.yml` runs every gate (lint, Python, frontend+browser) on every push
+      and pull request, and its own header comment states the boundary deliberately: no step
+      reads a secret, so a fork's pull request is verified exactly like a branch. Getting code
+      from a green CI run onto the two live Cloud Run services is still `gcloud run deploy` run
+      by hand — true for the 2026-09-15 launch and for every secret rotation since (§1.5).
+      Closing that gap needs:
+      - [ ] **A separate workflow, not an extension of `ci.yml`.** That file's whole guarantee
+            is running with no secret in scope on a fork's PR; a deploy job needs real GCP
+            credentials and must never run on a PR from a fork. Trigger it on push to `main`
+            only, gated on `ci.yml`'s own gates passing first — either `workflow_run` watching
+            `ci.yml`'s conclusion, or one workflow with build/test as jobs the deploy job
+            `needs:`.
+      - [ ] **Workload Identity Federation from GitHub Actions to GCP**, not a downloaded
+            service-account JSON key — nothing long-lived to leak from a workflow file, a log,
+            or a cache. A dedicated deploy-only service account, distinct from the runtime
+            `plantopia-api-run@…` (§1.1's service account is for running the container, not for
+            deploying it), scoped to `roles/run.developer` on the two Cloud Run services and
+            `roles/artifactregistry.writer` on the image repo — no Secret Manager access. This
+            pipeline redeploys code; it should never be able to read
+            `PLANTOPIA_OPENROUTER_API_KEY` or the JWT secret.
+      - [ ] **Build and push both images to Artifact Registry, tagged by commit SHA, not
+            `:latest`.** §1.5's rotation recipe already leans on `gcloud run deploy` keeping
+            everything but the image unchanged; a SHA tag turns "redeploy the previous image"
+            into a specific, nameable command instead of a hope that the registry still has it.
+      - [ ] **`gcloud run deploy` for both services against the new image, preserving every
+            flag already set by hand** — `--min-instances=0 --max-instances=1` above all
+            (§1.6 / `M28`: a workflow that lets Cloud Run's own defaults apply here would
+            silently reintroduce the second worker/second process the rate limiter, the run
+            executor pool and the event bus can't survive), plus the existing secret bindings
+            and each service's region.
+      - [ ] **No separate migration step belongs in the pipeline.** §1.3 already runs
+            `alembic upgrade head` on API start, and Cloud Run holds the previous revision
+            serving traffic until the new one passes its own startup — so a bad migration fails
+            the new revision instead of taking down the running one. Worth confirming that once
+            on purpose rather than assuming it.
+      - [ ] **Rollback**, once revisions are named by SHA-tagged images:
+            `gcloud run services update-traffic --to-revisions=<prior-revision>=100`. Decide
+            whether that stays a manual command (same posture as §1.5's rotation recipe) or
+            becomes its own `workflow_dispatch` job.
+      - [ ] **The evaluation harness stays out of this pipeline too** — same reasoning as
+            `ci.yml`'s own header comment: real model calls, real money, never behind an
+            automatic trigger.
 - [ ] **Database backups.** One Postgres holds the domain tables, the corpus vectors and both
       LangGraph checkpointers — as of 2026-09-14, Supabase's, not the compose container's.
       Confirm what the project's Supabase plan actually provides (automatic backups and PITR
