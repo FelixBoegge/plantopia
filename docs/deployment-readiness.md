@@ -265,10 +265,43 @@ signup form — the defaults exist for that reason, but they were chosen for one
 - [ ] Review `PLANTOPIA_MONTHLY_RUN_ALLOWANCE` (default 20 per account per calendar month).
 - [ ] Review `PLANTOPIA_DAILY_SPEND_CAP_USD` (default 5.0, global across all accounts).
       At ~$0.024 a diagnosis that is roughly 200 diagnoses a day before everything stops.
-- [ ] Set a hard spend limit on the OpenRouter key itself. The application's cap is enforced
-      from its own `usage_events` ledger; a bug there is a bug in your only brake.
 - [ ] Decide what `PLANTOPIA_TIER_ALLOWANCES` should hold, if anything. A tier absent from it
       gets the default, deliberately.
+- [ ] **OpenRouter's own guardrails, on the key itself — due whenever the temporary
+      college-issued key (§1.5) is replaced with a personal one.** Everything above is
+      enforced by this application's own code, reading its own ledger; a bug in that code, or
+      a code path that spends without recording, has no backstop unless OpenRouter refuses on
+      its own side too. These are account/key settings, not code, at
+      `openrouter.ai/settings/keys` and `openrouter.ai/settings/privacy`:
+      - [ ] **Per-key credit limit.** Key creation takes an optional spend cap enforced by
+            OpenRouter itself, independent of `PLANTOPIA_DAILY_SPEND_CAP_USD`. Set it to a
+            small multiple of that cap, not unlimited — it is the brake that still works if
+            the application's own accounting has a bug.
+      - [ ] **Data policy / privacy settings.** A diagnosis prompt carries what an owner wrote
+            about their plant and, when location is used, roughly where it is growing — the
+            same category of sensitive content the LangSmith tracing decision in §3 is about,
+            just at the model-provider hop instead of the observability one. OpenRouter's
+            privacy settings control whether prompts/completions may be logged by OpenRouter
+            and whether routing is allowed to providers whose terms permit training on
+            submitted data. Decide this deliberately for a personal account rather than
+            inheriting whatever it defaults to.
+      - [ ] Re-probe the model slugs (`core/config.py`, already noted in §1.5) once these
+            restrictions are in place — a stricter data policy can rule a provider out
+            entirely, not just its discounted tier.
+      - [ ] **Prompt injection guardrail.** OpenRouter's workspace/key **Guardrails** (Security
+            section) run a free, local, regex-based scan — over 30 patterns derived from the
+            OWASP LLM Prompt Injection Prevention Cheat Sheet — against every request before it
+            reaches the model provider. Relevant here because the diagnosis and chat agents
+            build prompts out of things an owner (or, via chat's web search and the plant
+            corpus, an outside page) supplied, and neither `api/` nor `agent/` runs any
+            injection filtering of its own today. Three modes: `flag` (logged only), `redact`
+            (matched span replaced with `[PROMPT_INJECTION]`), `block` (request refused with a
+            403); the most restrictive of any workspace- and key-level guardrail that applies
+            wins. Start in `flag` mode against real traffic first — OpenRouter's own docs warn
+            the patterns are not exhaustive and can false-positive on legitimate input (a
+            symptom description quoting a suspicious-looking phrase, for instance) — and only
+            move to `redact`/`block` once that rate looks acceptable, using the allowlist for
+            any pattern that keeps tripping on legitimate plant-care text.
 - [ ] **Alert in GCP when the daily spend cap is actually enforced**, so hitting it is
       something you're told about rather than something a user discovers. Not wired up yet,
       and not quite a one-step Cloud Monitoring alert: `services/limits.check` raises
@@ -301,6 +334,39 @@ capability just does not happen, and nothing on the page says so.
 - [ ] `PLANTOPIA_PLANTNET_API_KEY` — without it the species second opinion does not happen
       and the diagnosis proceeds on the vision model's guess alone.
 - [ ] `PLANTOPIA_TAVILY_API_KEY` — without it the chat agent's web search is unavailable.
+
+### 2.7 An application-level guardrails classifier
+
+**Not built.** §2.4's OpenRouter guardrail is one regex-based check (prompt injection),
+applied to every request the key sends account-wide — it does not know this is Plantopia
+traffic specifically, and it only looks at what goes *in*, never at what the model hands
+back. Nothing in `agent/` or `api/` today checks a chat message or a diagnosis output for
+any of the following before it reaches a user or gets stored:
+
+- [ ] **Jailbreak / instruction-override attempts** against the app's own system prompt —
+      distinct from OpenRouter's generic injection regex, which is not exhaustive and knows
+      nothing about what Plantopia's prompts specifically ask the model to do or refuse.
+- [ ] **PII in chat input.** A person describing where a plant lives can end up typing an
+      address or a phone number into a message that gets sent to a third-party model and, via
+      LangSmith (§3), potentially traced.
+- [ ] **Toxic language**, on chat input at minimum — the chat agent is the one place open
+      registration puts a live, user-authored message in front of a model on this app's bill.
+- [ ] **Topic/scope drift.** The chat agent is meant to answer plant-care questions; nothing
+      stops a signed-in account from using it as a general-purpose chatbot on Plantopia's
+      OpenRouter spend, which is a cost problem (§2.4) as much as a safety one.
+- [ ] **Output format.** The diagnosis pipeline already expects a specific structured shape
+      from the model; validating that structurally, and refusing/retrying a malformed one
+      before it is stored or shown, catches a schema drift that would otherwise surface as a
+      confusing screen rather than a caught error.
+
+One option for all five: [Guardrails AI](https://guardrailsai.com) (`guardrails-ai`, open
+source, MIT), which ships exactly these as validators in its Hub — jailbreak detection,
+`DetectPII`, `ToxicLanguage`, a topic-restriction validator, and format/schema validation
+(its original purpose: wrapping a model call in a `Guard` against a Pydantic/JSON schema,
+which fits the diagnosis pipeline's structured output directly). It would sit inside the
+LangGraph pipeline itself — around the chat and diagnosis nodes in `agent/` — rather than
+only at the FastAPI boundary, since content pulled in mid-pipeline (the corpus, the chat
+agent's web search) never passes through `api/`'s request handling at all.
 
 ---
 
